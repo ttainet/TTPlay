@@ -1,0 +1,5 @@
+# Linux patch series for libass. Empty: the linux driver applies series.common
+# to the pinned upstream source (platforms/linux/build.sh, apply_patch_series),
+# and linux needs nothing on top of it. A patch lands here only when linux
+# needs a change that no other platform wants; promote it to series.common the
+# moment a second platform needs the same pool file.

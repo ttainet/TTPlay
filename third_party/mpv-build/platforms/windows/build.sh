@@ -1,0 +1,358 @@
+#!/usr/bin/env bash
+# Windows platform driver: build the libmpv dev package with mpv-winbuild-cmake.
+#
+# usage: platforms/windows/build.sh <x86_64|aarch64> [--configure-only]
+#
+# Stages:
+#   1. shallow-fetch shinchiro/mpv-winbuild-cmake at the commit pinned by the
+#      versions.json component `mpv-winbuild-cmake`
+#   2. pin every source winbuild builds to versions.json (pin_packages.py):
+#      the payload packages, its live-fetch toolchain packages (mingw-w64,
+#      llvm), the ffmpeg-side packages whose upstream tip cannot build
+#      against the pinned release ffmpeg and openssl (winbuild pins an
+#      unreleased master snapshot), then stage the resolved windows
+#      patch series and neutralize the check-git cache cascade
+#   3. cmake configure with the clang toolchain (aarch64 REQUIRES clang:
+#      gcc + aarch64 is a configure-time FATAL_ERROR upstream) and ccache
+#      baked into the cross-compiler wrappers. winbuild's
+#      cmake/download_externalproject.cmake curls its patched Kitware
+#      ExternalProject module at first configure, so configure needs network.
+#   4. toolchain targets: ninja llvm, ninja rustup, ninja llvm-clang --
+#      stamp-driven no-ops on a clean restored CI cache, targeted rebuilds
+#      when a pin moved
+#   5. ninja mpv, after fullcleaning any restored mpv state -- meson
+#      -Dlibmpv=true is hard-coded upstream, so this builds libmpv-2.dll
+#      alongside mpv.exe and its copy-binary step assembles
+#      mpv-dev-<cpu>-<date>-git-<10sha>/ (libmpv-2.dll, libmpv.dll.a,
+#      include/mpv/{client,stream_cb,render,render_gl}.h) in the build root,
+#      plus mpv-debug-<cpu>-<date>-git-<10sha>/ with the libmpv-2.pdb
+#      pin_packages.py has it save. package.sh zips the dev tree under its
+#      content-addressed asset name and the PDB into its symbols zip.
+#
+# Host requirements for a full build: Linux with the mpv-winbuild-cmake README
+# apt package list plus pip meson >= 1.3.0 (configure fails fast otherwise).
+# CI is where full builds run. On any host, --configure-only stops after the
+# cmake configure step; it exists to smoke-test the rewritten package files
+# through the real configure (e.g. inside a docker ubuntu container).
+set -euo pipefail
+
+usage() {
+  echo "usage: platforms/windows/build.sh <x86_64|aarch64> [--configure-only]" >&2
+  exit 2
+}
+
+ARCH="${1:-}"
+case "$ARCH" in
+  x86_64 | aarch64) ;;
+  *) usage ;;
+esac
+CONFIGURE_ONLY=0
+if [[ "${2:-}" == "--configure-only" ]]; then
+  CONFIGURE_ONLY=1
+elif [[ -n "${2:-}" ]]; then
+  usage
+fi
+
+# winbuild's own patch steps run `git am` (spirv-cross, fontconfig, ...),
+# which hard-fails without a committer identity -- upstream's CI configures
+# one globally as its first step. Scope ours to this process instead of
+# mutating the host's git config.
+export GIT_AUTHOR_NAME="${GIT_AUTHOR_NAME:-mpv-build}"
+export GIT_AUTHOR_EMAIL="${GIT_AUTHOR_EMAIL:-mpv-build@localhost}"
+export GIT_COMMITTER_NAME="${GIT_COMMITTER_NAME:-$GIT_AUTHOR_NAME}"
+export GIT_COMMITTER_EMAIL="${GIT_COMMITTER_EMAIL:-$GIT_AUTHOR_EMAIL}"
+
+# A rebuild of a published key has to reproduce its bytes, so no package may
+# record when it was built. Everything that reads a clock here takes this
+# epoch instead (2020-01-01, package.sh's zip mtime): lld-link's PE header
+# and debug directory TimeDateStamp, clang's __DATE__/__TIME__ (mpv's build
+# date, SVT-AV1's "LIB Build date") and OpenSSL's "built on" line. davs2's
+# build time comes from `date`, which pin_packages.py rewrites to the same
+# moment.
+export SOURCE_DATE_EPOCH=1577836800
+
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ROOT="$(cd "$HERE/../.." && pwd)"
+
+# The winbuild pin, resolved by the one place that folds overrides.windows in.
+winbuild_pin="$(python3 "$HERE/pin_packages.py" --print-winbuild-pin)"
+read -r WINBUILD_URL WINBUILD_COMMIT <<< "$winbuild_pin"
+
+WORK="$ROOT/build/windows"
+SRC="$WORK/mpv-winbuild-cmake"
+BUILD="$WORK/$ARCH"
+mkdir -p "$WORK"
+
+echo "==> mpv-winbuild-cmake @ $WINBUILD_COMMIT"
+if [[ ! -d "$SRC/.git" ]]; then
+  # The unified repo may itself be a git worktree whose admin dir sits outside
+  # a container mount (e.g. this repo checked out via `git worktree`); a plain
+  # `git init` under it would discover upward, hit the unresolvable gitdir
+  # pointer and die. The ceiling confines discovery to the new repo itself.
+  GIT_CEILING_DIRECTORIES="$SRC" git init -q "$SRC"
+  git -C "$SRC" remote add origin "$WINBUILD_URL"
+fi
+if ! git -C "$SRC" cat-file -e "$WINBUILD_COMMIT^{commit}" 2> /dev/null; then
+  # GitHub allows fetching an arbitrary commit by sha, so the shallow fetch
+  # follows the pin instead of a branch tip.
+  git -C "$SRC" fetch --depth 1 origin "$WINBUILD_COMMIT"
+fi
+git -C "$SRC" -c advice.detachedHead=false checkout -q --detach "$WINBUILD_COMMIT"
+# Discard rewrites from a previous run; pin_packages.py re-applies from the
+# current versions.json, and its patch staging cleans up after itself.
+git -C "$SRC" reset --hard -q "$WINBUILD_COMMIT"
+
+echo "==> pinning packages to versions.json"
+python3 "$HERE/pin_packages.py" --winbuild "$SRC"
+
+echo "==> configuring for $ARCH-w64-mingw32 (clang toolchain)"
+# SINGLE_SOURCE_LOCATION and RUSTUP_LOCATION sit outside the per-arch build
+# dir so the x86_64 and aarch64 legs share sources and the rust toolchain.
+# ENABLE_CCACHE bakes ccache into the generated cross-compiler wrappers with
+# its cache inside the CI-cached install prefix; winbuild silently disables
+# it when no ccache binary is on the host, so --configure-only hosts need
+# nothing extra. It absorbs the rebuild cost of the packages a pin bump
+# dirties on a warm tree (and of bootstrap retries after a timeout).
+cmake -S "$SRC" -B "$BUILD" -G Ninja \
+  -DTARGET_ARCH="$ARCH-w64-mingw32" \
+  -DCOMPILER_TOOLCHAIN=clang \
+  -DENABLE_CCACHE=ON \
+  -DCCACHE_MAXSIZE=2G \
+  -DSINGLE_SOURCE_LOCATION="$WORK/src" \
+  -DRUSTUP_LOCATION="$WORK/rustup"
+
+if [[ "$CONFIGURE_ONLY" == 1 ]]; then
+  echo "==> --configure-only: stopping after cmake configure"
+  exit 0
+fi
+
+if [[ "$(uname -s)" != Linux ]]; then
+  echo "error: the toolchain bootstrap and package builds only run on a Linux host (CI); use --configure-only elsewhere" >&2
+  exit 1
+fi
+
+# winbuild runs ExternalProject steps with LOG 1, so a failing step's real
+# error goes to <pkg>-stamp/<pkg>-<step>-*.log and ninja only prints the
+# stamp path. Surface the actual errors on any failure past this point.
+dump_step_logs() {
+  echo "==> build failed; dumping step logs written during this run" >&2
+  find "$BUILD" -name '*.log' -path '*-stamp/*' -newer "$BUILD/.run-started" 2> /dev/null \
+    | while read -r log; do
+        printf '\n===== %s =====\n' "$log" >&2
+        tail -80 "$log" >&2
+      done
+}
+touch "$BUILD/.run-started"
+trap 'rc=$?; if [[ $rc -ne 0 ]]; then dump_step_logs; fi; exit $rc' EXIT
+
+# Enforce the pins against reality before building anything. ExternalProject
+# never re-examines a completed download: with UPDATE_COMMAND "" disabled,
+# neither a changed GIT_TAG/GIT_RESET nor the regenerated gitinfo file makes
+# a warm tree re-fetch a pinned source (empirically: three CI runs served
+# stale mingw-w64 headers through three different invalidation attempts). So
+# ask git itself: our patch steps use `git apply` (worktree-only), so a
+# correctly fetched source has HEAD == pinned commit; anything else --
+# wrong pin after a bump, or stamps restored without their source -- has its
+# source reset to the pin and its 0-byte stamp files dropped by hand (the
+# toolchain packages have no cleanup() step targets, so ninja fullclean is
+# not universally available). Deleted stamps re-drive the package's chain
+# and cascade into its dependents by stamp mtime; the re-run download step
+# early-exits because the source already sits at the pin.
+drop_stamps() {
+  # Keep the *.cmake step scripts cmake wrote beside the stamps, and the
+  # step logs (nonzero size); stamps are the 0-byte files.
+  find "$1" -type f ! -iname '*.cmake' -size 0c -delete 2> /dev/null || true
+}
+# Invalidate every package affected by a component's source moving: drop
+# their stamps AND delete their build directories. A build dir restored from
+# the cache was configured against the previous state; re-running steps
+# inside it fails or, worse, silently builds a mix (observed twice:
+# mingw-w64-headers' autotools build dir kept Makefile rules for header
+# files only the newer source has, and llvm-libcxx's build dir regenerated a
+# broken include/c++/v1 tree after the sysroot underneath it changed).
+purge_component() {
+  local member
+  for member in $1; do
+    find "$BUILD" -type d -name "$member-stamp" 2> /dev/null | while read -r d; do
+      drop_stamps "$d"
+    done
+    find "$BUILD" -type d -name "$member-build" -prune -exec rm -rf {} + 2> /dev/null || true
+  done
+}
+# mingw-w64 defines the target ABI: headers and CRT that every runtime and
+# every dependency compiles against. When its pin moves, the honest blast
+# radius is the whole target sysroot and everything built into it. Keep only
+# the mingw-independent, genuinely expensive state: the host llvm/clang, the
+# wrapper scripts and rustup.
+purge_sysroot_world() {
+  echo "==> mingw-w64 moved: purging the target sysroot and everything built against it"
+  rm -rf "$BUILD/install/$ARCH-w64-mingw32"
+  find "$BUILD" -type d -name '*-stamp' 2> /dev/null | while read -r d; do
+    case "$(basename "$d")" in
+      llvm-stamp | llvm-wrapper-stamp | rustup-stamp) ;;
+      *) drop_stamps "$d" ;;
+    esac
+  done
+  find "$BUILD" -type d -name '*-build' -prune 2> /dev/null | while read -r d; do
+    case "$(basename "$d")" in
+      llvm-build | llvm-wrapper-build | rustup-build) ;;
+      *) rm -rf "$d" ;;
+    esac
+  done
+}
+invalidate_stale_pins() {
+  # The inventory is pin_packages.py's (same tables that pin the sources), so
+  # a component added there is invalidated here without a second edit: a
+  # missed entry would leave its source and stamps stale while the artifact
+  # key moved, and the download step above never re-examines a source it
+  # already completed.
+  python3 "$HERE/pin_packages.py" --print-pins \
+    | while read -r component source_name pinned _; do
+    local src="$WORK/src/$source_name" family
+    case "$component" in
+      mingw-w64) family="__sysroot_world__" ;;
+      # Everything that builds out of the shared llvm-project source.
+      llvm) family="llvm llvm-wrapper llvm-clang llvm-compiler-rt-builtin llvm-compiler-rt llvm-libcxx llvm-openmp" ;;
+      *) family="$source_name" ;;
+    esac
+    if [[ -d "$src/.git" ]]; then
+      local head
+      head="$(git -C "$src" rev-parse HEAD 2> /dev/null || echo unknown)"
+      if [[ "$head" != "$pinned" ]]; then
+        echo "==> $component source at ${head:0:10}, pin is ${pinned:0:10}; resetting source"
+        git -C "$src" am --abort 2> /dev/null || true
+        # The filtered clone fetches missing objects lazily; fetch the pin
+        # explicitly in case the cached clone predates it.
+        git -C "$src" cat-file -e "$pinned^{commit}" 2> /dev/null \
+          || git -C "$src" fetch -q origin "$pinned"
+        git -C "$src" reset --hard -q "$pinned"
+        git -C "$src" clean -qdf
+        if [[ "$family" == "__sysroot_world__" ]]; then
+          purge_sysroot_world
+        else
+          echo "==> purging: $family"
+          purge_component "$family"
+        fi
+      fi
+    elif find "$BUILD" -type d -name "$source_name-stamp" 2> /dev/null | grep -q .; then
+      if [[ "$family" == "__sysroot_world__" ]]; then
+        echo "==> $component stamps present without a source"
+        purge_sysroot_world
+      else
+        echo "==> $component stamps present without a source; purging: $family"
+        purge_component "$family"
+      fi
+    fi
+  done
+}
+invalidate_stale_pins
+
+# A patch stamp says "patched" without saying with what. The patch step's
+# command line is a glob, so editing a staged patch does not re-run it, and a
+# restored source can sit at the pin unpatched while the stamp claims
+# otherwise (2026-10-31: libass rebuilt from such a tree, and mpv failed on its
+# missing ass_set_threads). pin_packages.py decides, per package with a patch
+# step, what its stamped source needs (see patch_verdict there). When the
+# series digest recorded for the tree is not the current one, the source is
+# reset to the pin and the package purged, so it is re-patched and rebuilt.
+# When the series is the recorded one but the source is back at the pin --
+# winbuild's postremovebuild step resets every git source after install --
+# the series is re-applied in place and nothing rebuilds; a source it no
+# longer applies to is purged instead. The digest is then recorded for the
+# tree the cache will carry forward.
+check_patched_sources() {
+  local state="$BUILD/.patch-state"
+  mkdir -p "$state"
+  python3 "$HERE/pin_packages.py" --winbuild "$SRC" \
+    --print-patch-state "$WORK/src" "$BUILD" "$state" \
+    | while IFS=$'\t' read -r source_name pinned digest action patches reason; do
+    local src="$WORK/src/$source_name"
+    if [[ "$action" == reapply ]]; then
+      local list=() created
+      [[ "$patches" == - ]] || IFS=: read -ra list <<< "$patches"
+      # postremovebuild's `git clean -df` keeps ignored files, so a file the
+      # series creates under the source's .gitignore (libass's
+      # m4/ax_pthread.m4) outlives the reset and would block `git apply`.
+      if git -C "$src" reset --hard -q "$pinned" \
+        && created="$(git -C "$src" apply --summary "${list[@]}" | sed -n 's/^ create mode [0-7]* //p')" \
+        && { [[ -z "$created" ]] || (cd "$src" && while read -r path; do rm -f -- "$path"; done <<< "$created"); } \
+        && git -C "$src" apply "${list[@]}"; then
+        echo "==> $source_name: $reason; re-applied its series in place"
+      else
+        action=purge
+        reason="its series no longer applies to its source"
+      fi
+    fi
+    if [[ "$action" == purge ]]; then
+      echo "==> $source_name: $reason; resetting the source and re-applying"
+      git -C "$src" reset --hard -q "$pinned"
+      git -C "$src" clean -qdfx
+      purge_component "$source_name"
+    fi
+    echo "$digest" > "$state/$source_name"
+  done
+}
+check_patched_sources
+
+# A tree restored from the cache holds what earlier runs compiled, clocks
+# included: published key 442b5d101e4c's libmpv-2.dll carries OpenSSL's
+# "built on" date from the run that bumped it, SVT-AV1's __DATE__ __TIME__
+# and davs2's build time from the run that first built them, and mpv's from
+# a ccache hit (winbuild's ccache.conf sets sloppiness=time_macros, so a hit
+# returns whatever date the compile that filled it saw). A tree not marked as
+# built under this epoch therefore rebuilds every package once, from an empty
+# compile cache. The toolchain (llvm, the mingw-w64 CRT, libc++, rustup)
+# stamps nothing into libmpv-2.dll and is kept. The marker is written before
+# building: a package rebuilt from here on reads the epoch, and one not
+# rebuilt yet has no stamps, so an interrupted run resumes instead of
+# purging again.
+epoch_marker="$BUILD/.source-date-epoch"
+if [[ "$(cat "$epoch_marker" 2> /dev/null)" != "$SOURCE_DATE_EPOCH" ]]; then
+  echo "==> tree not built under SOURCE_DATE_EPOCH=$SOURCE_DATE_EPOCH: rebuilding every package without the compile cache"
+  find "$BUILD/packages" -type d -name '*-stamp' 2> /dev/null | while read -r d; do
+    drop_stamps "$d"
+  done
+  find "$BUILD/packages" -type d -name '*-build' -prune -exec rm -rf {} + 2> /dev/null || true
+  find "$BUILD/install/$ARCH-w64-mingw32/ccache" -mindepth 1 -maxdepth 1 ! -name ccache.conf \
+    -exec rm -rf {} + 2> /dev/null || true
+  echo "$SOURCE_DATE_EPOCH" > "$epoch_marker"
+fi
+
+# rustup travels in its own cache path and can be evicted independently of
+# the per-arch stamps that claim it was installed; when the binary is gone,
+# fullclean the package so it reinstalls instead of every rust-built
+# dependency failing later with a missing cargo.
+if [[ ! -x "$WORK/rustup/.cargo/bin/cargo" ]]; then
+  ninja -C "$BUILD" rustup-fullclean 2> /dev/null || true
+fi
+echo "==> toolchain targets (llvm, rustup, llvm-clang; no-ops when clean)"
+ninja -C "$BUILD" llvm
+ninja -C "$BUILD" rustup
+ninja -C "$BUILD" llvm-clang
+
+# mpv is rebuilt from scratch on every run. A restored tree may carry clean
+# mpv stamps whose build directory upstream's postremovebuild step already
+# deleted, and upstream's packaging steps embed BUILDDATE in their command
+# lines, so a partially-dirty mpv would try to re-run copy steps against a
+# build tree that no longer exists. Any run that reaches this point has a
+# stale windows key, which always requires relinking libmpv anyway.
+#
+# Gate on .git, not the directory: ExternalProject pre-creates every empty
+# SOURCE_DIR at configure time, and fullclean's git commands die in a
+# non-repo. Without a clone (cold run, or the shared source cache evicted
+# independently of the per-arch stamps) drop only mpv's 0-byte stamp files
+# -- upstream's own fullclean idiom -- so the whole chain re-clones and
+# rebuilds; the stamp dir also holds the step scripts cmake wrote at
+# configure time, so it must not be deleted wholesale.
+echo "==> building mpv (produces the libmpv dev package)"
+if [[ -d "$WORK/src/mpv/.git" ]]; then
+  ninja -C "$BUILD" mpv-fullclean
+else
+  find "$BUILD/packages/mpv-prefix/src/mpv-stamp" -type f ! -iname '*.cmake' -size 0c -delete 2> /dev/null || true
+fi
+rm -rf "$BUILD"/mpv-*
+ninja -C "$BUILD" mpv
+
+DEV_DIR="$(find "$BUILD" -maxdepth 1 -type d -name 'mpv-dev-*' | head -n 1)"
+echo "==> done: ${DEV_DIR:-<mpv-dev tree not found in $BUILD>}"
+echo "    next: platforms/windows/package.sh $ARCH"

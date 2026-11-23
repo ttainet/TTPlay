@@ -1,0 +1,812 @@
+#!/usr/bin/env python3
+"""Pin mpv-winbuild-cmake's mpv/ffmpeg/libass packages to versions.json.
+
+mpv-winbuild-cmake tracks upstream master for its payload packages:
+packages/{mpv,ffmpeg,libass}.cmake are ExternalProject_Add blocks with no
+GIT_TAG and no PATCH_COMMAND. Upstream's own pinning idiom -- see
+packages/mbedtls.cmake at the pinned winbuild commit, mirrored in
+testdata/mbedtls.cmake -- uses its patched ExternalProject keywords:
+
+    PATCH_COMMAND ${EXEC} git am --3way ${CMAKE_CURRENT_SOURCE_DIR}/<pkg>-*.patch
+    UPDATE_COMMAND ""
+    GIT_REMOTE_NAME origin
+    GIT_TAG <branch-or-tag>
+    GIT_RESET <commit> # <human-readable version>
+
+This helper rewrites the payload package files (and toolchain/mingw-w64.cmake,
+see EXTRA_COMPONENTS) in a winbuild checkout to that idiom, driven by
+versions.json resolved pins (overrides.windows folded in):
+
+  * GIT_REPOSITORY is rewritten to the pinned url, so a component whose
+    pin lives elsewhere than winbuild's default remote builds from the
+    pinned repository;
+  * GIT_REMOTE_NAME origin / GIT_TAG <commit> / GIT_RESET <commit> # <human>
+    are injected directly after UPDATE_COMMAND "", like mbedtls -- except the
+    GIT_TAG carries the resolved commit, because the tag value is what lands
+    in <pkg>-gitinfo.txt, the only graph input that invalidates the download
+    step on a warm cached tree (a textually stable branch or re-pointed tag
+    must not silently keep the old source);
+  * the resolved windows patch series (patches/<c>/series.common followed by
+    patches/<c>/series.windows) is staged into packages/ as
+    <c>-NNNN-<pool name>.patch and a PATCH_COMMAND is injected directly
+    before UPDATE_COMMAND "". It resets the source to the pinned commit and
+    then uses `git apply`, not `git am`: our pool patches are plain
+    `git diff` output without mail headers, which git am rejects, and the
+    reset makes the step idempotent -- ninja re-runs a patch step alone
+    whenever only the series changed, and it must not double-apply onto an
+    already-patched tree. ${EXEC} is winbuild's bash wrapper ending in
+    `eval $*`, so the quoted compound runs in a shell, the glob expands
+    lexically and the NNNN prefix preserves series order. An empty series
+    stages nothing and injects no PATCH_COMMAND.
+
+The rewrite is idempotent: previously injected keyword lines and previously
+staged <c>-*.patch files are dropped before injecting fresh ones. That is
+safe because the pristine payload package files carry none of the injected
+keywords and the pinned winbuild commit ships no packages/<c>-*.patch for
+these components (both facts are asserted by test_pin_packages.py against
+fixture copies in testdata/). An extra package's pristine file may carry
+upstream's own pin and patch keywords; the rewrite replaces those (see
+EXTRA_COMPONENTS and upstream_patch_step()).
+
+This script is also the one place that resolves the windows pin: `--print-pins`
+emits the pinned-source inventory build.sh invalidates against, and
+`--print-winbuild-pin` the meta-build checkout's url and commit, which is the
+build-state cache key. It is also the one place that knows winbuild's
+package graph: `--print-licence-sources <build dir>` emits the source tree of
+every component libmpv-2.dll links, which package.sh hands to
+scripts/licenses.py (see linked_packages()).
+
+The script also suppresses the check-git step in cmake/custom_steps.cmake.
+Upstream injects it at configure time whenever a package's source dir already
+exists, to mark an adopted source's download step as done -- but the step is
+absent from a cold build's graph, so its first warm appearance cascades a
+full rebuild through the stamp chain, and its lastrun overwrite would let a
+source restored from a different pin state build as if it were the current
+pin. With the injection suppressed the graph is identical between cold and
+warm runs (what makes a warm run a true no-op) and the vanilla clone-script
+staleness compare handles adoption and pin bumps honestly (see the comment
+at CHECK_GIT_ORIGINAL).
+"""
+
+import argparse
+import hashlib
+import json
+import os
+import re
+import shutil
+import subprocess
+import sys
+import tempfile
+from pathlib import Path
+
+COMPONENTS = ("mpv", "ffmpeg", "libass")
+# Additional pinned packages, component -> cmake file inside the winbuild
+# checkout. These pin through the same strip-before-inject rewrite but carry
+# no patch series of ours (the staged-patch glob is anchored to packages/
+# payload names); upstream's own patch step survives, converted by
+# upstream_patch_step(). Why each is pinned:
+#   mingw-w64: cloned at toolchain-bootstrap time, defines the target ABI;
+#     the 2026-08-29 secure-API restructure broke libvpl mid-day.
+#   llvm: the toolchain's other live-fetch (a moving release branch; its
+#     pristine file carries upstream's own GIT_REMOTE_NAME/GIT_TAG, which
+#     the rewrite replaces).
+#   svt-av1: follows ffmpeg master; SVT-AV1 4.0 removed a field the pinned
+#     release ffmpeg still sets unguarded, so the master tip cannot build
+#     with a release ffmpeg.
+#   nv-codec-headers: same shape; the 13.1 in-dev tip reshapes
+#     NV_ENC_CLOCK_TIMESTAMP_SET, which n8.0.1's nvenc wrapper still uses.
+#   openssl: winbuild pins an unreleased master snapshot (GIT_RESET, which
+#     the rewrite replaces). Its 4.1-dev TLS defaults offer 34 signature
+#     algorithms, and LibreSSL servers reject a ClientHello with more than
+#     32 with a decode_error alert, so ffmpeg's https could not reach them
+#     (edde746/plezy#2604). Pinned to a release.
+#   libaribcaption: winbuild compiles it with -DHAVE_OPENSSL=1, and master
+#     since 6c3b4f36 calls its own renamed MD5 while md5.c is still compiled
+#     out under that define, so the ffmpeg link fails on undefined
+#     aribcc_md5_* symbols. Pinned to the release before the rename.
+#   fontconfig: winbuild builds the main tip and git-ams its own
+#     fontconfig-0001/0002 patches onto it; upstream dff5c35 (2026-10-30)
+#     changed src/fcdir.c and they no longer apply, so every cold build
+#     failed. Pinned to be20036a, the newest main commit both apply to. Drop
+#     the pin once winbuild rebases its fontconfig patches.
+EXTRA_COMPONENTS = {
+    "mingw-w64": "toolchain/mingw-w64.cmake",
+    "llvm": "toolchain/llvm/llvm.cmake",
+    "svt-av1": "packages/svtav1.cmake",
+    "nv-codec-headers": "packages/nvcodec-headers.cmake",
+    "openssl": "packages/openssl.cmake",
+    "libaribcaption": "packages/libaribcaption.cmake",
+    "fontconfig": "packages/fontconfig.cmake",
+}
+GROUP = "windows"
+# The meta-build checkout build.sh fetches: its commit pins the whole
+# dependency graph, so it is also the build-state cache key.
+WINBUILD_COMPONENT = "mpv-winbuild-cmake"
+
+# Keywords this script owns inside the three package files. Stripped before
+# every injection so re-runs converge.
+INJECTED_KEYWORDS = ("GIT_REMOTE_NAME", "GIT_TAG", "GIT_RESET", "PATCH_COMMAND")
+
+
+def fail(message):
+    print(f"error: {message}", file=sys.stderr)
+    raise SystemExit(1)
+
+
+def resolved_pins(versions, component):
+    """The component's git pins with overrides.windows folded in.
+
+    The windows-side resolver: build.sh fetches the commit and invalidates the
+    sources this returns, so the fold exists once instead of once per caller.
+    Stricter than scripts/keys.py resolved_pins(), which needs only
+    version/url: GIT_TAG/GIT_RESET pinning needs the whole git pin.
+    """
+    entry = versions.get("components", {}).get(component)
+    if entry is None:
+        fail(f"versions.json: no component {component!r}")
+    pins = {f: entry[f] for f in ("version", "url", "ref", "commit") if f in entry}
+    for field, value in (entry.get("overrides", {}).get(GROUP) or {}).items():
+        if field in ("version", "url", "ref", "commit"):
+            pins[field] = value
+    for field in ("version", "url", "ref", "commit"):
+        if field not in pins:
+            fail(
+                f"versions.json: {component} has no {field!r} for the {GROUP} group; "
+                "GIT_RESET pinning needs a fully resolved git pin"
+            )
+    return pins
+
+
+def load_versions(repo):
+    versions_path = repo / "versions.json"
+    if not versions_path.is_file():
+        fail(f"{versions_path}: missing")
+    return json.loads(versions_path.read_text(encoding="utf-8"))
+
+
+def pinned_sources(versions):
+    """(component, source dir, pins) for every source the driver checks out.
+
+    build.sh invalidates stale pins by walking this, so a component added to
+    COMPONENTS/EXTRA_COMPONENTS is pinned and invalidated by the same edit: a
+    missed entry would leave the old source and its stamps in place while the
+    content key moved, and ExternalProject never re-examines a completed
+    download (see build.sh). The source dir is the name winbuild checks the
+    clone out under, which is the package file's own name.
+    """
+    rows = [(component, component, resolved_pins(versions, component))
+            for component in COMPONENTS]
+    rows += [(component, Path(relpath).stem, resolved_pins(versions, component))
+             for component, relpath in EXTRA_COMPONENTS.items()]
+    return rows
+
+
+def read_series(path):
+    """Series entries in file order; missing file = empty (patches.py rules)."""
+    if not path.is_file():
+        return []
+    entries = []
+    for raw in path.read_text(encoding="utf-8").splitlines():
+        line = raw.strip()
+        if line and not line.startswith("#"):
+            entries.append(line)
+    return entries
+
+
+def resolve_series(repo, component):
+    root = repo / "patches" / component
+    return read_series(root / "series.common") + read_series(root / f"series.{GROUP}")
+
+
+def stage_patches(repo, component, packages_dir):
+    """Copy the resolved series into packages/ under glob-ordered names."""
+    for stale in sorted(packages_dir.glob(f"{component}-*.patch")):
+        stale.unlink()
+    staged = []
+    for index, name in enumerate(resolve_series(repo, component), start=1):
+        pool_file = repo / "patches" / component / "pool" / name
+        if not pool_file.is_file():
+            fail(f"{component}: series entry {name!r} has no pool file {pool_file}")
+        target = packages_dir / f"{component}-{index:04d}-{name}"
+        shutil.copyfile(pool_file, target)
+        staged.append(target.name)
+    return staged
+
+
+def indent_of(line):
+    return line[: len(line) - len(line.lstrip())]
+
+
+def first_word(line):
+    return line.strip().split(" ", 1)[0] if line.strip() else ""
+
+
+def upstream_patch_step(text, component):
+    """Whether an extra package's file applies upstream's own patches.
+
+    winbuild patches some packages it pins itself (openssl) with
+    `git am --3way ${CMAKE_CURRENT_SOURCE_DIR}/<pkg>-*.patch`. git am commits,
+    and build.sh treats a source whose HEAD is not the pinned commit as stale,
+    so a kept git am step would reset and rebuild the package and its
+    dependents on every warm run. The rewrite instead injects the payload
+    packages' reset + `git apply` step over the same glob: upstream's patches
+    still apply and HEAD stays at the pin. Any other step shape fails, so a
+    winbuild bump that reshapes it is audited instead of silently dropped.
+    Also true for an already-rewritten file, so re-runs converge.
+    """
+    steps = [line for line in text.splitlines() if first_word(line) == "PATCH_COMMAND"]
+    if not steps:
+        return False
+    glob = f"${{CMAKE_CURRENT_SOURCE_DIR}}/{component}-*.patch"
+    if len(steps) != 1 or glob not in steps[0]:
+        fail(f"{component}: unrecognized upstream PATCH_COMMAND {steps!r}; audit it before pinning")
+    return True
+
+
+def rewrite(text, component, pins, have_patches):
+    """The pinned package file text; pure so the tests can hammer it."""
+    lines = []
+    for line in text.splitlines():
+        if first_word(line) in INJECTED_KEYWORDS:
+            continue  # ours from a previous run, or an extra's upstream pin/patch step
+        lines.append(line)
+
+    repo_lines = [i for i, l in enumerate(lines) if l.strip().startswith("GIT_REPOSITORY ")]
+    if len(repo_lines) != 1:
+        fail(f"{component}.cmake: expected exactly one GIT_REPOSITORY line, found {len(repo_lines)}")
+    url = pins["url"]
+    if not url.endswith(".git"):
+        url += ".git"
+    lines[repo_lines[0]] = f"{indent_of(lines[repo_lines[0]])}GIT_REPOSITORY {url}"
+
+    update_lines = [i for i, l in enumerate(lines) if l.strip() == 'UPDATE_COMMAND ""']
+    if len(update_lines) != 1:
+        fail(f'{component}.cmake: expected exactly one UPDATE_COMMAND "" line, found {len(update_lines)}')
+    at = update_lines[0]
+    pad = indent_of(lines[at])
+
+    # GIT_TAG carries the resolved commit, not the human ref. The tag value
+    # is what ExternalProject records in <pkg>-gitinfo.txt, and that file's
+    # content is the ONLY graph input that invalidates the download step on
+    # a warm cached tree: a ref that stays textually identical while its
+    # target moves (a branch like mingw-w64's master, or a re-pointed tag)
+    # would otherwise leave the old source in place silently. GIT_RESET
+    # names the same commit for winbuild's reset/force-update machinery and
+    # keeps the human-readable ref and version in its comment.
+    comment = pins["version"] if pins["ref"] in pins["version"] else f"{pins['ref']} {pins['version']}"
+    after = [
+        f"{pad}GIT_REMOTE_NAME origin",
+        f"{pad}GIT_TAG {pins['commit']}",
+        f"{pad}GIT_RESET {pins['commit']} # {comment}",
+    ]
+    before = []
+    if have_patches:
+        # One quoted argument: ${EXEC} is `eval $*`, so the compound runs in a
+        # shell. The reset makes a re-run of the patch step alone (series-only
+        # change, or a step cascade) converge instead of double-applying.
+        before = [
+            f'{pad}PATCH_COMMAND ${{EXEC}} "git reset --hard {pins["commit"]} -q '
+            f'&& git apply ${{CMAKE_CURRENT_SOURCE_DIR}}/{component}-*.patch"'
+        ]
+    lines[at:at + 1] = before + [lines[at]] + after
+    return "\n".join(lines) + "\n"
+
+
+# The check-git step upstream injects at configure time when a package source
+# dir already exists (cmake/custom_steps.cmake force_rebuild_git). It exists
+# to mark an adopted source's download step as done: it touches the download
+# stamp and overwrites gitclone-lastrun.txt with the current gitinfo.txt.
+# Both halves are wrong for this pipeline:
+#
+#   * the step is absent from the cold build's graph (no source dir at
+#     configure time), so its first warm appearance has no .ninja_log entry;
+#     every step that runs touches its stamp, so the whole package chain
+#     cascades through configure/build/install once per adoption -- and its
+#     touch of the download stamp re-triggers that cascade on every run;
+#   * the lastrun overwrite claims whatever state the adopted source is in
+#     IS the current pin; a source tree restored from a different pin state
+#     would silently build the wrong source under a fresh content key.
+#
+# Suppressing the injection keeps the ExternalProject graph identical between
+# cold and warm runs, which is what makes a warm run a true no-op. The
+# vanilla staleness machinery stays honest on its own: a pin bump rewrites
+# gitinfo.txt, dirtying the download step, and a missing/stale
+# gitclone-lastrun.txt makes the clone script re-clone for real.
+CHECK_GIT_ORIGINAL = "    if(EXISTS ${source_dir}/.git)\n"
+CHECK_GIT_NEUTRALIZED = (
+    "    if(FALSE) # check-git suppressed for warm-cache correctness "
+    "(pin_packages.py)\n"
+)
+
+
+def neutralize_check_git(text):
+    """custom_steps.cmake text with the cache-hostile check-git commands
+    replaced; pure so the tests can hammer it."""
+    if CHECK_GIT_NEUTRALIZED in text:
+        return text
+    if CHECK_GIT_ORIGINAL not in text:
+        fail(
+            "cmake/custom_steps.cmake: the check-git step no longer matches the "
+            "audited idiom; re-audit the cache-cascade rewrite against the new "
+            "winbuild commit before pinning to it"
+        )
+    return text.replace(CHECK_GIT_ORIGINAL, CHECK_GIT_NEUTRALIZED, 1)
+
+
+# winbuild enables cuda for every arch (2026-08-04, "ffmpeg: enable cuda for
+# aarch64") against ffmpeg master. Under the pinned release ffmpeg the
+# aarch64-w64-mingw32 ffnvcodec probe fails and configure aborts, so the
+# flags are rewritten behind an arch guard: x86_64 keeps cuda, aarch64 drops
+# it. Upstream builds this combination against master only; nobody tests
+# release-ffmpeg aarch64 cuda.
+FFMPEG_CUDA_ORIGINAL = (
+    "        --enable-cuda-llvm\n"
+    "        --enable-cuvid\n"
+    "        --enable-nvdec\n"
+    "        --enable-nvenc\n"
+)
+FFMPEG_CUDA_GATED = "        ${ffmpeg_cuda}\n"
+FFMPEG_CUDA_GUARD = (
+    "# cuda gated by pin_packages.py: the pinned release ffmpeg's ffnvcodec\n"
+    "# probe fails for aarch64-w64-mingw32 (upstream enables cuda for aarch64\n"
+    "# against ffmpeg master only).\n"
+    'if(NOT TARGET_CPU STREQUAL "aarch64")\n'
+    "    set(ffmpeg_cuda --enable-cuda-llvm --enable-cuvid --enable-nvdec --enable-nvenc)\n"
+    "endif()\n"
+)
+
+
+# winbuild's mpv recipe targets mpv master. The pinned release lacks two of
+# its meson options (subrandr and libcurl landed after v0.41.0), and meson
+# hard-errors on unknown options; vapoursynth links against a script API the
+# pinned mpv resolves as dllimport getVSScriptAPI, which the winbuild
+# vapoursynth import library does not provide for the release, so it is
+# disabled -- it is also the first entry in the README's slimming table and
+# unusable through libmpv in Plezy anyway. The subrandr/vapoursynth DEPENDS
+# entries stay: the libraries just go unused. Re-audit when the mpv pin
+# moves.
+MPV_MASTER_ONLY_OPTIONS = (
+    "        -Dsubrandr=enabled\n",
+    "        -Dlibcurl=enabled\n",
+)
+MPV_VAPOURSYNTH_ENABLED = "        -Dvapoursynth=enabled\n"
+MPV_VAPOURSYNTH_DISABLED = "        -Dvapoursynth=disabled\n"
+
+
+def gate_mpv_options(text):
+    """mpv.cmake text with release-incompatible options gated; pure for
+    tests."""
+    already = (MPV_VAPOURSYNTH_DISABLED in text
+               and not any(option in text for option in MPV_MASTER_ONLY_OPTIONS))
+    if already:
+        return text
+    if (not any(option in text for option in MPV_MASTER_ONLY_OPTIONS)
+            or MPV_VAPOURSYNTH_ENABLED not in text):
+        fail(
+            "packages/mpv.cmake: the release-incompatible meson options no "
+            "longer match the audited shape; re-audit the option gate against "
+            "the new winbuild commit before pinning to it"
+        )
+    for option in MPV_MASTER_ONLY_OPTIONS:
+        text = text.replace(option, "")
+    return text.replace(MPV_VAPOURSYNTH_ENABLED, MPV_VAPOURSYNTH_DISABLED, 1)
+
+
+# winbuild's clang toolchain links mpv with PDB=1, so lld writes libmpv-2.pdb
+# beside libmpv-2.dll in mpv's build dir, but copy-binary saves only mpv.pdb
+# (${mpv_copy_debug}, set in cmake/packages_check.cmake) and
+# cleanup(mpv copy-package-dir) then deletes the build dir. One more copy into
+# the same mpv-debug/ tree, which copy-package-dir moves to
+# mpv-debug-<cpu>-<date>-git-<sha>/ in the build root, keeps the PDB for
+# package.sh's symbols zip. The copy runs after the link and only reads the
+# PDB, so libmpv-2.dll's bytes do not change; `cmake -E copy` fails on a
+# missing source, so a build that stops writing the PDB fails here instead of
+# shipping a DLL without its symbols.
+MPV_COPY_DEBUG = "    ${mpv_copy_debug}\n"
+MPV_COPY_LIBMPV_PDB = (
+    "    COMMAND ${CMAKE_COMMAND} -E copy <BINARY_DIR>/libmpv-2.pdb"
+    " ${CMAKE_CURRENT_BINARY_DIR}/mpv-debug/libmpv-2.pdb\n"
+)
+MPV_MOVE_DEBUG = (
+    "    COMMAND mv ${CMAKE_CURRENT_BINARY_DIR}/mpv-debug"
+    " ${CMAKE_BINARY_DIR}/mpv-debug-${TARGET_CPU}${x86_64_LEVEL}-${BUILDDATE}\n"
+)
+
+
+def capture_libmpv_pdb(text):
+    """mpv.cmake text whose copy-binary step also saves libmpv-2.pdb into
+    mpv-debug/; pure for tests."""
+    captured = MPV_COPY_DEBUG + MPV_COPY_LIBMPV_PDB
+    done = captured in text
+    expected_mentions = MPV_COPY_LIBMPV_PDB.count("libmpv-2.pdb") if done else 0
+    if (text.count(MPV_COPY_DEBUG) != 1
+            or text.count(MPV_MOVE_DEBUG) != 1
+            or text.count("libmpv-2.pdb") != expected_mentions):
+        fail(
+            "packages/mpv.cmake: the mpv-debug copy and move steps no longer "
+            "match the audited shape; re-audit the libmpv-2.pdb capture against "
+            "the new winbuild commit before pinning to it"
+        )
+    return text if done else text.replace(MPV_COPY_DEBUG, captured, 1)
+
+
+def gate_ffmpeg_cuda(text):
+    """ffmpeg.cmake text with the cuda enables arch-gated; pure for tests."""
+    if FFMPEG_CUDA_GATED in text and text.startswith(FFMPEG_CUDA_GUARD):
+        return text
+    if FFMPEG_CUDA_ORIGINAL not in text:
+        fail(
+            "packages/ffmpeg.cmake: the cuda enable flags no longer match the "
+            "audited shape; re-audit the aarch64 cuda gate against the new "
+            "winbuild commit before pinning to it"
+        )
+    return FFMPEG_CUDA_GUARD + text.replace(FFMPEG_CUDA_ORIGINAL, FFMPEG_CUDA_GATED, 1)
+
+
+# davs2 (ffmpeg's AVS2 decoder, linked into libmpv-2.dll) logs the
+# XBUILD_TIME its version.sh writes into source/version.h, and version.sh
+# reads `date`, not SOURCE_DATE_EPOCH: published key 442b5d101e4c carries
+# "2026-09-01 18:33:07" from the run that first built it. Its configure runs
+# version.sh once and nothing regenerates the header, so the configure step
+# gains a rewrite of the value to build.sh's SOURCE_DATE_EPOCH, 2020-01-01
+# 00:00:00 UTC. One quoted argument: ${EXEC} evals it in a shell, as
+# upstream's own `find ... " ! -iname '*.cmake' "` steps do.
+DAVS2_CONFIGURE_END = (
+    "        ${disable_asm}\n"
+    "    BUILD_COMMAND ${MAKE} -C <SOURCE_DIR>/build/linux\n"
+)
+DAVS2_BUILD_TIME = (
+    "    COMMAND ${EXEC} \"sed -i -e '/define XBUILD_TIME/"
+    "s/[0-9][-0-9]* [0-9][:0-9]*/2020-01-01 00:00:00/' <SOURCE_DIR>/source/version.h\"\n"
+)
+
+
+def pin_davs2_build_time(text):
+    """davs2.cmake text with the generated build time pinned; pure for
+    tests."""
+    end = DAVS2_CONFIGURE_END.replace("    BUILD_COMMAND", DAVS2_BUILD_TIME + "    BUILD_COMMAND")
+    if end in text:
+        return text
+    if text.count(DAVS2_CONFIGURE_END) != 1:
+        fail(
+            "packages/davs2.cmake: the configure step no longer ends in the "
+            "audited shape; re-audit the davs2 build-time rewrite against the "
+            "new winbuild commit before pinning to it"
+        )
+    return text.replace(DAVS2_CONFIGURE_END, end, 1)
+
+
+# What libmpv-2.dll links is what `ninja mpv` builds, read from the graph
+# configure wrote: `ninja -t inputs mpv` lists every file the target depends
+# on, transitively, and each ExternalProject step's stamp sits in
+# packages/<pkg>-prefix/src/<pkg>-stamp/. Ninja 1.11 (ubuntu-24.04, where CI
+# builds) and 1.13 print different phony nodes, but both print the stamps.
+STAMP_DIR = re.compile(r"(?:^|/)packages/([^/]+)-prefix/src/\1-stamp/")
+# Built for mpv, yet no code of theirs is in libmpv-2.dll: curl and the
+# libraries only it links (the pinned mpv has no libcurl option, see
+# MPV_MASTER_ONLY_OPTIONS, and ffmpeg's libcurl is off), subrandr (its mpv
+# option is master-only too) and the Vulkan loader (a DLL of its own, which
+# libmpv-2.dll imports). Re-audit when the winbuild or mpv pin moves.
+NOT_LINKED = frozenset({"c-ares", "curl", "libpsl", "nghttp2", "nghttp3", "ngtcp2", "subrandr", "vulkan"})
+# The toolchain packages whose runtime clang links into the DLL statically:
+# llvm (compiler-rt's builtins, libunwind, libc++ and libc++abi) and
+# mingw-w64 (the CRT and winpthreads). build.sh builds them as targets of
+# their own, so mpv's graph does not name them.
+TOOLCHAIN_RUNTIME = ("llvm", "mingw-w64")
+
+
+def source_package(package):
+    """The package whose source `package` builds: x265's per-bit-depth builds
+    (x265-8+10bit, x265-10bit-lib, ...) build x265's, and opus-dnn is the
+    model data opus compiles in."""
+    if package.startswith("x265-"):
+        return "x265"
+    return {"opus-dnn": "opus"}.get(package, package)
+
+
+def linked_packages(inputs):
+    """The winbuild packages whose code libmpv-2.dll links, sorted, from the
+    lines of `ninja -t inputs mpv`; pure for tests."""
+    built = {match.group(1) for line in inputs if (match := STAMP_DIR.search(line.strip()))}
+    if "mpv" not in built:
+        fail(
+            "`ninja -t inputs mpv` named no step of mpv; re-audit the "
+            "licence-source query against the winbuild commit"
+        )
+    return sorted({source_package(package) for package in built} - NOT_LINKED)
+
+
+def licence_folder(package):
+    """The folder of a package's licence texts: the versions.json name of a
+    pinned package (svtav1 is svt-av1), else the package name."""
+    pinned = {Path(relpath).stem: component for component, relpath in EXTRA_COMPONENTS.items()}
+    return pinned.get(package, package)
+
+
+def info_source_dir(text):
+    """The source_dir an ExternalProject <pkg>-gitinfo.txt or <pkg>-urlinfo.txt
+    records, or None; pure for tests."""
+    for line in text.splitlines():
+        key, separator, value = line.partition("=")
+        if separator and key == "source_dir":
+            return value
+    return None
+
+
+def licence_sources(build, inputs):
+    """(licence folder, source dir) of every component libmpv-2.dll links,
+    sorted, from the winbuild build tree `build` and the lines of `ninja -C
+    <build> -t inputs mpv`.
+
+    The source dir is the one the package's ExternalProject recorded at
+    configure time beside its stamps: <pkg>-gitinfo.txt for a git package
+    (cloned into the shared src/), <pkg>-urlinfo.txt for a tarball (extracted
+    into the per-arch tree). A package whose source tree is missing or empty
+    fails.
+    """
+    rows = []
+    for subdir, packages in (("packages", linked_packages(inputs)), ("toolchain", TOOLCHAIN_RUNTIME)):
+        for package in packages:
+            stamp = Path(build) / subdir / f"{package}-prefix" / "src" / f"{package}-stamp"
+            infos = [path for path in (stamp / f"{package}-gitinfo.txt", stamp / f"{package}-urlinfo.txt")
+                     if path.is_file()]
+            if len(infos) != 1:
+                fail(f"{stamp}: expected exactly one of {package}-gitinfo.txt and {package}-urlinfo.txt")
+            source = info_source_dir(infos[0].read_text(encoding="utf-8"))
+            if source is None:
+                fail(f"{infos[0]}: no source_dir")
+            source = Path(source)
+            if not source.is_dir() or not any(source.iterdir()):
+                fail(f"{package}: no source tree at {source}")
+            rows.append((licence_folder(package), source))
+    return sorted(rows)
+
+
+def patch_sets(winbuild, versions):
+    """(source dir, commit, digest, patches) for every pinned package whose
+    rewritten file in an already-pinned winbuild checkout has a patch step.
+
+    The patches are the files its `git apply` glob expands to, in glob order.
+    The digest covers the commit and every patch's name and bytes, so any edit
+    to the series, a comment included, changes it. The patch step's command
+    line is a glob and does not change with the files, so build.sh compares
+    this digest instead (see check_patched_sources there).
+    """
+    rows = []
+    files = {component: f"packages/{component}.cmake" for component in COMPONENTS}
+    files.update(EXTRA_COMPONENTS)
+    for component, source_dir, pins in pinned_sources(versions):
+        package_file = Path(winbuild) / files[component]
+        if "PATCH_COMMAND" not in package_file.read_text(encoding="utf-8"):
+            continue
+        patches = sorted(package_file.parent.glob(f"{component}-*.patch"))
+        digest = hashlib.sha256(f"{pins['commit']}\n".encode())
+        for patch in patches:
+            digest.update(f"{patch.name}\n".encode())
+            digest.update(patch.read_bytes())
+        rows.append((source_dir, pins["commit"], digest.hexdigest(), patches))
+    return rows
+
+
+def holds_patches(source, commit, patches):
+    """Whether every file the patches touch holds, in the source's worktree,
+    exactly the bytes `git apply` of them onto `commit` produces.
+
+    Only the touched paths are compared, so build outputs written into the
+    source tree do not count. The expected tree is built in a scratch index,
+    leaving the source's own index and worktree untouched.
+    """
+    source = Path(source)
+    if not (source / ".git").exists():
+        return False
+    scratch = tempfile.NamedTemporaryFile(delete=False)
+    scratch.close()
+    env = dict(os.environ, GIT_INDEX_FILE=scratch.name)
+    try:
+        def git(*args, **kwargs):
+            return subprocess.run(["git", "-C", str(source), *args], env=env,
+                                  capture_output=True, text=True, **kwargs)
+        if git("read-tree", commit).returncode != 0:
+            return False
+        if patches and git("apply", "--cached", *map(str, patches)).returncode != 0:
+            return False
+        tree = git("write-tree").stdout.strip()
+        changed = git("diff", "--name-only", "-z", "--no-renames", commit, tree).stdout
+        for path in filter(None, changed.split("\0")):
+            listed = git("ls-tree", tree, "--", path).stdout.split()
+            expected = listed[2] if listed else None
+            target = source / path
+            actual = (git("hash-object", "--no-filters", "--", path).stdout.strip()
+                      if target.is_file() else None)
+            if actual != expected:
+                return False
+        return True
+    finally:
+        os.unlink(scratch.name)
+
+
+def patched_packages(build):
+    """Names of the packages whose patch stamp exists in a winbuild build tree
+    (<pkg>-stamp/<pkg>-patch), in one walk. Build and install trees hold no
+    stamps and are skipped."""
+    found = set()
+    for root, dirs, files in os.walk(build):
+        dirs[:] = [d for d in dirs if not d.endswith("-build") and d != "install"]
+        name = os.path.basename(root)
+        if name.endswith("-stamp") and f"{name[:-len('-stamp')]}-patch" in files:
+            found.add(name[:-len("-stamp")])
+    return found
+
+
+def patch_verdict(stamped, recorded, digest, held):
+    """(action, reason) for a package's cached source before this build, or
+    None when it can stay as it is.
+
+    A patch stamp may only stand beside the series and pin that produced it,
+    which the series digest recorded with the tree says. A recorded digest
+    that is not the current one ("purge"), or none at all (a tree cached
+    before digests were kept) under a source that does not hold the series,
+    resets the source and drops the package's stamps, so the package is
+    re-patched and rebuilt. At the recorded digest, a source that does not
+    hold the series is winbuild's own doing: its postremovebuild step resets
+    every git source to the pin after install, so a step re-run later (a
+    cascade, a liteclean) would compile it unpatched. That source gets the
+    series re-applied in place ("reapply") and nothing is rebuilt. Without a
+    stamp the patch step runs anyway, and its own reset makes it converge.
+    """
+    if not stamped:
+        return None
+    if recorded is not None and recorded != digest:
+        return ("purge", "its patch series or pin changed since it was patched")
+    if held:
+        return None
+    if recorded is None:
+        return ("purge", "its source does not hold the series its patch stamp claims, "
+                         "and no series was recorded with it")
+    return ("reapply", "its source is back at the pin under its patch stamp")
+
+
+def patch_state(winbuild, versions, sources, build, state):
+    """(source dir, commit, digest, action, patches, reason) for every package
+    with a patch step: action and reason are patch_verdict's, "keep" and ""
+    when the cached tree can stay; patches are the series' paths joined by
+    ":", "-" for none. Only the last field may be empty: build.sh reads the
+    rows with a tab IFS, which folds empty fields between tabs."""
+    stamped = patched_packages(build) if Path(build).is_dir() else set()
+    rows = []
+    for source_dir, commit, digest, patches in patch_sets(winbuild, versions):
+        record = Path(state) / source_dir
+        recorded = record.read_text(encoding="utf-8").strip() if record.is_file() else None
+        is_stamped = source_dir in stamped
+        held = is_stamped and holds_patches(Path(sources) / source_dir, commit, patches)
+        action, reason = patch_verdict(is_stamped, recorded, digest, held) or ("keep", "")
+        rows.append((source_dir, commit, digest, action,
+                     ":".join(map(str, patches)) or "-", reason))
+    return rows
+
+
+def main(argv):
+    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    parser.add_argument("--winbuild", help="mpv-winbuild-cmake checkout to rewrite")
+    parser.add_argument(
+        "--repo",
+        default=str(Path(__file__).resolve().parent.parent.parent),
+        help="unified repo root holding versions.json and patches/ (default: this file's repo)",
+    )
+    parser.add_argument(
+        "--print-pins",
+        action="store_true",
+        help="print the pinned-source inventory (component, source dir, commit, url) and exit",
+    )
+    parser.add_argument(
+        "--print-winbuild-pin",
+        action="store_true",
+        help="print the winbuild checkout's url and commit and exit",
+    )
+    parser.add_argument(
+        "--print-licence-sources",
+        metavar="BUILD_DIR",
+        help="print <licence folder>=<source dir> for every component libmpv-2.dll "
+        "links, from a built winbuild tree (build/windows/<arch>), and exit",
+    )
+    parser.add_argument(
+        "--print-patch-state",
+        nargs=3,
+        metavar=("SOURCES_DIR", "BUILD_DIR", "STATE_DIR"),
+        help="with --winbuild (an already-pinned checkout): print <source dir> <commit> "
+        "<series digest> <reason> for every package with a patch step, reason "
+        "non-empty when its cached source in SOURCES_DIR must be reset before the "
+        "build in BUILD_DIR (digests recorded in STATE_DIR/<source dir>), and exit",
+    )
+    args = parser.parse_args(argv)
+
+    repo = Path(args.repo)
+    versions = load_versions(repo)
+
+    # build.sh derives both the checkout it fetches (and, in CI, the cache
+    # key) and the sources it invalidates from these two, so the pin has one
+    # reachable resolver instead of an in-shell copy per consumer.
+    if args.print_pins:
+        for component, source_dir, pins in pinned_sources(versions):
+            print(f"{component}\t{source_dir}\t{pins['commit']}\t{pins['url']}")
+        return 0
+    if args.print_winbuild_pin:
+        pins = resolved_pins(versions, WINBUILD_COMPONENT)
+        print(f"{pins['url']}\t{pins['commit']}")
+        return 0
+    if args.print_licence_sources:
+        build = Path(args.print_licence_sources)
+        query = subprocess.run(["ninja", "-C", str(build), "-t", "inputs", "mpv"],
+                               capture_output=True, text=True)
+        if query.returncode != 0:
+            fail(f"ninja -C {build} -t inputs mpv: {query.stderr.strip()}")
+        for folder, source in licence_sources(build, query.stdout.splitlines()):
+            print(f"{folder}={source}")
+        return 0
+    if args.print_patch_state:
+        if not args.winbuild:
+            parser.error("--print-patch-state needs --winbuild")
+        sources, build, state = args.print_patch_state
+        for row in patch_state(args.winbuild, versions, sources, build, state):
+            print("\t".join(row))
+        return 0
+    if not args.winbuild:
+        parser.error("--winbuild is required")
+
+    winbuild = Path(args.winbuild)
+    packages_dir = winbuild / "packages"
+    if not packages_dir.is_dir():
+        fail(f"{winbuild}: not a mpv-winbuild-cmake checkout (no packages/ directory)")
+
+    for component in COMPONENTS:
+        pins = resolved_pins(versions, component)
+        staged = stage_patches(repo, component, packages_dir)
+        package_file = packages_dir / f"{component}.cmake"
+        if not package_file.is_file():
+            fail(f"{package_file}: missing")
+        text = package_file.read_text(encoding="utf-8")
+        pinned = rewrite(text, component, pins, bool(staged))
+        if component == "ffmpeg":
+            pinned = gate_ffmpeg_cuda(pinned)
+        if component == "mpv":
+            pinned = capture_libmpv_pdb(gate_mpv_options(pinned))
+        if pinned != text:
+            package_file.write_text(pinned, encoding="utf-8")
+        patched = f", {len(staged)} patch(es) staged" if staged else ""
+        print(f"pinned {component} -> {pins['ref']} @ {pins['commit'][:10]}{patched}")
+
+    for component, relpath in EXTRA_COMPONENTS.items():
+        pins = resolved_pins(versions, component)
+        toolchain_file = winbuild / relpath
+        if not toolchain_file.is_file():
+            fail(f"{toolchain_file}: missing")
+        text = toolchain_file.read_text(encoding="utf-8")
+        patched = upstream_patch_step(text, component)
+        pinned = rewrite(text, component, pins, have_patches=patched)
+        if pinned != text:
+            toolchain_file.write_text(pinned, encoding="utf-8")
+        converted = ", upstream patch step converted to git apply" if patched else ""
+        print(f"pinned {component} -> {pins['ref']} @ {pins['commit'][:10]}{converted}")
+
+    davs2 = packages_dir / "davs2.cmake"
+    if not davs2.is_file():
+        fail(f"{davs2}: missing")
+    davs2_text = davs2.read_text(encoding="utf-8")
+    pinned = pin_davs2_build_time(davs2_text)
+    if pinned != davs2_text:
+        davs2.write_text(pinned, encoding="utf-8")
+    print("pinned davs2's generated build time to the epoch in packages/davs2.cmake")
+
+    custom_steps = winbuild / "cmake" / "custom_steps.cmake"
+    if not custom_steps.is_file():
+        fail(f"{custom_steps}: missing")
+    steps_text = custom_steps.read_text(encoding="utf-8")
+    neutralized = neutralize_check_git(steps_text)
+    if neutralized != steps_text:
+        custom_steps.write_text(neutralized, encoding="utf-8")
+    print("neutralized the check-git cache cascade in cmake/custom_steps.cmake")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main(sys.argv[1:]))

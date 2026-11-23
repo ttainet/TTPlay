@@ -1,0 +1,47 @@
+diff --git a/audio/out/ao_avfoundation.m b/audio/out/ao_avfoundation.m
+index 4384a70..797bef7 100644
+--- a/audio/out/ao_avfoundation.m
++++ b/audio/out/ao_avfoundation.m
+@@ -402,12 +402,30 @@ static void avp_serve_requests(struct ao *ao)
+         if (off < write_head) {
+             // real stream data
+             int64_t n = MPMIN(write_head - off, req_end - off);
+             NSData *chunk = [NSData dataWithBytes:p->es_buf + (off - p->es_head)
+                                            length:n];
+             [dr respondWithData:chunk];
+             MP_TRACE(ao, "served %lld bytes at offset %lld\n",
+                      (long long)n, (long long)off);
+-        }
++        } else if (off > write_head) {
++            // Read past the write head: the duration/bitrate probe the
++            // system issues against the fake endless resource during
++            // preroll (a fixed ~183 MiB offset, independent of the declared
++            // contentLength). Never fabricate bytes for it: the system
++            // caches whatever is served here by stream offset, plans its
++            // sequential reads around the cached range, and once playback
++            // reaches that byte offset (~30-40 min at DD+ rates) it plays
++            // the fabricated frames and then reads on past the write head,
++            // turning the audio into a repeating stale access unit
++            // (plezy#1776). Refusing makes the system fall back to plain
++            // sequential reads from the write head instead.
++            MP_VERBOSE(ao, "refusing read at %lld past the write head %lld\n",
++                       (long long)off, (long long)write_head);
++            [req finishLoadingWithError:
++                [NSError errorWithDomain:NSPOSIXErrorDomain code:ENOTSUP userInfo:nil]];
++            [reqs removeObjectAtIndex:i];
++            continue;
++        }
+         if (!dr.requestsAllDataToEndOfResource &&
+             dr.currentOffset >= dr.requestedOffset + (int64_t)dr.requestedLength) {
+             [req finishLoading];
+@@ -449,7 +467,7 @@ static void avp_update_transport(struct ao *ao)
+         // Not gated on the item becoming ready: while prerolling, the
+-        // system may park on a far-offset probe of the fake endless
+-        // resource that can never be served, and only the seek-to-start
+-        // workaround below can break that; readiness follows the seek.
++        // system may still be waiting on reads (refused probes, a fresh
++        // sequential request) and readiness can lag; the seek-to-start
++        // workaround below breaks any residual park.
+         [p->player setRate:1];
+         p->avp_rate_applied = true;
+         p->avp_start_deadline = now + AVP_START_GRACE_NS;

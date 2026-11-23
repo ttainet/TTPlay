@@ -1,0 +1,303 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - develop
+    tags:
+      - '*'
+  # Version-bump PRs (check_version.yml) change versions.json pins; the
+  # patches job proves the series still apply to the new sources before merge.
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  patches:
+    name: Patch series
+    permissions:
+      contents: read
+    runs-on: ubuntu-26.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate patch series
+        run: python3 scripts/patches.py check
+
+      # test_audiotrack_truehd.sh encodes its TrueHD fixtures with the host
+      # ffmpeg's truehd encoder and spdif muxer.
+      - name: Install ffmpeg
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends ffmpeg
+
+      - name: Test patch framework
+        run: bash scripts/test_patches.sh
+
+      - name: Test shared extractor
+        run: bash scripts/test_extract.sh
+
+      - name: Test content keys
+        run: bash scripts/test_keys.sh
+
+      # The runner's cc, readelf and objcopy add a real linked ELF to the
+      # synthetic ELF/PE/PDB fixtures.
+      - name: Test debug symbols
+        run: bash scripts/test_symbols.sh
+
+      - name: Test windows package pinning
+        run: python3 platforms/windows/test_pin_packages.py
+
+      # The linux driver has no other runner. The harness needs only bash, git
+      # and python3 (every build tool is stubbed and JOBS=1 keeps nproc out of
+      # it), and it is the only gate on the mpv/ffmpeg configure flags whose
+      # loss still compiles, links and plays -- just degraded.
+      - name: Test linux build plan
+        run: bash platforms/linux/test.sh
+
+      # Every nonempty (component, group) series must still apply cleanly to
+      # the exact source tree versions.json pins for it, otherwise the next
+      # publish run breaks. `apply --check` lands the whole stack and unwinds
+      # it again, so the clone stays pristine.
+      - name: Apply every series against its pinned source
+        run: |
+          python3 - <<'PY'
+          import shutil
+          import subprocess
+          import sys
+          import tempfile
+          from pathlib import Path
+
+          # The group list is discovered from platforms/*/group.json by keys.py,
+          # not restated here, so a new group cannot be silently unchecked.
+          GROUPS = subprocess.run([sys.executable, 'scripts/keys.py', 'groups'],
+                                  capture_output=True, text=True, check=True).stdout.split()
+          if not GROUPS:
+              raise SystemExit('keys.py groups reported no platform groups')
+
+          # A fresh directory per run, deliberately outside the checkout: the
+          # gate below has to acquire and apply every series itself, so nothing
+          # may survive from an earlier run into this one. A persisted or
+          # self-hosted workspace, `clean: false` or `act` would otherwise find
+          # a pre-existing clone and skip the only check that proves a series
+          # still applies.
+          work = Path(tempfile.mkdtemp(prefix='ci-sources-'))
+
+          def resolve(component, group):
+            result = subprocess.run(
+              [sys.executable, 'scripts/patches.py', 'resolve', component, group],
+              capture_output=True, text=True, check=True)
+            return [line for line in result.stdout.splitlines() if line.strip()]
+
+          def fetch(component, group, dest):
+            # The pin contract lives in scripts/patches.py fetch-pinned: it
+            # resolves the override-aware pin, clones the ref, proves HEAD is
+            # the pinned commit and applies the series. --check unwinds the
+            # tree again, so the clone stays pristine.
+            subprocess.run(
+              [sys.executable, 'scripts/patches.py', 'fetch-pinned', component, group, str(dest)],
+              check=True)
+
+          checked = 0
+          for component_dir in sorted(Path('patches').iterdir()):
+            if not component_dir.is_dir():
+              continue
+            component = component_dir.name
+            for group in GROUPS:
+              series = resolve(component, group)
+              if not series:
+                continue
+              dest = work / f'{component}-{group}'
+              print(f'{component}/{group}: checking {len(series)} patch(es)')
+              # fetch-pinned lands the series for real: applied is what the
+              # harnesses below need, and a patch that does not apply aborts
+              # the step. Nothing above may skip it: `checked` counts only
+              # series that were actually acquired and applied here.
+              fetch(component, group, dest)
+              checked += 1
+              if component == 'mpv':
+                subprocess.run(['bash', 'scripts/test_player_video_restart.sh', str(dest)], check=True)
+              if component == 'mpv' and group == 'apple':
+                # The player's half of the passthrough fallback: plain C, no
+                # Apple frameworks.
+                subprocess.run(['bash', 'scripts/test_audio_passthrough_fallback.sh', str(dest)], check=True)
+              if component == 'mpv' and group == 'android':
+                subprocess.run(['bash', 'scripts/test_audiotrack_timing.sh', str(dest)], check=True)
+                subprocess.run(['bash', 'scripts/test_audiotrack_truehd.sh', str(dest)], check=True)
+                subprocess.run(['bash', 'scripts/test_mediacodec_timing.sh', str(dest)], check=True)
+                subprocess.run(['bash', 'scripts/test_mediacodec_vsync.sh', str(dest)], check=True)
+                subprocess.run(['bash', 'scripts/test_mediacodec_rebind.sh', str(dest)], check=True)
+                subprocess.run(['bash', 'scripts/test_mediacodec_letterbox.sh', str(dest)], check=True)
+                subprocess.run(['bash', 'scripts/test_lavc_busy_policy.sh', str(dest)], check=True)
+                subprocess.run(['bash', 'scripts/test_player_queue_frames.sh', str(dest)], check=True)
+                subprocess.run(['bash', 'scripts/test_audio_reload_held_frame.sh', str(dest)], check=True)
+                subprocess.run(['bash', 'scripts/test_player_release_held_frame.sh', str(dest)], check=True)
+                subprocess.run(['bash', 'scripts/test_demux_refresh.sh', str(dest)], check=True)
+                subprocess.run(['bash', 'scripts/test_av_log_routing.sh', str(dest)], check=True)
+                # The oracle decoders build from the ffmpeg/android tree
+                # checked above ('ffmpeg' sorts before 'mpv').
+                subprocess.run(['bash', 'scripts/test_demux_codec_profile.sh', str(dest),
+                                str(work / 'ffmpeg-android')], check=True)
+                # mpv's decoder filter driving FFmpeg's MediaCodec decoder:
+                # both android trees.
+                subprocess.run(['bash', 'scripts/test_mediacodec_paused.sh', str(dest),
+                                str(work / 'ffmpeg-android')], check=True)
+                # The mpv-android AAR's JNI glue against fakes, with the
+                # patched mpv and FFmpeg headers of both android trees.
+                subprocess.run(['bash', 'scripts/test_android_glue.sh', str(dest),
+                                str(work / 'ffmpeg-android')], check=True)
+              if component == 'ffmpeg' and group == 'android':
+                subprocess.run(['bash', 'scripts/test_mediacodec_input.sh', str(dest)], check=True)
+                subprocess.run(['bash', 'scripts/test_mediacodec_eos.sh', str(dest)], check=True)
+                subprocess.run(['bash', 'scripts/test_mediacodec_flush.sh', str(dest)], check=True)
+                subprocess.run(['bash', 'scripts/test_mediacodec_error.sh', str(dest)], check=True)
+                subprocess.run(['bash', 'scripts/test_mediacodec_crop.sh', str(dest)], check=True)
+                subprocess.run(['bash', 'scripts/test_mediacodec_hdr.sh', str(dest)], check=True)
+                subprocess.run(['bash', 'scripts/test_mediacodec_rendered.sh', str(dest)], check=True)
+                subprocess.run(['bash', 'scripts/test_mediacodec_rate.sh', str(dest)], check=True)
+                subprocess.run(['bash', 'scripts/test_mediacodec_shed.sh', str(dest)], check=True)
+                subprocess.run(['bash', 'scripts/test_mediacodec_reorder.sh', str(dest)], check=True)
+                subprocess.run(['bash', 'scripts/test_pgs_palette.sh', str(dest)], check=True)
+                subprocess.run(['bash', 'scripts/test_spdif_truehd_branch.sh', str(dest)], check=True)
+                subprocess.run(['bash', 'scripts/test_tcp_family_lookup.sh', str(dest)], check=True)
+
+          if checked == 0:
+            raise SystemExit('no (component, group) series resolved; expected at least mpv/apple')
+          print(f'checked {checked} series')
+          shutil.rmtree(work, ignore_errors=True)
+          PY
+
+  apple-licences:
+    name: Apple licence texts
+    # Sources/_MPVKit/licenses, which every app linking MPVKit embeds, must be
+    # what scripts/licenses.py apple collects from the sources versions.json
+    # pins: a pin or rule that moves a text fails here until they are
+    # regenerated and committed.
+    permissions:
+      contents: read
+    runs-on: ubuntu-26.04
+    steps:
+      - uses: actions/checkout@v4
+
+      # rust-std's text comes from this toolchain's share/doc/rust, which is the
+      # same on every host; its cargo resolves libdovi's crates.
+      - name: Install the pinned Rust toolchain
+        run: |
+          rust_version="$(sed -n 's/^rust=//p' toolchain/apple.txt)"
+          test -n "$rust_version"
+          rustup toolchain install "$rust_version" --profile minimal --no-self-update
+
+      - name: Check the Apple licence texts
+        run: python3 scripts/licenses.py apple --check
+
+  android-plan:
+    name: Android plan
+    permissions:
+      contents: read
+    runs-on: ubuntu-26.04
+    outputs:
+      natives: ${{ steps.stale.outputs.natives }}
+    steps:
+      - uses: actions/checkout@v4
+
+      # The tarballs are built only when this tree moves their key (a pin,
+      # patch, driver or toolchain change): the AAR must build against the
+      # natives the merge will publish. Otherwise it packs the published ones.
+      - name: Is the libmpv-android key published?
+        id: stale
+        shell: bash
+        run: |
+          stale="$(python3 scripts/keys.py stale --platform-group android)"
+          if grep -qx libmpv-android <<< "${stale}"; then
+            echo "natives=true" >> "$GITHUB_OUTPUT"
+            echo "libmpv-android is stale: building the tarballs" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "natives=false" >> "$GITHUB_OUTPUT"
+            echo "libmpv-android is published: the AAR packs those tarballs" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+  android:
+    name: Android
+    needs: android-plan
+    permissions:
+      contents: read
+    uses: ./.github/workflows/android.yml
+    with:
+      natives: ${{ needs.android-plan.outputs.natives == 'true' }}
+      device-tests: true
+
+  spatial:
+    name: Spatial audio
+    # The harnesses compile Objective-C and Swift against Apple's frameworks.
+    permissions:
+      contents: read
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Test spatial audio output
+        run: bash scripts/test_ao_spatial.sh
+
+      - name: Test spatial audio bridge
+        run: bash scripts/test_spatial_feed.sh
+
+      # A real AVPlayer in a process that never services the main queue.
+      - name: Test AVFoundation passthrough fallback
+        run: bash scripts/test_ao_avfoundation_fallback.sh
+
+      # The Swift side exactly as libmpv's tvOS slice compiles it, against the
+      # pinned SpatialAudioBridge; only the Rust core is left to publish.
+      - name: Compile the spatial bridge for tvOS
+        run: |
+          python3 scripts/patches.py fetch-pinned mpv apple "$RUNNER_TEMP/mpv"
+          python3 scripts/build_spatial.py --bridge-only \
+            --source "$RUNNER_TEMP/spatial-audio-bridge" --output "$RUNNER_TEMP/spatial" \
+            --mpv "$RUNNER_TEMP/mpv" --target arm64-apple-tvos14.0 \
+            --sdk "$(xcrun --sdk appletvos --show-sdk-path)"
+
+  build:
+    name: Demo apps
+    # The demo builds are expensive; keep them on the pushes they always ran
+    # on, and off the version-bump PRs the patches job exists for.
+    if: github.event_name != 'pull_request'
+    permissions:
+      contents: write
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Show Xcode version
+        run: xcodebuild -version
+
+      - name: Show available SDKs
+        run: xcodebuild -showsdks
+
+      - name: Build macOS
+        run: |
+          xcodebuild -resolvePackageDependencies \
+            -project Demo/Demo-macOS/Demo-macOS.xcodeproj \
+            -scheme Demo-macOS
+
+          xcodebuild -project Demo/Demo-macOS/Demo-macOS.xcodeproj \
+            -scheme Demo-macOS \
+            -configuration Release \
+            CODE_SIGN_IDENTITY="-" \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO \
+            build
+
+      - name: Build iOS
+        run: |
+          xcodebuild -resolvePackageDependencies \
+            -project Demo/Demo-iOS/Demo-iOS.xcodeproj \
+            -scheme Demo-iOS
+
+          xcodebuild -project Demo/Demo-iOS/Demo-iOS.xcodeproj \
+            -scheme Demo-iOS \
+            -configuration Release \
+            CODE_SIGN_IDENTITY="-" \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO \
+            build
+
+
+      - name: Build Succeeded
+        run: |
+          echo "Build completed successfully."
