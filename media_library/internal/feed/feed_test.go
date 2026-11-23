@@ -292,4 +292,7 @@ func TestFeedSnapshotHierarchyAndIncludeFiles(t *testing.T) {
 	if len(byWk.Children) != 1 || len(byWk.Episodes) != 1 || len(byWk.Episodes[0].Files) != 1 {
 		t.Fatalf("expected show detail children + episodes with files, got children=%d episodes=%d", len(byWk.Children), len(byWk.Episodes))
 	}
+	if byWk.Children[0].WorkKey != "" || byWk.Children[0].ShowWorkKey != "tmdb:show:100" {
+		t.Fatalf("expected season child to keep empty WorkKey and parent ShowWorkKey, got work_key=%q show_work_key=%q", byWk.Children[0].WorkKey, byWk.Children[0].ShowWorkKey)
+	}
 }

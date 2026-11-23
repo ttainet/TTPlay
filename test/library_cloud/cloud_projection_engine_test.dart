@@ -883,6 +883,7 @@ void main() {
                 'children': [
                   {
                     'id': 30,
+                    'work_key': 'tmdb:show:279155',
                     'kind': 'season',
                     'library_type': 'show',
                     'parent_id': 20,
@@ -940,9 +941,15 @@ void main() {
 
       final libRepo = LibraryRepository(db);
       final hydratedShow = (await libRepo.getItem(showRow.id))!.item;
+      expect(hydratedShow.kind, LibraryKinds.show);
+      expect(hydratedShow.parentId, isNull);
+      expect(hydratedShow.title, '谷雨');
       expect(hydratedShow.summary, 'Detailed summary');
       expect(hydratedShow.tagline, 'Rain of Grain');
       expect(hydratedShow.studio, 'Tencent');
+      final hydratedSeason = await (db.select(db.libraryItems)..where((t) => t.kind.equals(LibraryKinds.season))).getSingle();
+      expect(hydratedSeason.workKey, 'tmdb:show:279155:s1');
+      expect(hydratedSeason.parentId, showRow.id);
       expect((await libRepo.genresOf(showRow.id)).map((g) => g.name), containsAll(['剧情', '悬疑']));
       final credits = await libRepo.creditsOf(showRow.id);
       expect(credits.single.person.name, '张颂文');

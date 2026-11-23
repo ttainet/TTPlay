@@ -438,17 +438,18 @@ class MediaImageHelper {
   static const _serverArtworkCacheKeyLimit = 512;
 
   static String _serverArtworkCacheKey(String imageUrl) {
-    final cached = _serverArtworkCacheKeys.remove(imageUrl);
+    final normalizedUrl = redactArtworkUrl(imageUrl);
+    final cached = _serverArtworkCacheKeys.remove(normalizedUrl);
     if (cached != null) {
-      _serverArtworkCacheKeys[imageUrl] = cached;
+      _serverArtworkCacheKeys[normalizedUrl] = cached;
       return cached;
     }
 
-    final key = 'plex_optimized_${sha1.convert(utf8.encode(imageUrl))}';
+    final key = 'plex_optimized_${sha1.convert(utf8.encode(normalizedUrl))}';
     if (_serverArtworkCacheKeys.length >= _serverArtworkCacheKeyLimit) {
       _serverArtworkCacheKeys.remove(_serverArtworkCacheKeys.keys.first);
     }
-    _serverArtworkCacheKeys[imageUrl] = key;
+    _serverArtworkCacheKeys[normalizedUrl] = key;
     return key;
   }
 

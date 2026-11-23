@@ -588,8 +588,16 @@ func (s *Service) GetItemDetail(p *account.Principal, itemID int64) (ItemDetailV
 	populateNulls(&det.ItemSummaryView, parentID, showID, year, rating, runtimeMs, sNum, eNum, srcAdded, locked)
 	_ = json.Unmarshal([]byte(aliasesJSON), &det.Aliases)
 
-	if det.WorkKey == "" && det.ShowID != nil {
-		_ = s.store.ReadDB().QueryRow(`SELECT COALESCE(work_key, '') FROM media_items WHERE id = ? AND household_id = ?`, *det.ShowID, p.HouseholdID).Scan(&det.WorkKey)
+	effectiveWorkKey := det.WorkKey
+	if det.ShowID != nil && (det.Kind == db.KindSeason || det.Kind == db.KindEpisode) {
+		var showWK string
+		_ = s.store.ReadDB().QueryRow(`SELECT COALESCE(work_key, '') FROM media_items WHERE id = ? AND household_id = ?`, *det.ShowID, p.HouseholdID).Scan(&showWK)
+		if showWK != "" {
+			det.ShowWorkKey = showWK
+			if effectiveWorkKey == "" {
+				effectiveWorkKey = showWK
+			}
+		}
 	}
 
 	checkSidecars := s.hasActiveArtworkSidecars(p.HouseholdID)
@@ -606,22 +614,22 @@ func (s *Service) GetItemDetail(p *account.Principal, itemID int64) (ItemDetailV
 
 	// Children (seasons for show, episodes for season) + all show episodes
 	if det.Kind == db.KindShow || det.Kind == db.KindSeason {
-		det.Children = s.loadChildItemsWithOpts(p.HouseholdID, p.MemberID, det.ID, det.WorkKey, checkSidecars, det.Kind == db.KindSeason)
+		det.Children = s.loadChildItemsWithOpts(p.HouseholdID, p.MemberID, det.ID, effectiveWorkKey, checkSidecars, det.Kind == db.KindSeason)
 		if det.Kind == db.KindShow {
-			det.Episodes = s.loadShowEpisodes(p.HouseholdID, p.MemberID, det.ID, det.WorkKey, checkSidecars)
+			det.Episodes = s.loadShowEpisodes(p.HouseholdID, p.MemberID, det.ID, effectiveWorkKey, checkSidecars)
 		}
 	}
 
 	// UserData progress & work prefs
-	if s.userData != nil && det.WorkKey != "" {
-		progKey := det.WorkKey
+	if s.userData != nil && effectiveWorkKey != "" {
+		progKey := effectiveWorkKey
 		if det.Kind == db.KindEpisode && det.SeasonNumber != nil && det.EpisodeNumber != nil {
-			progKey = fmt.Sprintf("%s:s%d:e%d", det.WorkKey, *det.SeasonNumber, *det.EpisodeNumber)
+			progKey = fmt.Sprintf("%s:s%d:e%d", effectiveWorkKey, *det.SeasonNumber, *det.EpisodeNumber)
 		}
 		if pv, pErr := s.userData.GetProgressByKey(p.HouseholdID, p.MemberID, progKey); pErr == nil {
 			det.Progress = &pv
 		}
-		if wp, wErr := s.userData.LoadWorkPrefs(p.HouseholdID, p.MemberID, det.WorkKey); wErr == nil {
+		if wp, wErr := s.userData.LoadWorkPrefs(p.HouseholdID, p.MemberID, effectiveWorkKey); wErr == nil {
 			det.WorkPrefs = &wp
 		}
 	}
@@ -1119,9 +1127,6 @@ func (s *Service) loadChildItemsWithOpts(householdID, memberID string, parentID 
 	for rows.Next() {
 		item, err := scanItemSummary(rows)
 		if err == nil {
-			if item.WorkKey == "" {
-				item.WorkKey = workKey
-			}
 			item.ShowWorkKey = workKey
 			out = append(out, item)
 			if item.Kind == db.KindEpisode {

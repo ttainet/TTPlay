@@ -7,6 +7,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:plezy/services/image_cache_service.dart';
+import 'package:plezy/utils/media_image_helper.dart';
 
 /// Pins the artwork request limiter's permit lifecycle. CE's cache manager
 /// abandons non-200/202 responses without listening to the body, so the
@@ -193,6 +194,22 @@ void main() {
       expect(
         redactArtworkUrl('https://jf.example/Items/1/Images/Primary?maxWidth=300&api_key=$token'),
         'https://jf.example/Items/1/Images/Primary?maxWidth=300&api_key=',
+      );
+      expect(
+        redactArtworkUrl('https://play.ttai.net/api/v1/metadata/artwork?src=%2Fa.jpg&size=w500&token=$token'),
+        'https://play.ttai.net/api/v1/metadata/artwork?src=%2Fa.jpg&size=w500&token=',
+      );
+      expect(
+        redactArtworkUrl('https://example.invalid/list?next_token=keep-me&token=$token'),
+        'https://example.invalid/list?next_token=keep-me&token=',
+      );
+      expect(
+        MediaImageHelper.serverArtworkCacheKey(
+          'https://play.ttai.net/api/v1/metadata/artwork?src=%2Fa.jpg&size=w500&token=tok_1',
+        ),
+        MediaImageHelper.serverArtworkCacheKey(
+          'https://play.ttai.net/api/v1/metadata/artwork?src=%2Fa.jpg&size=w500&token=tok_2',
+        ),
       );
       expect(redactArtworkUrl('https://cdn.example/poster.jpg'), 'https://cdn.example/poster.jpg');
     });

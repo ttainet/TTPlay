@@ -763,11 +763,22 @@ class CloudProjectionEngine {
     if (kind == LibraryKinds.episode && (localParentId == null || localShowId == null)) return null;
 
     final rawWorkKey = (raw['work_key'] as String? ?? '').trim();
+    final normalizedRawKey = rawWorkKey.isEmpty ? '' : DeterministicKeys.canonicalizeWorkKey(rawWorkKey);
+    final parentShowKey =
+        (effectiveServerShowId != null ? serverIdToWorkKey[effectiveServerShowId] : null) ??
+        _nonEmptyString(raw['show_work_key']);
+    final isChildItem = kind == LibraryKinds.season || kind == LibraryKinds.episode;
+    final hasInvalidChildWorkKey =
+        isChildItem &&
+        (normalizedRawKey.isEmpty ||
+            (parentShowKey != null &&
+                normalizedRawKey == DeterministicKeys.canonicalizeWorkKey(parentShowKey)) ||
+            (kind == LibraryKinds.season && !RegExp(r':s\d+$').hasMatch(normalizedRawKey)) ||
+            (kind == LibraryKinds.episode && !RegExp(r':e\d+$').hasMatch(normalizedRawKey)));
     String workKey;
-    if (rawWorkKey.isNotEmpty) {
-      workKey = DeterministicKeys.canonicalizeWorkKey(rawWorkKey);
+    if (normalizedRawKey.isNotEmpty && !hasInvalidChildWorkKey) {
+      workKey = normalizedRawKey;
     } else {
-      final parentShowKey = effectiveServerShowId != null ? serverIdToWorkKey[effectiveServerShowId] : null;
       if (parentShowKey != null && parentShowKey.isNotEmpty && !parentShowKey.startsWith('cloud:')) {
         if (kind == LibraryKinds.season && seasonNumber != null) {
           workKey = '$parentShowKey:s$seasonNumber';

@@ -93,15 +93,15 @@ class PlexImageCacheManager extends ce_cache.DefaultCacheManager {
 }
 
 /// Query parameters that carry a media-server credential in artwork URLs:
-/// Plex's `X-Plex-Token` and Jellyfin/Emby's `api_key`. Plex's photo
-/// transcoder URLs also nest one inside their percent-encoded `url=` value.
+/// Plex's `X-Plex-Token`, Jellyfin/Emby's `api_key`, and TTPlay's `token`.
+/// Plex's photo transcoder URLs also nest one inside their percent-encoded
+/// `url=` value.
 final _artworkCredentialParam = RegExp(
-  r'((?:X-Plex-Token|api_key|ApiKey)(?:=|%3D|%253D))[^&#%]+',
+  r'(?<![A-Za-z0-9_])((?:X-Plex-Token|api_key|ApiKey|token)(?:=|%3D|%253D))[^&#%]+',
   caseSensitive: false,
 );
 
 /// [url] with every credential value blanked: what the artwork cache records.
-@visibleForTesting
 String redactArtworkUrl(String url) => url.replaceAllMapped(_artworkCredentialParam, (match) => match[1]!);
 
 /// Request header carrying the credentialed URL from
