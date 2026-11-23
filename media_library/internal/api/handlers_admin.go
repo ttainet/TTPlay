@@ -4,9 +4,9 @@ import (
 	"net/http"
 	"strconv"
 
-	"plezy/media_library/internal/db"
-	"plezy/media_library/internal/platform"
-	"plezy/media_library/internal/security"
+	"ttplay/media_library/internal/db"
+	"ttplay/media_library/internal/platform"
+	"ttplay/media_library/internal/security"
 )
 
 type adminLoginBody struct {

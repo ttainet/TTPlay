@@ -6,9 +6,9 @@ import (
 	"fmt"
 	"strings"
 
-	"plezy/media_library/internal/account"
-	"plezy/media_library/internal/db"
-	"plezy/media_library/internal/security"
+	"ttplay/media_library/internal/account"
+	"ttplay/media_library/internal/db"
+	"ttplay/media_library/internal/security"
 )
 
 func (s *Service) GetCredential(p *account.Principal, sourceID, ip string) (*Credential, error) {

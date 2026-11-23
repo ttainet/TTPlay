@@ -8,7 +8,7 @@ import (
 	"strconv"
 	"strings"
 
-	"plezy/media_library/internal/db"
+	"ttplay/media_library/internal/db"
 )
 
 var reAniListHTMLTag = regexp.MustCompile(`<[^>]+>`)

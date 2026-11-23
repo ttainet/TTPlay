@@ -6,8 +6,8 @@ import (
 	"strings"
 	"time"
 
-	"plezy/media_library/internal/account"
-	"plezy/media_library/internal/library"
+	"ttplay/media_library/internal/account"
+	"ttplay/media_library/internal/library"
 )
 
 const householdMetaRateLimitPerMin = 120

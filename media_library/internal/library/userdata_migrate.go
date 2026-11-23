@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"strings"
 
-	"plezy/media_library/internal/db"
+	"ttplay/media_library/internal/db"
 )
 
 type watchProgressRow struct {

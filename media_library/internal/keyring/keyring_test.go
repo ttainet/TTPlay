@@ -3,8 +3,8 @@ package keyring
 import (
 	"testing"
 
-	"plezy/media_library/internal/db"
-	"plezy/media_library/internal/vault"
+	"ttplay/media_library/internal/db"
+	"ttplay/media_library/internal/vault"
 )
 
 func seedTestHousehold(t *testing.T, store *db.Store, id string) {

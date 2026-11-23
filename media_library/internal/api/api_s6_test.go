@@ -10,8 +10,8 @@ import (
 	"testing"
 	"time"
 
-	"plezy/media_library/internal/applog"
-	"plezy/media_library/internal/db"
+	"ttplay/media_library/internal/applog"
+	"ttplay/media_library/internal/db"
 )
 
 func mustLoginReadyAdmin(t *testing.T, srv *Server) string {

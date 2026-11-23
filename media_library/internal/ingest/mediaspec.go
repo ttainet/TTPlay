@@ -7,8 +7,8 @@ import (
 	"fmt"
 	"strings"
 
-	"plezy/media_library/internal/account"
-	"plezy/media_library/internal/db"
+	"ttplay/media_library/internal/account"
+	"ttplay/media_library/internal/db"
 )
 
 func (s *Service) ReportMediaSpec(p *account.Principal, fileID int64, req MediaSpecInput) error {

@@ -13,10 +13,10 @@ import (
 	"testing"
 	"time"
 
-	"plezy/media_library/internal/account"
-	"plezy/media_library/internal/db"
-	"plezy/media_library/internal/ingest"
-	"plezy/media_library/internal/source"
+	"ttplay/media_library/internal/account"
+	"ttplay/media_library/internal/db"
+	"ttplay/media_library/internal/ingest"
+	"ttplay/media_library/internal/source"
 )
 
 func doGzipJSONReq(srv *Server, method, path, token, remoteAddr string, body any) *httptest.ResponseRecorder {

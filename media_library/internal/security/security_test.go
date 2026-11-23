@@ -5,8 +5,8 @@ import (
 	"testing"
 	"time"
 
-	"plezy/media_library/internal/db"
-	"plezy/media_library/internal/vault"
+	"ttplay/media_library/internal/db"
+	"ttplay/media_library/internal/vault"
 )
 
 func TestHashAndVerifySecretAndTokens(t *testing.T) {

@@ -97,7 +97,7 @@ ln -s ttplay.sh "$APPDIR/AppRun"
 cp "$SCRIPT_DIR/com.ttai.ttplay.desktop" "$APPDIR/"
 ICON_DIR="$APPDIR/usr/share/icons/hicolor/256x256/apps"
 mkdir -p "$ICON_DIR"
-"$IMAGEMAGICK" "$PROJECT_ROOT/assets/plezy.png" -resize 256x256 "$ICON_DIR/ttplay.png"
+"$IMAGEMAGICK" "$PROJECT_ROOT/assets/ttplay.png" -resize 256x256 "$ICON_DIR/ttplay.png"
 ln -s usr/share/icons/hicolor/256x256/apps/ttplay.png "$APPDIR/ttplay.png"
 ln -s ttplay.png "$APPDIR/.DirIcon"
 

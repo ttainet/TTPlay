@@ -9,8 +9,8 @@ import (
 	"sync/atomic"
 	"testing"
 
-	"plezy/media_library/internal/db"
-	"plezy/media_library/internal/vault"
+	"ttplay/media_library/internal/db"
+	"ttplay/media_library/internal/vault"
 )
 
 func openTestMetadataService(t *testing.T) (*Service, *db.Store) {

@@ -239,7 +239,7 @@ class _AuthScreenState extends State<AuthScreen> {
     mainAxisAlignment: MainAxisAlignment.center,
     crossAxisAlignment: CrossAxisAlignment.center,
     children: [
-      Image.asset('assets/plezy.png', width: 120, height: 120),
+      Image.asset('assets/ttplay.png', width: 120, height: 120),
       const SizedBox(height: 24),
       Text(
         t.app.title,

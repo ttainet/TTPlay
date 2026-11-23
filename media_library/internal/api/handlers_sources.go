@@ -3,7 +3,7 @@ package api
 import (
 	"net/http"
 
-	"plezy/media_library/internal/source"
+	"ttplay/media_library/internal/source"
 )
 
 func (s *Server) handleListSources(w http.ResponseWriter, r *http.Request) {

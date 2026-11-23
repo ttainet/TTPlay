@@ -13,8 +13,8 @@ import (
 	"testing"
 	"time"
 
-	"plezy/media_library/internal/db"
-	"plezy/media_library/internal/source"
+	"ttplay/media_library/internal/db"
+	"ttplay/media_library/internal/source"
 )
 
 func TestS5FeedSnapshotChangesSidecarSSEAndUserData(t *testing.T) {

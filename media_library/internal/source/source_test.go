@@ -5,11 +5,11 @@ import (
 	"testing"
 	"time"
 
-	"plezy/media_library/internal/account"
-	"plezy/media_library/internal/db"
-	"plezy/media_library/internal/events"
-	"plezy/media_library/internal/security"
-	"plezy/media_library/internal/vault"
+	"ttplay/media_library/internal/account"
+	"ttplay/media_library/internal/db"
+	"ttplay/media_library/internal/events"
+	"ttplay/media_library/internal/security"
+	"ttplay/media_library/internal/vault"
 )
 
 func openTestSourceEnv(t *testing.T) (*Service, *account.Service, *db.Store, *events.Hub, func(time.Duration)) {

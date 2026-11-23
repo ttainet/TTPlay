@@ -5,7 +5,7 @@ import (
 	"strconv"
 	"strings"
 
-	"plezy/media_library/internal/metadata"
+	"ttplay/media_library/internal/metadata"
 )
 
 type nfoSet struct {

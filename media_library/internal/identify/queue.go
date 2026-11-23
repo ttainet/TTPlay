@@ -9,11 +9,11 @@ import (
 	"sync/atomic"
 	"time"
 
-	"plezy/media_library/internal/applog"
-	"plezy/media_library/internal/db"
-	"plezy/media_library/internal/events"
-	"plezy/media_library/internal/library"
-	"plezy/media_library/internal/metadata"
+	"ttplay/media_library/internal/applog"
+	"ttplay/media_library/internal/db"
+	"ttplay/media_library/internal/events"
+	"ttplay/media_library/internal/library"
+	"ttplay/media_library/internal/metadata"
 )
 
 type Queue struct {

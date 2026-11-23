@@ -8,9 +8,9 @@ import (
 	"strings"
 	"testing"
 
-	"plezy/media_library/internal/db"
-	"plezy/media_library/internal/metadata"
-	"plezy/media_library/internal/vault"
+	"ttplay/media_library/internal/db"
+	"ttplay/media_library/internal/metadata"
+	"ttplay/media_library/internal/vault"
 )
 
 type mapSidecarReader map[string]string

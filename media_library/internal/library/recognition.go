@@ -4,7 +4,7 @@ import (
 	"regexp"
 	"strings"
 
-	"plezy/media_library/internal/applog"
+	"ttplay/media_library/internal/applog"
 )
 
 type EmbeddedIDs struct {

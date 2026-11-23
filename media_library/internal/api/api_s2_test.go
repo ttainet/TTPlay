@@ -6,9 +6,9 @@ import (
 	"strings"
 	"testing"
 
-	"plezy/media_library/internal/account"
-	"plezy/media_library/internal/db"
-	"plezy/media_library/internal/source"
+	"ttplay/media_library/internal/account"
+	"ttplay/media_library/internal/db"
+	"ttplay/media_library/internal/source"
 )
 
 func mustRegisterAndLoginDevice(t *testing.T, srv *Server, username, deviceClass, ip string, register bool) (token, hhID, memberID, deviceID string) {

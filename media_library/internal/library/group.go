@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"strings"
 
-	"plezy/media_library/internal/db"
-	"plezy/media_library/internal/pathutil"
+	"ttplay/media_library/internal/db"
+	"ttplay/media_library/internal/pathutil"
 )
 
 // ParseAndGroup parses a normalized file path into naming tokens, version label,

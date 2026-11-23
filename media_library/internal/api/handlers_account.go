@@ -4,7 +4,7 @@ import (
 	"net/http"
 	"strings"
 
-	"plezy/media_library/internal/account"
+	"ttplay/media_library/internal/account"
 )
 
 type switchMemberBody struct {

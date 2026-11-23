@@ -12,10 +12,10 @@ import (
 	"unicode"
 	"unicode/utf8"
 
-	"plezy/media_library/internal/applog"
-	"plezy/media_library/internal/db"
-	"plezy/media_library/internal/metadata"
-	"plezy/media_library/internal/pathutil"
+	"ttplay/media_library/internal/applog"
+	"ttplay/media_library/internal/db"
+	"ttplay/media_library/internal/metadata"
+	"ttplay/media_library/internal/pathutil"
 )
 
 const acceptMatchScore = 0.72

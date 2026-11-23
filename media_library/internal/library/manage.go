@@ -12,9 +12,9 @@ import (
 
 	"github.com/google/uuid"
 
-	"plezy/media_library/internal/db"
-	"plezy/media_library/internal/metadata"
-	"plezy/media_library/internal/pathutil"
+	"ttplay/media_library/internal/db"
+	"ttplay/media_library/internal/metadata"
+	"ttplay/media_library/internal/pathutil"
 )
 
 var ErrForbidden = errors.New("forbidden")

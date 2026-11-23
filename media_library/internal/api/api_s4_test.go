@@ -10,8 +10,8 @@ import (
 	"testing"
 	"time"
 
-	"plezy/media_library/internal/db"
-	"plezy/media_library/internal/identify"
+	"ttplay/media_library/internal/db"
+	"ttplay/media_library/internal/identify"
 )
 
 func TestS4MetadataQuotaUnmatchedManualMatchRulesEditAndRescrape(t *testing.T) {

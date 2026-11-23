@@ -9,7 +9,7 @@ import (
 	"strings"
 	"unicode"
 
-	"plezy/media_library/internal/db"
+	"ttplay/media_library/internal/db"
 )
 
 var reExactImdbID = regexp.MustCompile(`(?i)^tt\d{5,12}$`)

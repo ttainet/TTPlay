@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"plezy/media_library/internal/vault"
+	"ttplay/media_library/internal/vault"
 )
 
 func openTestStore(t *testing.T) *Store {

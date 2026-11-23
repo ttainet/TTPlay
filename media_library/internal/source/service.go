@@ -11,10 +11,10 @@ import (
 
 	"github.com/google/uuid"
 
-	"plezy/media_library/internal/account"
-	"plezy/media_library/internal/db"
-	"plezy/media_library/internal/events"
-	"plezy/media_library/internal/security"
+	"ttplay/media_library/internal/account"
+	"ttplay/media_library/internal/db"
+	"ttplay/media_library/internal/events"
+	"ttplay/media_library/internal/security"
 )
 
 type Service struct {

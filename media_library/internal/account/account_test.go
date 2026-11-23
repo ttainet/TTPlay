@@ -5,10 +5,10 @@ import (
 	"testing"
 	"time"
 
-	"plezy/media_library/internal/db"
-	"plezy/media_library/internal/keyring"
-	"plezy/media_library/internal/security"
-	"plezy/media_library/internal/vault"
+	"ttplay/media_library/internal/db"
+	"ttplay/media_library/internal/keyring"
+	"ttplay/media_library/internal/security"
+	"ttplay/media_library/internal/vault"
 )
 
 func openTestAccountSvc(t *testing.T) (*Service, *db.Store, func(time.Duration)) {

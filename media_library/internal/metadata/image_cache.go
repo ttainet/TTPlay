@@ -14,7 +14,7 @@ import (
 	"strings"
 	"time"
 
-	"plezy/media_library/internal/applog"
+	"ttplay/media_library/internal/applog"
 )
 
 type CachedImage struct {

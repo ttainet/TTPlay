@@ -8,8 +8,8 @@ import (
 
 	"github.com/google/uuid"
 
-	"plezy/media_library/internal/keyring"
-	"plezy/media_library/internal/security"
+	"ttplay/media_library/internal/keyring"
+	"ttplay/media_library/internal/security"
 )
 
 type HouseholdInfo struct {

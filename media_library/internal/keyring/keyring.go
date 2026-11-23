@@ -9,7 +9,7 @@ import (
 
 	"github.com/google/uuid"
 
-	"plezy/media_library/internal/db"
+	"ttplay/media_library/internal/db"
 )
 
 const (

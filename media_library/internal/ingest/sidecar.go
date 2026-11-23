@@ -15,7 +15,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
-	"plezy/media_library/internal/account"
+	"ttplay/media_library/internal/account"
 )
 
 var reSHA256 = regexp.MustCompile(`^[0-9a-f]{64}$`)

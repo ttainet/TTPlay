@@ -1,6 +1,6 @@
 package ingest
 
-import "plezy/media_library/internal/library"
+import "ttplay/media_library/internal/library"
 
 // ParseAndGroup parses a normalized file path into naming tokens, version label,
 // and an identify_queue deduplication group_key.

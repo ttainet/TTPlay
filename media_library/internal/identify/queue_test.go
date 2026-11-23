@@ -9,11 +9,11 @@ import (
 	"testing"
 	"time"
 
-	"plezy/media_library/internal/db"
-	"plezy/media_library/internal/events"
-	"plezy/media_library/internal/library"
-	"plezy/media_library/internal/metadata"
-	"plezy/media_library/internal/vault"
+	"ttplay/media_library/internal/db"
+	"ttplay/media_library/internal/events"
+	"ttplay/media_library/internal/library"
+	"ttplay/media_library/internal/metadata"
+	"ttplay/media_library/internal/vault"
 )
 
 func seedQueueHouseholdAndFile(t *testing.T, store *db.Store, hhID, srcID, path string) int64 {

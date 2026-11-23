@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"plezy/media_library/internal/db"
+	"ttplay/media_library/internal/db"
 )
 
 func (s *Service) tvdbLoginToken(ctx context.Context, cfg db.ServerSettings, forceRefresh bool) (string, error) {

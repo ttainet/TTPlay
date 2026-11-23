@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"plezy/media_library/internal/feed"
+	"ttplay/media_library/internal/feed"
 )
 
 func (s *Server) handleGetLibrarySnapshot(w http.ResponseWriter, r *http.Request) {

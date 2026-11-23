@@ -9,7 +9,7 @@ import (
 	"sync"
 	"time"
 
-	"plezy/media_library/internal/vault"
+	"ttplay/media_library/internal/vault"
 
 	_ "modernc.org/sqlite"
 )

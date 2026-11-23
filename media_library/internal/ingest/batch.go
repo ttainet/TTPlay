@@ -8,10 +8,10 @@ import (
 	"strings"
 	"time"
 
-	"plezy/media_library/internal/account"
-	"plezy/media_library/internal/db"
-	"plezy/media_library/internal/library"
-	"plezy/media_library/internal/pathutil"
+	"ttplay/media_library/internal/account"
+	"ttplay/media_library/internal/db"
+	"ttplay/media_library/internal/library"
+	"ttplay/media_library/internal/pathutil"
 )
 
 type existingFileRow struct {

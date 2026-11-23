@@ -1,6 +1,6 @@
 package account
 
-import "plezy/media_library/internal/db"
+import "ttplay/media_library/internal/db"
 
 const (
 	PermBrowse          = 1 << 0

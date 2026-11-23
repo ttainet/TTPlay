@@ -1,4 +1,4 @@
-module plezy/media_library
+module ttplay/media_library
 
 go 1.26.0
 

@@ -10,8 +10,8 @@ import (
 
 	"github.com/google/uuid"
 
-	"plezy/media_library/internal/db"
-	"plezy/media_library/internal/security"
+	"ttplay/media_library/internal/db"
+	"ttplay/media_library/internal/security"
 )
 
 const (

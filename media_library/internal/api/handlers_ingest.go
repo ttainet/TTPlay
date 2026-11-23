@@ -6,7 +6,7 @@ import (
 	"strconv"
 	"strings"
 
-	"plezy/media_library/internal/ingest"
+	"ttplay/media_library/internal/ingest"
 )
 
 func (s *Server) handleCreateScanSession(w http.ResponseWriter, r *http.Request) {

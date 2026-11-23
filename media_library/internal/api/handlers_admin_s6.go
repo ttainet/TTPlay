@@ -12,10 +12,10 @@ import (
 	"strings"
 	"time"
 
-	"plezy/media_library/internal/applog"
-	"plezy/media_library/internal/metadata"
-	"plezy/media_library/internal/security"
-	"plezy/media_library/web"
+	"ttplay/media_library/internal/applog"
+	"ttplay/media_library/internal/metadata"
+	"ttplay/media_library/internal/security"
+	"ttplay/media_library/web"
 )
 
 type PlatformOverview struct {

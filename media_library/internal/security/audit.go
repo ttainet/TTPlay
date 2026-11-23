@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"strings"
 
-	"plezy/media_library/internal/db"
+	"ttplay/media_library/internal/db"
 )
 
 type AuditEntry struct {

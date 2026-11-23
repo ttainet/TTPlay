@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"strings"
 
-	"plezy/media_library/internal/security"
+	"ttplay/media_library/internal/security"
 )
 
 const inviteAlphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
