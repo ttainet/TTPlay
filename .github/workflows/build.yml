@@ -124,26 +124,26 @@ jobs:
 
       - name: Package APKs
         run: |
-          tar -czf plezy-android-arm64-v8a.tar.gz -C build/app/outputs/flutter-apk app-arm64-v8a-release.apk --transform 's/app-arm64-v8a-release.apk/plezy.apk/'
-          tar -czf plezy-android-armeabi-v7a.tar.gz -C build/app/outputs/flutter-apk app-armeabi-v7a-release.apk --transform 's/app-armeabi-v7a-release.apk/plezy.apk/'
-          tar -czf plezy-android-x86_64.tar.gz -C build/app/outputs/flutter-apk app-x86_64-release.apk --transform 's/app-x86_64-release.apk/plezy.apk/'
+          tar -czf ttplay-android-arm64-v8a.tar.gz -C build/app/outputs/flutter-apk app-arm64-v8a-release.apk --transform 's/app-arm64-v8a-release.apk/ttplay.apk/'
+          tar -czf ttplay-android-armeabi-v7a.tar.gz -C build/app/outputs/flutter-apk app-armeabi-v7a-release.apk --transform 's/app-armeabi-v7a-release.apk/ttplay.apk/'
+          tar -czf ttplay-android-x86_64.tar.gz -C build/app/outputs/flutter-apk app-x86_64-release.apk --transform 's/app-x86_64-release.apk/ttplay.apk/'
 
       - name: Attest APKs
         uses: actions/attest-build-provenance@0f67c3f4856b2e3261c31976d6725780e5e4c373 # v4
         with:
           subject-path: |
-            plezy-android-arm64-v8a.tar.gz
-            plezy-android-armeabi-v7a.tar.gz
-            plezy-android-x86_64.tar.gz
+            ttplay-android-arm64-v8a.tar.gz
+            ttplay-android-armeabi-v7a.tar.gz
+            ttplay-android-x86_64.tar.gz
 
       - name: Upload APKs
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: android-apk
           path: |
-            plezy-android-arm64-v8a.tar.gz
-            plezy-android-armeabi-v7a.tar.gz
-            plezy-android-x86_64.tar.gz
+            ttplay-android-arm64-v8a.tar.gz
+            ttplay-android-armeabi-v7a.tar.gz
+            ttplay-android-x86_64.tar.gz
 
   build-ios:
     needs: validate-trusted-ref
@@ -192,19 +192,19 @@ jobs:
       - name: Create IPA
         run: |
           mkdir -p Payload
-          cp -r build/ios/iphoneos/Plezy.app Payload/
-          zip -r plezy-ios.ipa Payload
+          cp -r build/ios/iphoneos/TTPlay.app Payload/
+          zip -r ttplay-ios.ipa Payload
 
       - name: Attest IPA
         uses: actions/attest-build-provenance@0f67c3f4856b2e3261c31976d6725780e5e4c373 # v4
         with:
-          subject-path: plezy-ios.ipa
+          subject-path: ttplay-ios.ipa
 
       - name: Upload IPA
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: ios-ipa
-          path: plezy-ios.ipa
+          path: ttplay-ios.ipa
 
   build-macos:
     needs: validate-trusted-ref
@@ -342,7 +342,7 @@ jobs:
           mkdir -p dmg-staging
           cp -R build/macos/Build/Products/Release/TTPlay.app dmg-staging/
           ln -s /Applications dmg-staging/Applications
-          hdiutil create -format ULMO -srcfolder dmg-staging -volname "TTPlay" plezy-macos.dmg
+          hdiutil create -format ULMO -srcfolder dmg-staging -volname "TTPlay" ttplay-macos.dmg
 
       - name: Sign DMG for Sparkle (EdDSA)
         if: env.SPARKLE_PRIVATE_KEY != ''
@@ -350,17 +350,17 @@ jobs:
           SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
         run: |
           printf -- "-----BEGIN ED25519 PRIVATE KEY-----\n%s\n-----END ED25519 PRIVATE KEY-----\n" "$SPARKLE_PRIVATE_KEY" > ed25519_key.pem
-          OUTPUT=$(dart run auto_updater:sign_update plezy-macos.dmg ed25519_key.pem)
+          OUTPUT=$(dart run auto_updater:sign_update ttplay-macos.dmg ed25519_key.pem)
           rm ed25519_key.pem
           # Extract edSignature value from output like: sparkle:edSignature="..." length="..."
           SIGNATURE=$(echo "$OUTPUT" | grep -o 'edSignature="[^"]*"' | sed 's/edSignature="//;s/"//')
           echo "MACOS_ED_SIGNATURE=$SIGNATURE" >> $GITHUB_ENV
-          echo "MACOS_DMG_SIZE=$(stat -f%z plezy-macos.dmg)" >> $GITHUB_ENV
+          echo "MACOS_DMG_SIZE=$(stat -f%z ttplay-macos.dmg)" >> $GITHUB_ENV
 
       - name: Attest macOS DMG
         uses: actions/attest-build-provenance@0f67c3f4856b2e3261c31976d6725780e5e4c373 # v4
         with:
-          subject-path: plezy-macos.dmg
+          subject-path: ttplay-macos.dmg
 
       - name: Write macOS signature metadata
         run: |
@@ -372,7 +372,7 @@ jobs:
         with:
           name: macos-dmg
           path: |
-            plezy-macos.dmg
+            ttplay-macos.dmg
             macos-ed-signature.txt
             macos-dmg-size.txt
 
@@ -576,10 +576,10 @@ jobs:
           SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
         shell: pwsh
         run: |
-          $keyPath = Join-Path $env:RUNNER_TEMP "plezy-winsparkle-ed25519.pem"
+          $keyPath = Join-Path $env:RUNNER_TEMP "ttplay-winsparkle-ed25519.pem"
           try {
             Set-Content -Path $keyPath -Value $env:SPARKLE_PRIVATE_KEY -Encoding ascii -NoNewline
-            $output = & dart run auto_updater:sign_update plezy-windows-installer.exe $keyPath
+            $output = & dart run auto_updater:sign_update ttplay-windows-installer.exe $keyPath
             if ($LASTEXITCODE -ne 0) {
               throw "WinSparkle signer failed with exit code $LASTEXITCODE"
             }
@@ -588,7 +588,7 @@ jobs:
               throw "WinSparkle signer returned no EdDSA signature"
             }
             Set-Content -Path win-ed-signature.txt -Value $match.Groups[1].Value -Encoding ascii -NoNewline
-            Set-Content -Path win-installer-size.txt -Value (Get-Item plezy-windows-installer.exe).Length.ToString() -Encoding ascii -NoNewline
+            Set-Content -Path win-installer-size.txt -Value (Get-Item ttplay-windows-installer.exe).Length.ToString() -Encoding ascii -NoNewline
           } finally {
             Remove-Item -Path $keyPath -Force -ErrorAction SilentlyContinue
           }
@@ -597,29 +597,29 @@ jobs:
         uses: actions/attest-build-provenance@0f67c3f4856b2e3261c31976d6725780e5e4c373 # v4
         with:
           subject-path: |
-            plezy-windows-x64-portable.7z
-            plezy-windows-arm64-portable.7z
-            plezy-windows-installer.exe
-            plezy-windows.msixbundle
+            ttplay-windows-x64-portable.7z
+            ttplay-windows-arm64-portable.7z
+            ttplay-windows-installer.exe
+            ttplay-windows.msixbundle
 
       - name: Upload x64 portable
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: windows-x64-portable
-          path: plezy-windows-x64-portable.7z
+          path: ttplay-windows-x64-portable.7z
 
       - name: Upload arm64 portable
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: windows-arm64-portable
-          path: plezy-windows-arm64-portable.7z
+          path: ttplay-windows-arm64-portable.7z
 
       - name: Upload installer
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: windows-installer
           path: |
-            plezy-windows-installer.exe
+            ttplay-windows-installer.exe
             win-ed-signature.txt
             win-installer-size.txt
 
@@ -630,7 +630,7 @@ jobs:
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: windows-msix
-          path: plezy-windows.msixbundle
+          path: ttplay-windows.msixbundle
 
   build-linux:
     needs: validate-trusted-ref
@@ -771,7 +771,7 @@ jobs:
 
       - name: Copy wrapper script into bundle
         shell: bash
-        run: cp linux/packaging/plezy.sh "$BUNDLE_DIR/plezy.sh"
+        run: cp linux/packaging/ttplay.sh "$BUNDLE_DIR/ttplay.sh"
 
       # Same check the package smoke build runs, against the artifact that
       # actually ships: a library nobody declares is a broken install, and it is
@@ -826,7 +826,7 @@ jobs:
       - name: Verify installed Flatpak runtime dependencies
         shell: bash
         run: |
-          flatpak install --user --noninteractive "plezy-linux-${{ matrix.arch }}.flatpak"
+          flatpak install --user --noninteractive "ttplay-linux-${{ matrix.arch }}.flatpak"
           dbus-run-session -- python3 linux/packaging/check-flatpak.py --arch ${{ matrix.arch }}
 
       # The same resolved bundle, launched through plezy.sh as AppRun. The
@@ -852,32 +852,32 @@ jobs:
         shell: bash
         run: |
           cd "$BUNDLE_DIR"
-          tar -czf "$GITHUB_WORKSPACE/plezy-linux-${{ matrix.arch }}.tar.gz" *
+          tar -czf "$GITHUB_WORKSPACE/ttplay-linux-${{ matrix.arch }}.tar.gz" *
 
       - name: Attest Linux ${{ matrix.arch }} artifacts
         uses: actions/attest-build-provenance@0f67c3f4856b2e3261c31976d6725780e5e4c373 # v4
         with:
           subject-path: |
-            plezy-linux-${{ matrix.arch }}.tar.gz
-            plezy-linux-${{ matrix.arch }}.deb
-            plezy-linux-${{ matrix.arch }}.rpm
-            plezy-linux-${{ matrix.arch }}.pkg.tar.zst
-            plezy-linux-${{ matrix.arch }}.flatpak
-            plezy-linux-${{ matrix.arch }}.AppImage
-            plezy-linux-${{ matrix.arch }}.AppImage.zsync
+            ttplay-linux-${{ matrix.arch }}.tar.gz
+            ttplay-linux-${{ matrix.arch }}.deb
+            ttplay-linux-${{ matrix.arch }}.rpm
+            ttplay-linux-${{ matrix.arch }}.pkg.tar.zst
+            ttplay-linux-${{ matrix.arch }}.flatpak
+            ttplay-linux-${{ matrix.arch }}.AppImage
+            ttplay-linux-${{ matrix.arch }}.AppImage.zsync
 
       - name: Upload Linux ${{ matrix.arch }} artifacts
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: linux-${{ matrix.arch }}
           path: |
-            plezy-linux-${{ matrix.arch }}.tar.gz
-            plezy-linux-${{ matrix.arch }}.deb
-            plezy-linux-${{ matrix.arch }}.rpm
-            plezy-linux-${{ matrix.arch }}.pkg.tar.zst
-            plezy-linux-${{ matrix.arch }}.flatpak
-            plezy-linux-${{ matrix.arch }}.AppImage
-            plezy-linux-${{ matrix.arch }}.AppImage.zsync
+            ttplay-linux-${{ matrix.arch }}.tar.gz
+            ttplay-linux-${{ matrix.arch }}.deb
+            ttplay-linux-${{ matrix.arch }}.rpm
+            ttplay-linux-${{ matrix.arch }}.pkg.tar.zst
+            ttplay-linux-${{ matrix.arch }}.flatpak
+            ttplay-linux-${{ matrix.arch }}.AppImage
+            ttplay-linux-${{ matrix.arch }}.AppImage.zsync
 
   create-release:
     needs: [validate-trusted-ref, build-android, build-ios, build-macos, build-windows, package-windows, build-linux]
@@ -1017,7 +1017,7 @@ jobs:
           # macOS enclosure
           if [ -n "$MACOS_ED_SIG" ]; then
             cat >> appcast.xml << XMLEOF
-                <enclosure url="https://github.com/${{ github.repository }}/releases/download/${VERSION}/plezy-macos.dmg"
+                <enclosure url="https://github.com/${{ github.repository }}/releases/download/${VERSION}/ttplay-macos.dmg"
                            length="${MACOS_DMG_SIZE}" type="application/octet-stream"
                            sparkle:edSignature="${MACOS_ED_SIG}"
                            sparkle:os="macos" />
@@ -1027,7 +1027,7 @@ jobs:
           # Windows enclosure
           if [ -n "$WIN_ED_SIG" ]; then
             cat >> appcast.xml << XMLEOF
-                <enclosure url="https://github.com/${{ github.repository }}/releases/download/${VERSION}/plezy-windows-installer.exe"
+                <enclosure url="https://github.com/${{ github.repository }}/releases/download/${VERSION}/ttplay-windows-installer.exe"
                            length="${WIN_INSTALLER_SIZE}" type="application/octet-stream"
                            sparkle:edSignature="${WIN_ED_SIG}"
                            sparkle:installerArguments="/SILENT /SP-"
@@ -1053,20 +1053,20 @@ jobs:
           {
             echo 'files<<EOF'
             if [ "${{ inputs.build_android }}" = "true" ]; then
-              echo artifacts/android-apk/plezy-android-arm64-v8a.tar.gz
-              echo artifacts/android-apk/plezy-android-armeabi-v7a.tar.gz
-              echo artifacts/android-apk/plezy-android-x86_64.tar.gz
+              echo artifacts/android-apk/ttplay-android-arm64-v8a.tar.gz
+              echo artifacts/android-apk/ttplay-android-armeabi-v7a.tar.gz
+              echo artifacts/android-apk/ttplay-android-x86_64.tar.gz
             fi
             if [ "${{ inputs.build_ios }}" = "true" ]; then
-              echo artifacts/ios-ipa/plezy-ios.ipa
+              echo artifacts/ios-ipa/ttplay-ios.ipa
             fi
             if [ "${{ inputs.build_macos }}" = "true" ]; then
-              echo artifacts/macos-dmg/plezy-macos.dmg
+              echo artifacts/macos-dmg/ttplay-macos.dmg
             fi
             if [ "${{ inputs.build_windows }}" = "true" ]; then
-              echo artifacts/windows-x64-portable/plezy-windows-x64-portable.7z
-              echo artifacts/windows-arm64-portable/plezy-windows-arm64-portable.7z
-              echo artifacts/windows-installer/plezy-windows-installer.exe
+              echo artifacts/windows-x64-portable/ttplay-windows-x64-portable.7z
+              echo artifacts/windows-arm64-portable/ttplay-windows-arm64-portable.7z
+              echo artifacts/windows-installer/ttplay-windows-installer.exe
             fi
             if [ "${{ inputs.build_linux }}" = "true" ]; then
               echo 'artifacts/linux-x64/*'

@@ -1,9 +1,9 @@
 {
-  "app-id": "com.edde746.plezy",
+  "app-id": "com.ttai.ttplay",
   "runtime": "org.freedesktop.Platform",
   "runtime-version": "25.08",
   "sdk": "org.freedesktop.Sdk",
-  "command": "plezy",
+  "command": "ttplay",
   "finish-args": [
     "--share=network",
     "--share=ipc",
@@ -11,7 +11,7 @@
     "--socket=fallback-x11",
     "--socket=pulseaudio",
     "--device=all",
-    "--own-name=org.mpris.MediaPlayer2.com_edde746_plezy",
+    "--own-name=org.mpris.MediaPlayer2.com_ttai_ttplay",
     "--system-talk-name=org.freedesktop.NetworkManager",
     "--filesystem=xdg-run/os_media_controls_artwork:create",
     "--filesystem=xdg-run/discord-ipc-0",
@@ -33,25 +33,25 @@
   },
   "modules": [
     {
-      "name": "plezy",
+      "name": "ttplay",
       "buildsystem": "simple",
       "build-commands": [
-        "cp -a bundle /app/plezy",
-        "install -Dm755 plezy /app/bin/plezy",
-        "install -Dm644 com.edde746.plezy.desktop /app/share/applications/com.edde746.plezy.desktop",
-        "install -Dm644 com.edde746.plezy.metainfo.xml /app/share/metainfo/com.edde746.plezy.metainfo.xml",
-        "install -Dm644 plezy.png /app/share/icons/hicolor/512x512/apps/com.edde746.plezy.png",
-        "chmod 755 /app/plezy/plezy.sh",
-        "if test -f /app/plezy/lib/crashpad_handler; then chmod 755 /app/plezy/lib/crashpad_handler; fi",
-        "python3 relocate-caches.py /app/plezy"
+        "cp -a bundle /app/ttplay",
+        "install -Dm755 ttplay /app/bin/ttplay",
+        "install -Dm644 com.ttai.ttplay.desktop /app/share/applications/com.ttai.ttplay.desktop",
+        "install -Dm644 com.ttai.ttplay.metainfo.xml /app/share/metainfo/com.ttai.ttplay.metainfo.xml",
+        "install -Dm644 ttplay.png /app/share/icons/hicolor/512x512/apps/com.ttai.ttplay.png",
+        "chmod 755 /app/ttplay/ttplay.sh",
+        "if test -f /app/ttplay/lib/crashpad_handler; then chmod 755 /app/ttplay/lib/crashpad_handler; fi",
+        "python3 relocate-caches.py /app/ttplay"
       ],
       "sources": [
         { "type": "dir", "path": "bundle", "dest": "bundle" },
-        { "type": "file", "path": "plezy" },
+        { "type": "file", "path": "ttplay" },
         { "type": "file", "path": "relocate-caches.py" },
-        { "type": "file", "path": "com.edde746.plezy.desktop" },
-        { "type": "file", "path": "com.edde746.plezy.metainfo.xml" },
-        { "type": "file", "path": "plezy.png" }
+        { "type": "file", "path": "com.ttai.ttplay.desktop" },
+        { "type": "file", "path": "com.ttai.ttplay.metainfo.xml" },
+        { "type": "file", "path": "ttplay.png" }
       ]
     }
   ]

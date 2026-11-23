@@ -1,23 +1,23 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <component type="desktop-application">
-  <id>com.edde746.plezy</id>
+  <id>com.ttai.ttplay</id>
   <metadata_license>CC0-1.0</metadata_license>
   <project_license>GPL-3.0-only</project_license>
   <name>TTPlay</name>
   <summary>Watch and listen to your Plex, Jellyfin, and Emby libraries</summary>
-  <developer id="com.edde746">
-    <name>edde746</name>
+  <developer id="com.ttai">
+    <name>ttainet</name>
   </developer>
   <description>
-    <p>Plezy is a media client for Plex, Jellyfin, and Emby servers. Browse your
+    <p>TTPlay is a media client for Plex, Jellyfin, and Emby servers. Browse your
     libraries, stream video and music, and download media for offline playback.</p>
     <p>Playback uses MPV with support for subtitles, multiple audio tracks,
     playback speed controls, and hardware video decoding on supported systems.</p>
   </description>
-  <launchable type="desktop-id">com.edde746.plezy.desktop</launchable>
+  <launchable type="desktop-id">com.ttai.ttplay.desktop</launchable>
   <url type="homepage">https://play.ttai.net</url>
-  <url type="bugtracker">https://github.com/edde746/plezy/issues</url>
-  <url type="vcs-browser">https://github.com/edde746/plezy</url>
+  <url type="bugtracker">https://github.com/ttainet/TTPlay/issues</url>
+  <url type="vcs-browser">https://github.com/ttainet/TTPlay</url>
   <content_rating type="oars-1.1"/>
   <supports>
     <control>pointing</control>

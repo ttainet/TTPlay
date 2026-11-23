@@ -24,7 +24,7 @@
 	<array>
 		<dict>
 			<key>CFBundleURLName</key>
-			<string>com.ttainet.ttplay</string>
+			<string>com.ttai.ttplay</string>
 			<key>CFBundleURLSchemes</key>
 			<array>
 				<string>ttplay</string>
@@ -63,7 +63,7 @@
 	<key>SUEnableAutomaticChecks</key>
 	<false/>
 	<key>SUFeedURL</key>
-	<string>https://cdn.jsdelivr.net/gh/edde746/plezy@appcast/appcast.xml</string>
+	<string>https://cdn.jsdelivr.net/gh/ttainet/TTPlay@appcast/appcast.xml</string>
 	<key>SUPublicEDKey</key>
 	<string>q7t6eu1txRrqv1PeWDCRV95rFxnmD/D3GZWbUPMwUyU=</string>
 </dict>

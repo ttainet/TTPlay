@@ -1,10 +1,10 @@
-appId: com.edde746.plezy
+appId: com.ttai.ttplay
 ---
 - retry:
     maxRetries: 1
     commands:
       - launchApp:
-          appId: com.edde746.plezy
+          appId: com.ttai.ttplay
           clearState: true
           permissions:
             all: allow

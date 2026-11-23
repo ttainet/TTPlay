@@ -44,9 +44,9 @@ function New-AppxManifest {
     # a single character. Together they yield package family name
     # edde746.Plezy_13q3sv6jzathm. Identity/@Name is also constrained to
     # '[-.A-Za-z0-9]+' by the schema, so it can never carry an underscore.
-    $IdentityName = "edde746.Plezy"
+    $IdentityName = "ttai.TTPlay"
     $Publisher = "CN=AA9C53CB-AD3C-48DA-B3E3-D1E8986D4E25"
-    $PublisherDisplayName = "edde746"
+    $PublisherDisplayName = "TTPlay"
 
     # One template for both architectures, which can therefore not drift apart;
     # ProcessorArchitecture is the only difference between them.
@@ -248,11 +248,11 @@ foreach ($Architecture in $BuildDirs.Keys) {
 
     Write-Host "Packing $Architecture..." -ForegroundColor Cyan
     Invoke-SdkTool -Tool $MakeAppx -Arguments @(
-        "pack", "/d", $Staging, "/p", (Join-Path $PackageDir "plezy-$Architecture.msix"), "/o"
+        "pack", "/d", $Staging, "/p", (Join-Path $PackageDir "ttplay-$Architecture.msix"), "/o"
     )
 }
 
-$Bundle = Join-Path $ResolvedOutput "plezy-windows.msixbundle"
+$Bundle = Join-Path $ResolvedOutput "ttplay-windows.msixbundle"
 Write-Host "`nBundling $($BuildDirs.Count) package(s)..." -ForegroundColor Cyan
 Invoke-SdkTool -Tool $MakeAppx -Arguments @(
     "bundle", "/d", $PackageDir, "/p", $Bundle, "/bv", $MsixVersion, "/o"

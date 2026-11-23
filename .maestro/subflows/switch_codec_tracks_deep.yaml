@@ -1,4 +1,4 @@
-appId: com.edde746.plezy
+appId: com.ttai.ttplay
 ---
 - assertVisible: "${AUDIO_TRACK}"
 - tapOn:

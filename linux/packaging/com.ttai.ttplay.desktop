@@ -2,9 +2,9 @@
 Type=Application
 Name=TTPlay
 Comment=A modern Plex and Jellyfin client for desktop and mobile
-Exec=plezy
-Icon=plezy
+Exec=ttplay
+Icon=ttplay
 Terminal=false
 Categories=AudioVideo;Video;Player;
 Keywords=plex;jellyfin;media;streaming;video;
-StartupWMClass=plezy
+StartupWMClass=ttplay

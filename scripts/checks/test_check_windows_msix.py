@@ -88,7 +88,7 @@ class WindowsMsixGuardTest(unittest.TestCase):
     def test_underscored_identity_name_is_rejected(self) -> None:
         # makeappx enforces the schema pattern on Identity/@Name before it reads
         # any payload, so an underscore makes the package unbuildable.
-        script = self._mutate('$IdentityName = "edde746.Plezy"', '$IdentityName = "edde746_Plezy"')
+        script = self._mutate('$IdentityName = "ttai.TTPlay"', '$IdentityName = "ttai_TTPlay"')
 
         result = self._run(script)
 
@@ -99,7 +99,7 @@ class WindowsMsixGuardTest(unittest.TestCase):
         # The reserved identity is what Store validation matches the upload
         # against, and what installed copies are keyed by.
         script = self._mutate(
-            '$PublisherDisplayName = "edde746"', '$PublisherDisplayName = "someone else"'
+            '$PublisherDisplayName = "TTPlay"', '$PublisherDisplayName = "someone else"'
         )
 
         result = self._run(script)

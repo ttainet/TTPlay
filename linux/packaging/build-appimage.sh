@@ -41,7 +41,7 @@ case "$ARCH_SUFFIX" in
         ;;
 esac
 
-for file in plezy plezy.sh; do
+for file in ttplay ttplay.sh; do
     if [[ ! -f "$BUNDLE_DIR/$file" ]]; then
         echo "Error: $file not found in $BUNDLE_DIR" >&2
         exit 1
@@ -57,7 +57,7 @@ else
     exit 1
 fi
 
-OUTPUT_NAME="plezy-linux-$ARCH_SUFFIX.AppImage"
+OUTPUT_NAME="ttplay-linux-$ARCH_SUFFIX.AppImage"
 OUTPUT="$OUTPUT_DIR/$OUTPUT_NAME"
 
 TOOL_ARGS=(--no-appstream)
@@ -82,24 +82,24 @@ fi
 
 WORK_DIR="$(mktemp -d)"
 trap 'rm -rf "$WORK_DIR"' EXIT
-APPDIR="$WORK_DIR/Plezy.AppDir"
+APPDIR="$WORK_DIR/TTPlay.AppDir"
 
 echo "==> Assembling AppDir"
 cp -a "$BUNDLE_DIR" "$APPDIR"
 
-# plezy.sh resolves its own path with readlink -f, so as AppRun it finds the
+# ttplay.sh resolves its own path with readlink -f, so as AppRun it finds the
 # binary and lib/ at the root of the mounted image.
-chmod 0755 "$APPDIR/plezy.sh"
-ln -s plezy.sh "$APPDIR/AppRun"
+chmod 0755 "$APPDIR/ttplay.sh"
+ln -s ttplay.sh "$APPDIR/AppRun"
 
 # appimagetool reads the one .desktop file at the AppDir root and expects the
 # icon its Icon= names beside it; .DirIcon is what file managers show.
-cp "$SCRIPT_DIR/com.edde746.plezy.desktop" "$APPDIR/"
+cp "$SCRIPT_DIR/com.ttai.ttplay.desktop" "$APPDIR/"
 ICON_DIR="$APPDIR/usr/share/icons/hicolor/256x256/apps"
 mkdir -p "$ICON_DIR"
-"$IMAGEMAGICK" "$PROJECT_ROOT/assets/plezy.png" -resize 256x256 "$ICON_DIR/plezy.png"
-ln -s usr/share/icons/hicolor/256x256/apps/plezy.png "$APPDIR/plezy.png"
-ln -s plezy.png "$APPDIR/.DirIcon"
+"$IMAGEMAGICK" "$PROJECT_ROOT/assets/plezy.png" -resize 256x256 "$ICON_DIR/ttplay.png"
+ln -s usr/share/icons/hicolor/256x256/apps/ttplay.png "$APPDIR/ttplay.png"
+ln -s ttplay.png "$APPDIR/.DirIcon"
 
 echo "==> Building $OUTPUT_NAME"
 rm -f "$OUTPUT" "$OUTPUT.zsync"

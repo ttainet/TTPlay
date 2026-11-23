@@ -62,7 +62,7 @@ require(
     "the uninstall subkey must be the shared AppId with Inno's _is1 suffix",
 )
 require(
-    "OutputBaseFilename=plezy-windows-installer" in iss,
+    "OutputBaseFilename=ttplay-windows-installer" in iss,
     "the release asset name is referenced by the appcast, winget and the website",
 )
 require(
