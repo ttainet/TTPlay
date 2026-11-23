@@ -93,7 +93,7 @@ class _AuthScreenState extends State<AuthScreen> {
   Future<void> _ensureLocalSessionReady({required bool includeLocalLibrary}) async {
     final ttplayBinder = _maybeTtplayBinder();
     if (ttplayBinder != null) {
-      await ttplayBinder.syncFromSession(refreshExternalServers: !includeLocalLibrary);
+      await ttplayBinder.syncFromSession(refreshExternalServers: !includeLocalLibrary, awaitCloudSync: false);
       if (!mounted) return;
     } else {
       final local = context.read<LocalLibraryClient?>();

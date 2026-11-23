@@ -2761,7 +2761,7 @@ class _SetupScreenState extends State<SetupScreen> with MountedSetStateMixin {
       if (!mounted) return;
     } else if (appSession.isSelfHosted) {
       try {
-        await context.read<TtplaySessionBinder>().syncFromSession(refreshExternalServers: true);
+        await context.read<TtplaySessionBinder>().syncFromSession(refreshExternalServers: true, awaitCloudSync: false);
       } catch (e, st) {
         appLogger.e('Setup: failed to prepare the self-hosted session', error: e, stackTrace: st);
       }

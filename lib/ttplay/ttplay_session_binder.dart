@@ -152,7 +152,7 @@ class TtplaySessionBinder extends ChangeNotifier {
   }
 
   /// Reconciles server registrations with the current [AppSessionController] state.
-  Future<void> syncFromSession({bool refreshExternalServers = true}) async {
+  Future<void> syncFromSession({bool refreshExternalServers = true, bool awaitCloudSync = true}) async {
     if (_disposed) return;
     final gen = ++_syncGeneration;
 
@@ -180,10 +180,14 @@ class TtplaySessionBinder extends ChangeNotifier {
           if (!_disposed) notifyListeners();
         }
         if (refreshExternalServers) {
-          try {
-            await syncCloudProjection(full: false);
-          } catch (e) {
-            appLogger.w('Initial media_library cloud projection sync failed: $e');
+          if (awaitCloudSync) {
+            try {
+              await syncCloudProjection(full: false);
+            } catch (e) {
+              appLogger.w('Initial media_library cloud projection sync failed: $e');
+            }
+          } else {
+            unawaited(_triggerSafeIncrementalProjection());
           }
         }
         return;
@@ -218,7 +222,15 @@ class TtplaySessionBinder extends ChangeNotifier {
         if (!_disposed) notifyListeners();
       }
       if (refreshExternalServers) {
-        await this.refreshExternalServers();
+        if (awaitCloudSync) {
+          await this.refreshExternalServers();
+        } else {
+          unawaited(
+            this.refreshExternalServers().catchError((Object e) {
+              appLogger.w('Background external server refresh failed: $e');
+            }),
+          );
+        }
       }
       return;
     }

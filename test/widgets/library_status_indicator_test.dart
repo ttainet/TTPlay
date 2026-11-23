@@ -444,4 +444,95 @@ void main() {
     binder.dispose();
     await tester.pump();
   });
+
+  test('TtplaySessionBinder.syncFromSession(awaitCloudSync: false) returns without waiting for slow cloud snapshot', () async {
+    resetSharedPreferencesForTest();
+    driftRuntimeOptions.dontWarnAboutMultipleDatabases = true;
+
+    final snapshotStarted = Completer<void>();
+    final snapshotGate = Completer<void>();
+    final sseController = StreamController<List<int>>();
+
+    final repo = LibraryRepository(db);
+    final mounts = MountManager(MountRegistry(db));
+    addTearDown(mounts.dispose);
+    final localClient = LocalLibraryClient(repository: repo, mounts: mounts);
+    final serverManager = MultiServerManager();
+    addTearDown(serverManager.dispose);
+    final sessionController = AppSessionController(db: db, mountManager: mounts);
+    final liveSession = SelfHostedSession(
+      serverUrl: 'https://play.ttai.net',
+      username: 'alice',
+      accessToken: 'usr_async',
+      householdId: 'hh_1',
+      memberId: 'mem_1',
+    );
+    sessionController.debugSetStateForTesting(mode: AppLoginMode.selfHosted, selfHostedSession: liveSession);
+
+    final binder = TtplaySessionBinder(
+      sessionController: sessionController,
+      serverManager: serverManager,
+      localLibraryClient: localClient,
+      isTv: () => false,
+      httpClientFactory: () => MockClient.streaming((req, _) async {
+        final path = req.url.path;
+        if (req.method == 'GET' && path == '/api/v1/sources') {
+          return http.StreamedResponse(Stream.value(utf8.encode(jsonEncode({'code': 0, 'sources': const []}))), 200);
+        }
+        if (req.method == 'GET' && path == '/api/v1/library/snapshot') {
+          if (!snapshotStarted.isCompleted) snapshotStarted.complete();
+          await snapshotGate.future;
+          return http.StreamedResponse(
+            Stream.value(
+              utf8.encode(
+                jsonEncode({
+                  'code': 0,
+                  'snapshot_seq': 1,
+                  'total': 0,
+                  'page': 1,
+                  'page_size': 100,
+                  'has_more': false,
+                  'items': const [],
+                }),
+              ),
+            ),
+            200,
+          );
+        }
+        if (req.method == 'GET' && path == '/api/v1/events') {
+          return http.StreamedResponse(sseController.stream, 200);
+        }
+        if (req.method == 'GET' && path.startsWith('/api/v1/')) {
+          return http.StreamedResponse(
+            Stream.value(utf8.encode(jsonEncode({'code': 0, 'items': const [], 'lists': const [], 'rules': const []}))),
+            200,
+          );
+        }
+        return http.StreamedResponse(Stream.value(utf8.encode(jsonEncode({'error': 'not_found'}))), 404);
+      }),
+    );
+
+    // Must return without blocking on the held /api/v1/library/snapshot response.
+    await binder.syncFromSession(refreshExternalServers: true, awaitCloudSync: false);
+    expect(binder.isSelfHostedActive, isTrue);
+
+    await snapshotStarted.future;
+    expect(snapshotGate.isCompleted, isFalse);
+
+    final finished = Completer<void>();
+    void onBinderChange() {
+      final engine = binder.cloudProjectionEngine;
+      if (engine != null && !engine.isSyncing && engine.lastSeq >= 1 && !finished.isCompleted) {
+        finished.complete();
+      }
+    }
+
+    binder.addListener(onBinderChange);
+    snapshotGate.complete();
+    await finished.future.timeout(const Duration(seconds: 5));
+    binder.removeListener(onBinderChange);
+
+    await sseController.close();
+    binder.dispose();
+  });
 }
