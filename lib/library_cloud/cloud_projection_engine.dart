@@ -5,6 +5,7 @@ import 'package:drift/drift.dart';
 import '../database/app_database.dart';
 import '../library/deterministic_keys.dart';
 import '../library/library_repository.dart';
+import '../storage/storage_path.dart';
 import '../utils/app_logger.dart';
 import 'cloud_mount_mirror.dart';
 import 'projection_sync.dart';
@@ -187,6 +188,16 @@ class CloudProjectionEngine {
       }
     }
 
+    // Project unmatched/pending cloud files before pruning stale cloud files so
+    // their file keys are preserved and orphaned unmatched items are cleaned up.
+    final unmatchedRes = await _projectUnmatchedFilesFromServer(
+      knownMountIds: knownMountIds,
+      projectedCloudFileKeys: projectedCloudFileKeys,
+      pruneStaleUnmatched: false,
+    );
+    itemsCount += unmatchedRes.itemsProjected;
+    filesCount += unmatchedRes.filesProjected;
+
     // Remove stale cloud files no longer present in the cloud snapshot.
     await _pruneStaleCloudFiles(projectedCloudFileKeys);
     final pruned = await pruneEmptyProjectedItems();
@@ -235,6 +246,7 @@ class CloudProjectionEngine {
       const structuralEntities = {'source', 'folder', 'source_folder', 'pending_deletion'};
       var needsFullSnapshot = changesPage.hasMore;
       var hasUserDataChange = false;
+      var hasFileChange = false;
       final changedItemsById = <int, Map<String, dynamic>>{};
 
       for (final c in changesPage.changes) {
@@ -268,6 +280,7 @@ class CloudProjectionEngine {
             needsFullSnapshot = true;
             break;
           }
+          hasFileChange = true;
           // `media_file` upserts before scraping (pending item_id) or `media_spec`
           // do not require re-downloading all snapshot pages.
           continue;
@@ -282,18 +295,34 @@ class CloudProjectionEngine {
       }
 
       if (changedItemsById.isEmpty) {
+        var itemsProjected = 0;
+        var filesProjected = 0;
+        var pruned = 0;
+        if (hasFileChange) {
+          final knownMountIds = (await db.select(db.mounts).get()).map((m) => m.id).toSet();
+          final unmatchedRes = await _projectUnmatchedFilesFromServer(
+            knownMountIds: knownMountIds,
+            pruneStaleUnmatched: true,
+          );
+          itemsProjected = unmatchedRes.itemsProjected;
+          filesProjected = unmatchedRes.filesProjected;
+          pruned = unmatchedRes.pruned;
+        }
         if (hasUserDataChange) {
           await _syncUserStateFromServer();
+        }
+        final hasChanges = hasUserDataChange || itemsProjected > 0 || filesProjected > 0 || pruned > 0;
+        if (hasChanges) {
           onLibraryUpdated?.call();
         }
         _lastSeq = changesPage.nextSinceSeq > _lastSeq ? changesPage.nextSinceSeq : changesPage.latestSeq;
         return CloudSyncResult(
           fullReset: false,
           latestSeq: _lastSeq,
-          itemsProjected: 0,
-          filesProjected: 0,
-          emptyShellsPruned: 0,
-          hasChanges: hasUserDataChange,
+          itemsProjected: itemsProjected,
+          filesProjected: filesProjected,
+          emptyShellsPruned: pruned,
+          hasChanges: hasChanges,
         );
       }
 
@@ -444,6 +473,17 @@ class CloudProjectionEngine {
         }
       });
 
+      var prunedCount = 0;
+      if (hasFileChange || await _hasProjectedUnmatchedItems()) {
+        final unmatchedRes = await _projectUnmatchedFilesFromServer(
+          knownMountIds: knownMountIds,
+          pruneStaleUnmatched: true,
+        );
+        itemsCount += unmatchedRes.itemsProjected;
+        filesCount += unmatchedRes.filesProjected;
+        prunedCount = unmatchedRes.pruned;
+      }
+
       if (hasUserDataChange) {
         await _syncUserStateFromServer();
       }
@@ -456,7 +496,7 @@ class CloudProjectionEngine {
         latestSeq: _lastSeq,
         itemsProjected: itemsCount,
         filesProjected: filesCount,
-        emptyShellsPruned: 0,
+        emptyShellsPruned: prunedCount,
         hasChanges: true,
       );
     }, queueIfBusy: true);
@@ -468,7 +508,16 @@ class CloudProjectionEngine {
   /// local scrapers.
   Future<bool> hydrateItemDetailFromCloud(int localItemId, String workKey) {
     final trimmedKey = workKey.trim();
-    if (trimmedKey.isEmpty) return Future<bool>.value(false);
+    if (trimmedKey.isEmpty || trimmedKey.startsWith('cloud:unmatched:')) {
+      return Future<bool>.value(false);
+    }
+    int? cloudServerItemId;
+    if (trimmedKey.startsWith('cloud:')) {
+      cloudServerItemId = int.tryParse(trimmedKey.substring('cloud:'.length));
+      if (cloudServerItemId == null || cloudServerItemId <= 0) {
+        return Future<bool>.value(false);
+      }
+    }
     final existing = _inFlightDetailHydrations[trimmedKey];
     if (existing != null) return existing;
 
@@ -480,14 +529,9 @@ class CloudProjectionEngine {
     late final Future<bool> future;
     future = () async {
       try {
-        late final Map<String, dynamic> detail;
-        if (trimmedKey.startsWith('cloud:')) {
-          final sid = int.tryParse(trimmedKey.substring('cloud:'.length));
-          if (sid == null || sid <= 0) return false;
-          detail = await syncClient.fetchItemDetail(sid);
-        } else {
-          detail = await syncClient.fetchItemDetailByWorkKey(trimmedKey);
-        }
+        final detail = cloudServerItemId != null
+            ? await syncClient.fetchItemDetail(cloudServerItemId)
+            : await syncClient.fetchItemDetailByWorkKey(trimmedKey);
         if (detail.isEmpty) return false;
 
         final knownMountIds = (await db.select(db.mounts).get()).map((m) => m.id).toSet();
@@ -875,6 +919,7 @@ class CloudProjectionEngine {
     int? ownerFileId,
     String? forceRole,
     Set<String>? knownMountIds,
+    String matchState = LibraryMatchStates.matched,
   }) async {
     final sourceId = (raw['source_id'] as String? ?? '').trim();
     final path = (raw['path'] as String? ?? '').trim();
@@ -906,7 +951,7 @@ class CloudProjectionEngine {
       role: Value((forceRole ?? (raw['role'] as String?) ?? LibraryFileRoles.video).toLowerCase()),
       itemId: Value(localItemId),
       ownerFileId: Value(ownerFileId),
-      matchState: const Value(LibraryMatchStates.matched),
+      matchState: Value(matchState),
       versionLabel: Value(_nonEmptyString(raw['version_label'])),
       language: Value(_nonEmptyString(raw['language'])),
       addedAt: Value((raw['added_at'] as num?)?.toInt() ?? nowMs),
@@ -918,6 +963,164 @@ class CloudProjectionEngine {
     }
     final insertedId = await db.into(db.libraryFiles).insert(companion);
     return (fileId: insertedId, fileKey: fileKey);
+  }
+
+  static String _titleFromUnmatchedPath(String path) {
+    final base = StoragePath.name(path);
+    if (base.isEmpty) return path;
+    final dot = base.lastIndexOf('.');
+    if (dot > 0 && dot < base.length - 1) {
+      return base.substring(0, dot);
+    }
+    return base;
+  }
+
+  Future<bool> _hasProjectedUnmatchedItems() async {
+    final row = await db
+        .customSelect("SELECT 1 FROM library_items WHERE work_key LIKE 'cloud:unmatched:%' LIMIT 1")
+        .getSingleOrNull();
+    return row != null;
+  }
+
+  Future<({int itemsProjected, int filesProjected, int pruned})> _projectUnmatchedFilesFromServer({
+    required Set<String> knownMountIds,
+    Set<String>? projectedCloudFileKeys,
+    bool pruneStaleUnmatched = false,
+  }) async {
+    final collected = <Map<String, dynamic>>[];
+    try {
+      const pageSize = 200;
+      const maxPages = 50;
+      var page = 1;
+      var fetched = 0;
+      while (page <= maxPages) {
+        final res = await syncClient.listUnmatched(page: page, pageSize: pageSize, state: 'all');
+        collected.addAll(res.items);
+        fetched += res.items.length;
+        if (res.items.isEmpty || fetched >= res.total || res.items.length < pageSize) {
+          break;
+        }
+        page++;
+      }
+    } catch (e) {
+      appLogger.d('CloudProjectionEngine: unmatched projection skipped: $e');
+      return (itemsProjected: 0, filesProjected: 0, pruned: 0);
+    }
+
+    var itemsCount = 0;
+    var filesCount = 0;
+    var prunedCount = 0;
+    final activeUnmatchedFileKeys = <String>{};
+
+    await db.transaction(() async {
+      final matchedCloudKeys =
+          projectedCloudFileKeys ??
+          await () async {
+            final rows = await (db.select(db.libraryFiles)
+                  ..where(
+                    (f) =>
+                        f.mountId.like('${CloudMountMirror.cloudMountPrefix}%') &
+                        f.matchState.equals(LibraryMatchStates.matched),
+                  ))
+                .get();
+            return <String>{
+              for (final r in rows)
+                if (r.fileKey != null && r.fileKey!.isNotEmpty) r.fileKey!,
+            };
+          }();
+
+      final nowMs = DateTime.now().millisecondsSinceEpoch;
+      for (final raw in collected) {
+        final rawMatchState = (raw['match_state'] as String? ?? 'unmatched').trim().toLowerCase();
+        if (rawMatchState != LibraryMatchStates.unmatched && rawMatchState != LibraryMatchStates.pending) {
+          continue;
+        }
+        final sourceId = (raw['source_id'] as String? ?? '').trim();
+        final path = (raw['path'] as String? ?? '').trim();
+        if (sourceId.isEmpty || path.isEmpty) continue;
+
+        final mountId = CloudMountMirror.mountIdForSource(sourceId);
+        if (!knownMountIds.contains(mountId)) continue;
+
+        final fileKey = DeterministicKeys.generateFileId(sourceId: mountId, mountRelativePath: path);
+        if (matchedCloudKeys.contains(fileKey)) continue;
+
+        final serverFileId = (raw['id'] as num?)?.toInt() ?? 0;
+        final workKey = serverFileId > 0 ? 'cloud:unmatched:$serverFileId' : 'cloud:unmatched:$fileKey';
+        final title = _titleFromUnmatchedPath(path);
+        final parsed = raw['parsed'];
+        final year = parsed is Map ? (parsed['year'] as num?)?.toInt() : null;
+        final addedAtMs = (raw['added_at'] as num?)?.toInt() ?? nowMs;
+        final updatedAtMs = (raw['updated_at'] as num?)?.toInt() ?? nowMs;
+        final fileMatchState = rawMatchState == LibraryMatchStates.pending
+            ? LibraryMatchStates.pending
+            : LibraryMatchStates.unmatched;
+
+        final existingItem = await (db.select(
+          db.libraryItems,
+        )..where((t) => t.workKey.equals(workKey))).getSingleOrNull();
+        final itemCompanion = LibraryItemsCompanion(
+          workKey: Value(workKey),
+          kind: const Value(LibraryKinds.movie),
+          libraryType: const Value(LibraryTypes.pending),
+          parentId: const Value(null),
+          showId: const Value(null),
+          title: Value(title),
+          sortTitle: Value(title.toLowerCase()),
+          year: Value(year),
+          addedAt: Value(addedAtMs),
+          updatedAt: Value(updatedAtMs),
+          scrapedAt: fileMatchState == LibraryMatchStates.pending ? const Value(null) : Value(updatedAtMs),
+        );
+
+        final int localItemId;
+        if (existingItem != null) {
+          await (db.update(db.libraryItems)..where((t) => t.id.equals(existingItem.id))).write(itemCompanion);
+          localItemId = existingItem.id;
+        } else {
+          localItemId = await db.into(db.libraryItems).insert(itemCompanion);
+        }
+        itemsCount++;
+
+        final fileRes = await _upsertProjectedFile(
+          localItemId: localItemId,
+          raw: raw,
+          knownMountIds: knownMountIds,
+          matchState: fileMatchState,
+        );
+        if (fileRes != null) {
+          activeUnmatchedFileKeys.add(fileRes.fileKey);
+          projectedCloudFileKeys?.add(fileRes.fileKey);
+          filesCount++;
+        }
+      }
+
+      if (pruneStaleUnmatched) {
+        final existingUnmatchedFiles = await (db.select(db.libraryFiles)
+              ..where(
+                (f) =>
+                    f.mountId.like('${CloudMountMirror.cloudMountPrefix}%') &
+                    f.matchState.isIn([LibraryMatchStates.unmatched, LibraryMatchStates.pending]),
+              ))
+            .get();
+        for (final f in existingUnmatchedFiles) {
+          final key = f.fileKey;
+          if (key == null || !activeUnmatchedFileKeys.contains(key)) {
+            await (db.delete(db.libraryFiles)..where((t) => t.id.equals(f.id))).go();
+            prunedCount++;
+          }
+        }
+        final deletedOrphanItems = await db.customUpdate(
+          "DELETE FROM library_items WHERE work_key LIKE 'cloud:unmatched:%' AND NOT EXISTS "
+          "(SELECT 1 FROM library_files f WHERE f.item_id = library_items.id AND f.role = 'video')",
+          updates: {db.libraryItems},
+          updateKind: UpdateKind.delete,
+        );
+        prunedCount += deletedOrphanItems;
+      }
+    });
+
+    return (itemsProjected: itemsCount, filesProjected: filesCount, pruned: prunedCount);
   }
 
   Future<void> _pruneStaleCloudFilesForItem(int localItemId, Set<String> keepFileKeys) async {

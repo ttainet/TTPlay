@@ -1054,6 +1054,257 @@ void main() {
       expect(driverListCalls, 1);
     },
   );
+
+  test(
+    'CloudProjectionEngine projects unmatched and pending cloud files into pending shelf and prunes them once matched or ignored',
+    () async {
+      resetSharedPreferencesForTest();
+      final prevOverrides = HttpOverrides.current;
+      HttpOverrides.global = null;
+      addTearDown(() => HttpOverrides.global = prevOverrides);
+
+      final db = AppDatabase.forTesting(NativeDatabase.memory());
+      addTearDown(db.close);
+      final mountRegistry = MountRegistry(db);
+
+      final hk = CloudKeyring.generateMasterKey();
+      final webdavCipher = await CloudKeyring.encryptCredentialJson(
+        masterKey: hk,
+        payload: {'base_url': 'http://localhost:8085', 'username': 'testuser', 'password': 'testpass123', 'root_path': '/'},
+      );
+
+      var phase = 1;
+      final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+      addTearDown(() => server.close(force: true));
+
+      server.listen((req) async {
+        final path = req.uri.path;
+        if (req.method == 'GET' && path == '/api/v1/sources') {
+          req.response.statusCode = 200;
+          req.response.write(
+            jsonEncode({
+              'code': 0,
+              'sources': [
+                {
+                  'id': 'src_dav',
+                  'kind': 'webdav',
+                  'name': 'Local WebDAV',
+                  'identity_key': 'hmac_dav',
+                  'status': 'active',
+                  'folders': [
+                    {'id': 'f1', 'source_id': 'src_dav', 'path': '/'},
+                  ],
+                },
+              ],
+            }),
+          );
+        } else if (req.method == 'GET' && path == '/api/v1/sources/src_dav/credential') {
+          req.response.statusCode = 200;
+          req.response.write(
+            jsonEncode({
+              'code': 0,
+              'credential': {
+                'source_id': 'src_dav',
+                'ciphertext': webdavCipher,
+                'version': 1,
+                'key_epoch': 1,
+                'status': 'valid',
+              },
+            }),
+          );
+        } else if (req.method == 'GET' && path == '/api/v1/library/snapshot') {
+          final kind = req.uri.queryParameters['kind'];
+          final items = <Map<String, dynamic>>[];
+          if (phase == 2 && kind == 'movie') {
+            items.add({
+              'id': 300,
+              'work_key': 'tmdb:movie:999',
+              'kind': 'movie',
+              'library_type': 'movie',
+              'title': 'Sample Movie',
+              'sort_title': 'sample movie',
+              'year': 2024,
+              'added_at': 1700000000000,
+              'updated_at': 1700000001000,
+              'files': [
+                {
+                  'id': 101,
+                  'source_id': 'src_dav',
+                  'path': '/Movies/Sample Movie (2024)/Sample Movie (2024).mkv',
+                  'size': 2048,
+                  'role': 'video',
+                },
+              ],
+            });
+          }
+          req.response.statusCode = 200;
+          req.response.write(
+            jsonEncode({
+              'code': 0,
+              'snapshot_seq': phase == 1 ? 10 : 12,
+              'total': items.length,
+              'page': 1,
+              'page_size': 200,
+              'has_more': false,
+              'items': items,
+            }),
+          );
+        } else if (req.method == 'GET' && path == '/api/v1/library/unmatched') {
+          final unmatchedItems = phase == 1
+              ? [
+                  {
+                    'id': 101,
+                    'source_id': 'src_dav',
+                    'source_name': 'Local WebDAV',
+                    'path': '/Movies/Sample Movie (2024)/Sample Movie (2024).mkv',
+                    'size': 2048,
+                    'match_state': 'unmatched',
+                    'parsed': {'year': 2024},
+                    'added_at': 1700000000000,
+                    'updated_at': 1700000000000,
+                  },
+                  {
+                    'id': 102,
+                    'source_id': 'src_dav',
+                    'source_name': 'Local WebDAV',
+                    'path': '/Movies/测试电影 (2025)/测试电影 (2025).mp4',
+                    'size': 1024,
+                    'match_state': 'pending',
+                    'added_at': 1700000000000,
+                    'updated_at': 1700000000000,
+                  },
+                  {
+                    'id': 103,
+                    'source_id': 'src_dav',
+                    'source_name': 'Local WebDAV',
+                    'path': '/Movies/Ignored.mkv',
+                    'size': 512,
+                    'match_state': 'ignored',
+                    'added_at': 1700000000000,
+                    'updated_at': 1700000000000,
+                  },
+                ]
+              : [
+                  {
+                    'id': 101, // Even if still echoed briefly, matched file must be skipped!
+                    'source_id': 'src_dav',
+                    'source_name': 'Local WebDAV',
+                    'path': '/Movies/Sample Movie (2024)/Sample Movie (2024).mkv',
+                    'size': 2048,
+                    'match_state': 'unmatched',
+                    'added_at': 1700000000000,
+                    'updated_at': 1700000000000,
+                  },
+                  {
+                    'id': 104,
+                    'source_id': 'src_dav',
+                    'source_name': 'Local WebDAV',
+                    'path': '/TV/New Unknown.mkv',
+                    'size': 4096,
+                    'match_state': 'unmatched',
+                    'added_at': 1700000002000,
+                    'updated_at': 1700000002000,
+                  },
+                ];
+          req.response.statusCode = 200;
+          req.response.write(
+            jsonEncode({
+              'code': 0,
+              'items': unmatchedItems,
+              'total': unmatchedItems.length,
+              'page': 1,
+              'page_size': 200,
+            }),
+          );
+        } else if (req.method == 'GET' && path == '/api/v1/library/changes') {
+          req.response.statusCode = 200;
+          req.response.write(
+            jsonEncode({
+              'code': 0,
+              'latest_seq': 12,
+              'next_since_seq': 12,
+              'has_more': false,
+              'reset_required': false,
+              'changes': [
+                {
+                  'seq': 11,
+                  'entity': 'item',
+                  'op': 'upsert',
+                  'data': {
+                    'id': 300,
+                    'work_key': 'tmdb:movie:999',
+                    'kind': 'movie',
+                    'library_type': 'movie',
+                    'title': 'Sample Movie',
+                    'sort_title': 'sample movie',
+                    'year': 2024,
+                    'added_at': 1700000000000,
+                    'updated_at': 1700000001000,
+                    'files': [
+                      {
+                        'id': 101,
+                        'source_id': 'src_dav',
+                        'path': '/Movies/Sample Movie (2024)/Sample Movie (2024).mkv',
+                        'size': 2048,
+                        'role': 'video',
+                      },
+                    ],
+                  },
+                },
+                {'seq': 12, 'entity': 'media_file', 'op': 'upsert'},
+              ],
+            }),
+          );
+        } else if (req.method == 'GET' && (path == '/api/v1/userdata/progress' || path == '/api/v1/userdata/favorites')) {
+          req.response.statusCode = 200;
+          req.response.write(jsonEncode({'code': 0, 'items': <Map<String, dynamic>>[]}));
+        } else {
+          req.response.statusCode = 404;
+        }
+        await req.response.close();
+      });
+
+      final api = CloudApiClient(baseUrl: 'http://127.0.0.1:${server.port}', accessToken: 'tok');
+      addTearDown(api.close);
+      final repo = CloudSourceRepository(api: api, masterKeyProvider: () => hk, keyEpoch: 1);
+      final mirror = CloudMountMirror(sourceRepository: repo, mountRegistry: mountRegistry);
+      final sync = CloudProjectionSyncClient(api);
+      final engine = CloudProjectionEngine(db: db, syncClient: sync, mountMirror: mirror);
+      addTearDown(engine.stopListeningEvents);
+
+      final libRepo = LibraryRepository(db);
+
+      // Phase 1: full snapshot projects unmatched + pending cloud files onto pending shelf, skipping ignored.
+      final snapRes = await engine.syncFullSnapshot();
+      expect(snapRes.itemsProjected, 2);
+      expect(snapRes.filesProjected, 2);
+
+      final counts1 = await libRepo.pendingCounts();
+      expect(counts1.queued, 1);
+      expect(counts1.unmatched, 1);
+
+      final pendingPage1 = await libRepo.queryTitles(const LibraryQuery(libraryType: LibraryTypes.pending));
+      expect(pendingPage1.items.map((v) => v.item.title), unorderedEquals(['Sample Movie (2024)', '测试电影 (2025)']));
+      final sampleItem = pendingPage1.items.firstWhere((v) => v.item.title == 'Sample Movie (2024)').item;
+      expect(sampleItem.year, 2024);
+      expect(await engine.hydrateItemDetailFromCloud(sampleItem.id, sampleItem.workKey!), isFalse);
+
+      // Phase 2: incremental sync matches 101, ignores 102, and adds unmatched 104.
+      phase = 2;
+      final incRes = await engine.syncIncremental();
+      expect(incRes.hasChanges, isTrue);
+
+      final pendingPage2 = await libRepo.queryTitles(const LibraryQuery(libraryType: LibraryTypes.pending));
+      expect(pendingPage2.items.map((v) => v.item.title), ['New Unknown']);
+
+      final moviePage2 = await libRepo.queryTitles(const LibraryQuery(libraryType: LibraryTypes.movie));
+      expect(moviePage2.items.map((v) => v.item.title), ['Sample Movie']);
+      final oldUnmatched = await (db.select(
+        db.libraryItems,
+      )..where((t) => t.workKey.equals('cloud:unmatched:101'))).getSingleOrNull();
+      expect(oldUnmatched, isNull);
+    },
+  );
 }
 
 class _FakeQuarkIncrementalDriver implements StorageDriver {

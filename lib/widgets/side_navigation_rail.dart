@@ -901,6 +901,8 @@ class SideNavigationRailState extends State<SideNavigationRail> with MountedSetS
     final t = tokens(context);
     final librariesProvider = context.watch<LibrariesProvider>();
     final hiddenLibrariesProvider = context.watch<HiddenLibrariesProvider>();
+    final multiServer = context.watch<MultiServerProvider>();
+    final serverManager = multiServer.serverManager;
     final hiddenKeys = hiddenLibrariesProvider.hiddenLibraryKeys;
 
     final allLibraries = librariesProvider.libraries;
@@ -912,17 +914,30 @@ class SideNavigationRailState extends State<SideNavigationRail> with MountedSetS
         if (_profileConnectionIds.contains(conn.id) && conn.serverMachineId.isNotEmpty)
           conn.serverMachineId: (name: conn.serverName, backend: conn.backend),
     };
+    for (final serverId in serverManager.selfHostedServerIds) {
+      if (serverId == LocalLibraryClient.localServerId || serverId == TtplayServerClient.primaryServerId) {
+        continue;
+      }
+      final client = multiServer.getClientForServer(ServerId(serverId));
+      if (client == null) continue;
+      _remoteSources.putIfAbsent(
+        serverId,
+        () => (name: client.serverName ?? serverId, backend: client.backend),
+      );
+    }
     for (final lib in allLibraries) {
       final serverId = lib.serverId;
       if (serverId != null &&
           serverId != LocalLibraryClient.localServerId &&
           serverId != TtplayServerClient.primaryServerId) {
         // Persisted bindings are authoritative for local MediaBrowser servers;
-        // external servers proxied by ttplay-server (`ttplay-ext:*`) are
-        // scoped by the active self-hosted session rather than profile bindings.
+        // external servers proxied by ttplay-server (`ttplay-ext:*`) or
+        // mounted directly from the active self-hosted session are scoped by
+        // that session rather than local profile bindings.
         if (_hasProfileScope &&
             lib.backend.usesMediaBrowserApi &&
             !TtplayExternalServerClient.isExternalServerId(serverId) &&
+            !serverManager.isSelfHostedServer(serverId) &&
             !_remoteSources.containsKey(serverId)) {
           continue;
         }
@@ -940,7 +955,7 @@ class SideNavigationRailState extends State<SideNavigationRail> with MountedSetS
     final isCollapsed = !_shouldExpand;
     final effectiveCollapsedWidth = collapsedWidthForContext(context);
     final horizontalPadding = horizontalPaddingForContext(context, isCollapsed: isCollapsed);
-    final hasLiveTv = context.watch<MultiServerProvider>().hasLiveTv;
+    final hasLiveTv = multiServer.hasLiveTv;
     // Nullable watch: rail tests (and any host without the profile session
     // scope) simply never show the Explore item.
     final hasExploreSource = context.watch<CatalogSourcesProvider?>()?.hasAnySource ?? false;

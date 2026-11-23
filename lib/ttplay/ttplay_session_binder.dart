@@ -62,6 +62,7 @@ class TtplaySessionBinder extends ChangeNotifier {
   TtplayServerClient? _primaryClient;
   List<TtplayExternalServerClient> _externalClients = const [];
   List<TtplayExternalServerSummary> _externalSummaries = const [];
+  Set<String> _directCloudExternalServerIds = const {};
   String? _boundSessionKey;
   Object? _lastExternalRefreshError;
   int _syncGeneration = 0;
@@ -109,18 +110,20 @@ class TtplaySessionBinder extends ChangeNotifier {
     if (_disposed) return;
     _syncGeneration++;
     if (_isMediaLibraryV1(session)) {
+      final removedDirect = _directCloudExternalServerIds;
       _apiClient = null;
       _adminService = null;
       _primaryClient = null;
       _externalClients = const [];
       _externalSummaries = const [];
+      _directCloudExternalServerIds = const {};
       _boundSessionKey = _sessionKeyFor(session);
       _lastExternalRefreshError = null;
       _bindCloudClients(session);
       configureLocalLibraryClientLabels(localLibraryClient);
       serverManager.clearSelfHostedServers();
       serverManager.registerLocalLibrary(localLibraryClient);
-      _syncVisibleServerIds(includeLocal: true);
+      _syncVisibleServerIds(includeLocal: true, removedDirectExternalIds: removedDirect);
       return;
     }
 
@@ -137,18 +140,20 @@ class TtplaySessionBinder extends ChangeNotifier {
     );
     configureTtplayServerClientLabels(primary);
 
+    final removedDirect = _directCloudExternalServerIds;
     _apiClient = api;
     _adminService = null;
     _bindCloudClients(session);
     _primaryClient = primary;
     _externalClients = const [];
     _externalSummaries = const [];
+    _directCloudExternalServerIds = const {};
     _boundSessionKey = _sessionKeyFor(session);
     _lastExternalRefreshError = null;
 
     serverManager.unregisterLocalLibrary();
     serverManager.registerSelfHostedServers(primary, const []);
-    _syncVisibleServerIds(includeLocal: false);
+    _syncVisibleServerIds(includeLocal: false, removedDirectExternalIds: removedDirect);
   }
 
   /// Reconciles server registrations with the current [AppSessionController] state.
@@ -162,12 +167,14 @@ class TtplaySessionBinder extends ChangeNotifier {
       if (_isMediaLibraryV1(session)) {
         final needsRebind = _cloudProjectionEngine == null || _boundSessionKey != sessionKey || _primaryClient != null;
         if (needsRebind) {
+          final removedDirect = _directCloudExternalServerIds;
           _apiClient?.close();
           _apiClient = null;
           _adminService = null;
           _primaryClient = null;
           _externalClients = const [];
           _externalSummaries = const [];
+          _directCloudExternalServerIds = const {};
           _boundSessionKey = sessionKey;
           _lastExternalRefreshError = null;
           _bindCloudClients(session);
@@ -176,7 +183,7 @@ class TtplaySessionBinder extends ChangeNotifier {
           await localLibraryClient.refreshMounts();
           if (_disposed || gen != _syncGeneration) return;
           serverManager.registerLocalLibrary(localLibraryClient);
-          _syncVisibleServerIds(includeLocal: true);
+          _syncVisibleServerIds(includeLocal: true, removedDirectExternalIds: removedDirect);
           if (!_disposed) notifyListeners();
         }
         if (refreshExternalServers) {
@@ -207,18 +214,20 @@ class TtplaySessionBinder extends ChangeNotifier {
         );
         configureTtplayServerClientLabels(primary);
 
+        final removedDirect = _directCloudExternalServerIds;
         _apiClient = api;
         _adminService = null;
         _bindCloudClients(session);
         _primaryClient = primary;
         _externalClients = const [];
         _externalSummaries = const [];
+        _directCloudExternalServerIds = const {};
         _boundSessionKey = sessionKey;
         _lastExternalRefreshError = null;
 
         serverManager.unregisterLocalLibrary();
         serverManager.registerSelfHostedServers(primary, const []);
-        _syncVisibleServerIds(includeLocal: false);
+        _syncVisibleServerIds(includeLocal: false, removedDirectExternalIds: removedDirect);
         if (!_disposed) notifyListeners();
       }
       if (refreshExternalServers) {
@@ -236,20 +245,22 @@ class TtplaySessionBinder extends ChangeNotifier {
     }
 
     if (sessionController.isOffline) {
+      final removedDirect = _directCloudExternalServerIds;
       _clearSelfHostedState();
       configureLocalLibraryClientLabels(localLibraryClient);
       await localLibraryClient.refreshMounts();
       if (_disposed || gen != _syncGeneration) return;
       serverManager.registerLocalLibrary(localLibraryClient);
-      _syncVisibleServerIds(includeLocal: true);
+      _syncVisibleServerIds(includeLocal: true, removedDirectExternalIds: removedDirect);
       if (!_disposed) notifyListeners();
       return;
     }
 
     // Logged out to mode selection: drop self-hosted clients while leaving any
     // previously registered LocalLibraryClient intact for Setup/Auth flows.
+    final removedDirect = _directCloudExternalServerIds;
     _clearSelfHostedState();
-    _syncVisibleServerIds(includeLocal: true);
+    _syncVisibleServerIds(includeLocal: true, removedDirectExternalIds: removedDirect);
     if (!_disposed) notifyListeners();
   }
 
@@ -303,7 +314,11 @@ class TtplaySessionBinder extends ChangeNotifier {
       } else {
         await _mountDirectCloudExternalServers();
         await localLibraryClient.refreshMounts();
-        if (res.fullReset || res.itemsProjected > 0 || res.filesProjected > 0 || res.emptyShellsPruned > 0) {
+        if (res.fullReset ||
+            res.hasChanges ||
+            res.itemsProjected > 0 ||
+            res.filesProjected > 0 ||
+            res.emptyShellsPruned > 0) {
           _notifyLocalLibraryMutated();
         }
         notifyListeners();
@@ -534,10 +549,12 @@ class TtplaySessionBinder extends ChangeNotifier {
   Future<void> _mountDirectCloudExternalServers() async {
     final mirror = _cloudMountMirror;
     if (mirror == null || _disposed || !isMediaLibraryV1Active) return;
+    final previousDirectIds = _directCloudExternalServerIds;
     final conns = mirror.lastExternalConnections;
     if (conns.isEmpty) {
+      _directCloudExternalServerIds = const {};
       serverManager.registerSelfHostedExternals(const []);
-      _syncVisibleServerIds(includeLocal: true);
+      _syncVisibleServerIds(includeLocal: true, removedDirectExternalIds: previousDirectIds);
       return;
     }
 
@@ -556,8 +573,12 @@ class TtplaySessionBinder extends ChangeNotifier {
       }
       return;
     }
+    _directCloudExternalServerIds = {for (final c in clients) c.serverId};
     serverManager.registerSelfHostedExternals(clients);
-    _syncVisibleServerIds(includeLocal: true);
+    _syncVisibleServerIds(
+      includeLocal: true,
+      removedDirectExternalIds: previousDirectIds.difference(_directCloudExternalServerIds),
+    );
   }
 
   /// Removes all mirrored `cloud:*` mounts and empty projected library items
@@ -697,6 +718,7 @@ class TtplaySessionBinder extends ChangeNotifier {
     _primaryClient = null;
     _externalClients = const [];
     _externalSummaries = const [];
+    _directCloudExternalServerIds = const {};
     _boundSessionKey = null;
     _lastExternalRefreshError = null;
     serverManager.clearSelfHostedServers();
@@ -705,7 +727,7 @@ class TtplaySessionBinder extends ChangeNotifier {
     }
   }
 
-  void _syncVisibleServerIds({required bool includeLocal}) {
+  void _syncVisibleServerIds({required bool includeLocal, Set<String> removedDirectExternalIds = const {}}) {
     final provider = _multiServerProvider;
     if (provider == null) return;
     final current = serverManager.visibleServerIds;
@@ -714,6 +736,7 @@ class TtplaySessionBinder extends ChangeNotifier {
       for (final id in current)
         if (id != TtplayServerClient.primaryServerId &&
             !TtplayExternalServerClient.isExternalServerId(id) &&
+            !removedDirectExternalIds.contains(id) &&
             (includeLocal || id != LocalLibraryClient.localServerId))
           id,
       if (includeLocal && serverManager.registeredServerIds.contains(LocalLibraryClient.localServerId))

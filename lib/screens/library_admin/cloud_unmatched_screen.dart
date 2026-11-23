@@ -68,6 +68,7 @@ class _CloudUnmatchedScreenState extends State<CloudUnmatchedScreen> {
     try {
       await sync.ignoreUnmatched(fileIds: [fileId]);
       if (!mounted) return;
+      unawaited(maybeReadTtplayBinder(context)?.syncCloudProjection(full: true).catchError((Object _) => null));
       showSuccessSnackBar(context, '已忽略该未匹配文件');
       await _load();
     } catch (e) {
@@ -83,6 +84,7 @@ class _CloudUnmatchedScreenState extends State<CloudUnmatchedScreen> {
       builder: (_) => _CloudManualMatchDialog(sync: sync, file: item),
     );
     if (matched == true && mounted) {
+      unawaited(maybeReadTtplayBinder(context)?.syncCloudProjection(full: true).catchError((Object _) => null));
       await _load();
     }
   }
