@@ -5,7 +5,7 @@ import universal_gamepad
 import os_media_controls
 import wakelock_plus
 
-@objc class PlezyFlutterViewController: FlutterViewController {
+@objc class TTPlayFlutterViewController: FlutterViewController {
   private lazy var tvRemoteChannel = FlutterBasicMessageChannel(
     name: "flutter/gamepadtouchevent",
     binaryMessenger: binaryMessenger,

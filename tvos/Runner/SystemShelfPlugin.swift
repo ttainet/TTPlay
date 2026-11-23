@@ -289,7 +289,7 @@ import TVServices
     }
 
     static func register(with registrar: FlutterPluginRegistrar) {
-      let channel = FlutterMethodChannel(name: "com.plezy/system_shelf", binaryMessenger: registrar.messenger())
+      let channel = FlutterMethodChannel(name: "com.ttai.ttplay/system_shelf", binaryMessenger: registrar.messenger())
       let engineEpoch = mutationQueue.sync {
         mutationState.beginEngineSession()
       }

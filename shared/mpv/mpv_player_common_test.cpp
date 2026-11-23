@@ -13,12 +13,12 @@
 
 namespace {
 
-using plezy::mpv_common::AudioOutputTransition;
-using plezy::mpv_common::AudioRecoveryState;
-using plezy::mpv_common::AudioReloadReason;
+using ttplay::mpv_common::AudioOutputTransition;
+using ttplay::mpv_common::AudioRecoveryState;
+using ttplay::mpv_common::AudioReloadReason;
 
 void TestRequestRegistry() {
-  plezy::mpv_common::AsyncRequestRegistry registry;
+  ttplay::mpv_common::AsyncRequestRegistry registry;
   bool status_called = false;
   bool command_called = false;
   bool property_called = false;
@@ -61,7 +61,7 @@ void TestRequestRegistry() {
 // a successful reply; `PlaylistEntryIdFromCommandResult` then reads the entry
 // `loadfile` created and refuses anything that is not that map.
 void TestCommandReplyResultContract() {
-  using namespace plezy::mpv_common;
+  using namespace ttplay::mpv_common;
   const auto sanitize = [](const char* value) { return std::string(value); };
 
   AsyncRequestRegistry registry;
@@ -135,7 +135,7 @@ void TestCommandReplyResultContract() {
 
 void TestConcurrentRequestCompletion() {
   for (int iteration = 0; iteration < 200; ++iteration) {
-    plezy::mpv_common::AsyncRequestRegistry registry;
+    ttplay::mpv_common::AsyncRequestRegistry registry;
     std::atomic<int> completions{0};
     const auto id = registry.RegisterStatus([&](int) { completions.fetch_add(1); });
     std::atomic<bool> start{false};
@@ -163,7 +163,7 @@ void TestConcurrentRequestCompletion() {
 }
 
 void TestSetPropertyResultContract() {
-  using namespace plezy::mpv_common;
+  using namespace ttplay::mpv_common;
 
   assert(std::string(kSetPropertyFailedCode) == "SET_PROPERTY_FAILED");
   assert(std::string(kSetPropertyNotInitializedCode) == "NOT_INITIALIZED");
@@ -199,7 +199,7 @@ void TestSetPropertyResultContract() {
 }
 
 void TestPropertyObservationRegistry() {
-  plezy::mpv_common::PropertyObservationRegistry registry;
+  ttplay::mpv_common::PropertyObservationRegistry registry;
   const auto first = registry.Register("pause", "bool", 17);
   const auto duplicate = registry.Register("pause", "string", 99);
   const auto node = registry.Register("track-list", "node", 18);
@@ -221,7 +221,7 @@ void TestPropertyObservationRegistry() {
 void TestConcurrentPropertyObservationRegistry() {
   constexpr int kPropertyCount = 512;
   constexpr int kClearRounds = 32;
-  plezy::mpv_common::PropertyObservationRegistry registry;
+  ttplay::mpv_common::PropertyObservationRegistry registry;
   std::vector<std::string> names;
   names.reserve(kPropertyCount);
   for (int i = 0; i < kPropertyCount; ++i) {
@@ -419,7 +419,7 @@ void TestNullFallbackRecoverySchedule() {
 
 // A current-ao PROPERTY_CHANGE as libmpv delivers it: a string value, or
 // MPV_FORMAT_NONE while the core has no AO at all (mid ao-reload).
-plezy::mpv_common::AudioRecoveryNotice ObserveCurrentAo(
+ttplay::mpv_common::AudioRecoveryNotice ObserveCurrentAo(
     AudioRecoveryState& state, const char* value, AudioRecoveryState::Clock::time_point now) {
   char* data = const_cast<char*>(value);
   mpv_event_property prop{};
@@ -429,7 +429,7 @@ plezy::mpv_common::AudioRecoveryNotice ObserveCurrentAo(
   mpv_event event{};
   event.event_id = MPV_EVENT_PROPERTY_CHANGE;
   event.data = &prop;
-  return plezy::mpv_common::ObserveAudioRecoveryProperty(state, &event, &prop, now);
+  return ttplay::mpv_common::ObserveAudioRecoveryProperty(state, &event, &prop, now);
 }
 
 // Every ao-reload takes current-ao through unavailable and back to "null"
@@ -602,8 +602,8 @@ struct TextNodeBuilder {
 };
 
 void TestNodeConversionBounds() {
-  using plezy::mpv_common::ConvertNode;
-  using plezy::mpv_common::NodeConversionBudget;
+  using ttplay::mpv_common::ConvertNode;
+  using ttplay::mpv_common::NodeConversionBudget;
 
   char value[] = "hello";
   mpv_node text{};
@@ -628,7 +628,7 @@ void TestNodeConversionBounds() {
   mpv_node_list negative{-1, &entry, nullptr};
   array.u.list = &negative;
   assert(ConvertNode<TextNodeBuilder>(&array) == "null");
-  mpv_node_list oversized{plezy::mpv_common::kMaxNodeEntries + 1, &entry, nullptr};
+  mpv_node_list oversized{ttplay::mpv_common::kMaxNodeEntries + 1, &entry, nullptr};
   array.u.list = &oversized;
   assert(ConvertNode<TextNodeBuilder>(&array) == "null");
 
@@ -645,7 +645,7 @@ void TestNodeConversionBounds() {
   assert(ConvertNode<TextNodeBuilder>(&map) == "null");
 
   // Depth, entry, and byte budgets each stop the walk.
-  std::vector<mpv_node> chain(plezy::mpv_common::kMaxNodeDepth + 1);
+  std::vector<mpv_node> chain(ttplay::mpv_common::kMaxNodeDepth + 1);
   std::vector<mpv_node_list> links(chain.size());
   chain.back() = entry;
   for (size_t i = chain.size() - 1; i > 0; --i) {
@@ -667,19 +667,19 @@ void TestNodeConversionBounds() {
 }
 
 void TestHdrHelpers() {
-  assert(plezy::mpv_common::ParseEnabledFlag("yes"));
-  assert(plezy::mpv_common::ParseEnabledFlag("true"));
-  assert(plezy::mpv_common::ParseEnabledFlag("1"));
-  assert(!plezy::mpv_common::ParseEnabledFlag("no"));
-  assert(std::string(plezy::mpv_common::TargetColorspaceHint(true)) == "auto");
-  assert(std::string(plezy::mpv_common::TargetColorspaceHint(false)) == "no");
+  assert(ttplay::mpv_common::ParseEnabledFlag("yes"));
+  assert(ttplay::mpv_common::ParseEnabledFlag("true"));
+  assert(ttplay::mpv_common::ParseEnabledFlag("1"));
+  assert(!ttplay::mpv_common::ParseEnabledFlag("no"));
+  assert(std::string(ttplay::mpv_common::TargetColorspaceHint(true)) == "auto");
+  assert(std::string(ttplay::mpv_common::TargetColorspaceHint(false)) == "no");
 }
 
 // #2513: from an error END_FILE to the end of that drain, log lines go out at
 // once and everything else waits, the end-file first, for Release.
 void TestErrorEndFileHold() {
-  using plezy::mpv_common::ErrorEndFileHold;
-  using plezy::mpv_common::IsErrorEndFile;
+  using ttplay::mpv_common::ErrorEndFileHold;
+  using ttplay::mpv_common::IsErrorEndFile;
 
   mpv_event_end_file end{};
   end.reason = MPV_END_FILE_REASON_ERROR;

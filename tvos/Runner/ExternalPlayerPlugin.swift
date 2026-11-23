@@ -1,7 +1,7 @@
 import Flutter
 import UIKit
 
-/// Hands playback to another tvOS app on `com.plezy/external_player`.
+/// Hands playback to another tvOS app on `com.ttai.ttplay/external_player`.
 ///
 /// The tvOS Runner carries no url_launcher implementation, so external player
 /// handoff asks these two questions here. `openUrl` deliberately skips
@@ -11,7 +11,7 @@ import UIKit
 class ExternalPlayerPlugin: NSObject, FlutterPlugin {
   static func register(with registrar: FlutterPluginRegistrar) {
     let channel = FlutterMethodChannel(
-      name: "com.plezy/external_player",
+      name: "com.ttai.ttplay/external_player",
       binaryMessenger: registrar.messenger()
     )
     registrar.addMethodCallDelegate(ExternalPlayerPlugin(), channel: channel)

@@ -1,5 +1,5 @@
-#ifndef PLEZY_SHARED_MPV_PLAYER_COMMON_H_
-#define PLEZY_SHARED_MPV_PLAYER_COMMON_H_
+#ifndef TTPLAY_SHARED_MPV_PLAYER_COMMON_H_
+#define TTPLAY_SHARED_MPV_PLAYER_COMMON_H_
 
 #include <mpv/client.h>
 
@@ -15,7 +15,7 @@
 #include <utility>
 #include <vector>
 
-namespace plezy {
+namespace ttplay {
 namespace mpv_common {
 
 using StatusCallback = std::function<void(int error)>;
@@ -790,6 +790,6 @@ inline AudioRecoveryNotice ObserveAudioRecoveryProperty(
 }
 
 }  // namespace mpv_common
-}  // namespace plezy
+}  // namespace ttplay
 
-#endif  // PLEZY_SHARED_MPV_PLAYER_COMMON_H_
+#endif  // TTPLAY_SHARED_MPV_PLAYER_COMMON_H_

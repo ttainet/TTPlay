@@ -5,7 +5,7 @@
   import FlutterMacOS
 #endif
 
-/// Answers `com.plezy/deep_link` on iOS, iPadOS, tvOS and macOS: hands every `plezy:` URL the
+/// Answers `com.ttai.ttplay/deep_link` on iOS, iPadOS, tvOS and macOS: hands every `plezy:` URL the
 /// system opens the app with to Dart unchanged.
 ///
 /// Dart owns the link grammar (lib/services/deep_links/deep_link.dart), so only the scheme is
@@ -24,7 +24,7 @@ final class DeepLinkPlugin: NSObject, FlutterPlugin {
     #else
       let messenger = registrar.messenger()
     #endif
-    let channel = FlutterMethodChannel(name: "com.plezy/deep_link", binaryMessenger: messenger)
+    let channel = FlutterMethodChannel(name: "com.ttai.ttplay/deep_link", binaryMessenger: messenger)
     Self.channel = channel
     delivery.bindEngine()
     let instance = DeepLinkPlugin()
