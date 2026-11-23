@@ -3,7 +3,9 @@ import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
 import { Clapperboard, Loader2 } from 'lucide-react';
 import { AppShell } from './components/AppShell';
 import { ToastStack } from './components/ToastStack';
+import { UserShell } from './components/UserShell';
 import { AppProvider, useApp } from './contexts/AppContext';
+import { UserProvider, useUser } from './contexts/UserContext';
 import { AdminAccountsPage } from './pages/AdminAccountsPage';
 import { AdminAuditPage } from './pages/AdminAuditPage';
 import { AdminInvitesPage } from './pages/AdminInvitesPage';
@@ -12,24 +14,31 @@ import { LoginPage } from './pages/LoginPage';
 import { MetadataManagePage } from './pages/MetadataManagePage';
 import { ServerLogsPage } from './pages/ServerLogsPage';
 import { SettingsPage } from './pages/SettingsPage';
+import { UserDevicesPage } from './pages/user/UserDevicesPage';
+import { UserLoginPage } from './pages/user/UserLoginPage';
+import { UserOverviewPage } from './pages/user/UserOverviewPage';
+import { UserSecurityPage } from './pages/user/UserSecurityPage';
+import { UserSourcesPage } from './pages/user/UserSourcesPage';
+
+const FullscreenLoader: React.FC<{ label: string }> = ({ label }) => (
+  <div className="auth-screen">
+    <div className="glass-panel" style={{ padding: '24px 32px', display: 'flex', alignItems: 'center', gap: 14 }}>
+      <span className="brand-mark">
+        <Clapperboard size={18} />
+      </span>
+      <div className="flex-row" style={{ gap: 8 }}>
+        <Loader2 size={16} className="spin" style={{ color: 'var(--accent)' }} />
+        <span style={{ fontSize: 14, color: 'var(--text-secondary)' }}>{label}</span>
+      </div>
+    </div>
+  </div>
+);
 
 const AdminRoutes: React.FC = () => {
   const { loading, admin } = useApp();
 
   if (loading) {
-    return (
-      <div className="auth-screen">
-        <div className="glass-panel" style={{ padding: '24px 32px', display: 'flex', alignItems: 'center', gap: 14 }}>
-          <span className="brand-mark">
-            <Clapperboard size={18} />
-          </span>
-          <div className="flex-row" style={{ gap: 8 }}>
-            <Loader2 size={16} className="spin" style={{ color: 'var(--accent)' }} />
-            <span style={{ fontSize: 14, color: 'var(--text-secondary)' }}>正在加载管理控制台...</span>
-          </div>
-        </div>
-      </div>
-    );
+    return <FullscreenLoader label="正在加载管理控制台..." />;
   }
 
   if (!admin || admin.must_change_password) {
@@ -39,17 +48,72 @@ const AdminRoutes: React.FC = () => {
   return (
     <AppShell>
       <Routes>
-        <Route path="/admin" element={<AdminOverviewPage />} />
-        <Route path="/admin/accounts" element={<AdminAccountsPage />} />
-        <Route path="/admin/invites" element={<AdminInvitesPage />} />
-        <Route path="/admin/settings" element={<SettingsPage />} />
-        <Route path="/admin/metadata" element={<MetadataManagePage />} />
-        <Route path="/admin/logs" element={<ServerLogsPage />} />
-        <Route path="/admin/audit" element={<AdminAuditPage />} />
+        <Route index element={<AdminOverviewPage />} />
+        <Route path="accounts" element={<AdminAccountsPage />} />
+        <Route path="invites" element={<AdminInvitesPage />} />
+        <Route path="settings" element={<SettingsPage />} />
+        <Route path="metadata" element={<MetadataManagePage />} />
+        <Route path="logs" element={<ServerLogsPage />} />
+        <Route path="audit" element={<AdminAuditPage />} />
         <Route path="*" element={<Navigate to="/admin" replace />} />
       </Routes>
     </AppShell>
   );
+};
+
+const UserLoginRoute: React.FC = () => {
+  const { loading, principal } = useUser();
+
+  if (loading) {
+    return <FullscreenLoader label="正在校验用户会话..." />;
+  }
+
+  if (principal) {
+    return <Navigate to="/app" replace />;
+  }
+
+  return <UserLoginPage />;
+};
+
+const UserRoutes: React.FC = () => {
+  const { loading, principal } = useUser();
+
+  if (loading) {
+    return <FullscreenLoader label="正在加载用户面板..." />;
+  }
+
+  if (!principal) {
+    return <Navigate to="/login" replace />;
+  }
+
+  return (
+    <UserShell>
+      <Routes>
+        <Route index element={<UserOverviewPage />} />
+        <Route path="sources" element={<UserSourcesPage />} />
+        <Route path="devices" element={<UserDevicesPage />} />
+        <Route path="security" element={<UserSecurityPage />} />
+        <Route path="*" element={<Navigate to="/app" replace />} />
+      </Routes>
+    </UserShell>
+  );
+};
+
+const RootRedirect: React.FC = () => {
+  const { loading: adminLoading, admin } = useApp();
+  const { loading: userLoading, principal } = useUser();
+
+  if (adminLoading || userLoading) {
+    return <FullscreenLoader label="正在初始化服务..." />;
+  }
+
+  if (principal) {
+    return <Navigate to="/app" replace />;
+  }
+  if (admin && !admin.must_change_password) {
+    return <Navigate to="/admin" replace />;
+  }
+  return <Navigate to="/login" replace />;
 };
 
 class AppErrorBoundary extends React.Component<
@@ -90,10 +154,18 @@ class AppErrorBoundary extends React.Component<
 export const App: React.FC = () => (
   <AppErrorBoundary>
     <AppProvider>
-      <BrowserRouter>
-        <AdminRoutes />
-        <ToastStack />
-      </BrowserRouter>
+      <UserProvider>
+        <BrowserRouter>
+          <Routes>
+            <Route path="/admin/*" element={<AdminRoutes />} />
+            <Route path="/login" element={<UserLoginRoute />} />
+            <Route path="/app/*" element={<UserRoutes />} />
+            <Route path="/" element={<RootRedirect />} />
+            <Route path="*" element={<RootRedirect />} />
+          </Routes>
+          <ToastStack />
+        </BrowserRouter>
+      </UserProvider>
     </AppProvider>
   </AppErrorBoundary>
 );

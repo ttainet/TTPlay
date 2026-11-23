@@ -167,3 +167,160 @@ export interface ServerLogEntry {
   component: string;
   message: string;
 }
+
+export interface UserPrincipal {
+  token_id: string;
+  household_id: string;
+  owner_account_id: string;
+  member_id: string;
+  nickname: string;
+  device_id: string;
+  device_class: string;
+  role: string;
+  permissions: number;
+  restrict_sources: boolean;
+  max_content_rating?: string;
+  login_mode: string;
+  expires_at: number;
+}
+
+export interface HouseholdInfo {
+  id: string;
+  owner_account_id: string;
+  name: string;
+  display_lang: string;
+  quota_max_sources: number;
+  quota_max_files: number;
+  quota_max_sidecar_bytes: number;
+  next_change_seq: number;
+  min_retained_seq: number;
+  member_count: number;
+  device_count: number;
+  created_at: number;
+  updated_at: number;
+}
+
+export interface MemberView {
+  id: string;
+  household_id: string;
+  nickname: string;
+  avatar?: string;
+  role: string;
+  permissions: number;
+  restrict_sources: boolean;
+  has_pin: boolean;
+  has_independent_login: boolean;
+  login_username?: string;
+  max_content_rating?: string;
+  status: string;
+  allowed_source_ids?: string[];
+  created_at: number;
+  updated_at: number;
+}
+
+export interface DeviceView {
+  id: string;
+  household_id: string;
+  device_class: string;
+  platform: string;
+  name: string;
+  app_version: string;
+  last_seen_at?: number;
+  created_at: number;
+  is_current_device: boolean;
+}
+
+export interface SessionView {
+  token_id: string;
+  household_id: string;
+  member_id: string;
+  member_nickname?: string;
+  device_id: string;
+  device_name?: string;
+  device_class?: string;
+  login_mode: string;
+  ip?: string;
+  created_at: number;
+  last_used_at: number;
+  expires_at: number;
+  is_current_session: boolean;
+}
+
+export interface SourceCredentialMeta {
+  version: number;
+  key_epoch: number;
+  status: string;
+  updated_by_device: string;
+  updated_at: number;
+}
+
+export interface SourceScanState {
+  incremental_watermark: number;
+  last_full_scan_at?: number;
+  last_scan_result: string;
+  updated_at: number;
+}
+
+export interface FolderView {
+  id: string;
+  household_id: string;
+  source_id: string;
+  path: string;
+  exclude_paths: string[];
+  library_hint: string;
+  baseline_at?: number;
+  created_at: number;
+  updated_at: number;
+}
+
+export interface SourceView {
+  id: string;
+  household_id: string;
+  kind: string;
+  name: string;
+  identity_key: string;
+  identity_unique: boolean;
+  created_by_member: string;
+  created_by_device: string;
+  status: string;
+  created_at: number;
+  updated_at: number;
+  credential_meta?: SourceCredentialMeta;
+  scan_state?: SourceScanState;
+  folders?: FolderView[];
+}
+
+export interface ScanSessionView {
+  id: string;
+  household_id: string;
+  source_id: string;
+  folder_id?: string;
+  type: string;
+  device_id: string;
+  member_id: string;
+  status: string;
+  started_at: number;
+  last_activity_at: number;
+  finished_at?: number;
+  files_reported: number;
+  files_added: number;
+  files_changed: number;
+  files_missing: number;
+  progress_pct: number;
+  incremental_watermark: number;
+}
+
+export interface UserAuthResult {
+  requires_member_select?: boolean;
+  login_ticket?: string;
+  ticket_expires_at?: number;
+  access_token?: string;
+  token_id?: string;
+  expires_at?: number;
+  login_mode?: string;
+  must_change_password?: boolean;
+  household?: HouseholdInfo;
+  member?: MemberView;
+  members?: MemberView[];
+  principal?: UserPrincipal;
+}

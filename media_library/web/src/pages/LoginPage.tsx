@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { Link } from 'react-router-dom';
 import { AlertCircle, Clapperboard, KeyRound, Loader2, LogIn, ShieldCheck } from 'lucide-react';
 import { ApiError, api, setAdminToken } from '../api/client';
 import { useApp } from '../contexts/AppContext';
@@ -219,6 +220,12 @@ export const LoginPage: React.FC = () => {
             {busy ? <Loader2 size={16} className="spin" /> : <LogIn size={16} />}
             {busy ? '正在验证...' : '登录管理后台'}
           </button>
+
+          <div className="flex-row" style={{ justifyContent: 'center', paddingTop: 4 }}>
+            <Link to="/login" className="muted-sm" style={{ textDecoration: 'underline', textUnderlineOffset: 3 }}>
+              ← 返回普通用户登录
+            </Link>
+          </div>
         </form>
       )}
     </div>
