@@ -39,9 +39,7 @@ dependencies:
       ref: bf04cdf66598dc3fca274b8b1db2b92b0bf6b73e
       path: packages/connectivity_plus/connectivity_plus
   os_media_controls:
-    git:
-      url: https://github.com/edde746/media_controls
-      ref: a27208e641790029ac54d825b97508575caee1a7
+    path: packages/os_media_controls
   rate_limiter: ^1.0.0
   wakelock_plus:
     path: packages/wakelock_plus
@@ -76,15 +74,10 @@ dependencies:
   # (#2967). Keep the same-filesystem move/resume cleanup; no per-host TLS
   # bypass.
   background_downloader:
-    git:
-      url: https://github.com/edde746/background_downloader
-      ref: afa3fe68080327cfa87e725a38961bf5d2e35307
+    path: packages/background_downloader
   sentry_flutter: ^9.30.0
   auto_updater:
-    git:
-      url: https://github.com/edde746/auto_updater
-      path: packages/auto_updater
-      ref: 9e150f7
+    path: packages/auto_updater
   win_http: ^0.2.3
   collection: ^1.18.0
   freezed_annotation: ^3.1.0
@@ -136,20 +129,11 @@ dependency_overrides:
       ref: bf04cdf66598dc3fca274b8b1db2b92b0bf6b73e
       path: packages/connectivity_plus/connectivity_plus
   auto_updater_platform_interface:
-    git:
-      url: https://github.com/edde746/auto_updater
-      ref: 9e150f7
-      path: packages/auto_updater_platform_interface
+    path: packages/auto_updater_platform_interface
   auto_updater_macos:
-    git:
-      url: https://github.com/edde746/auto_updater
-      ref: 9e150f7
-      path: packages/auto_updater_macos
+    path: packages/auto_updater_macos
   auto_updater_windows:
-    git:
-      url: https://github.com/edde746/auto_updater
-      ref: 9e150f7
-      path: packages/auto_updater_windows
+    path: packages/auto_updater_windows
   # Vendored 2.4.1: atomic replacement prevents upstream #1732 corruption.
   shared_preferences_windows:
     path: packages/shared_preferences_windows

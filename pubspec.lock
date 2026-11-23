@@ -69,46 +69,36 @@ packages:
     dependency: "direct main"
     description:
       path: "packages/auto_updater"
-      ref: "9e150f7"
-      resolved-ref: "9e150f71e17495b7361aedbe6df22e89ad52c254"
-      url: "https://github.com/edde746/auto_updater"
-    source: git
+      relative: true
+    source: path
     version: "1.0.0"
   auto_updater_macos:
     dependency: "direct overridden"
     description:
       path: "packages/auto_updater_macos"
-      ref: "9e150f7"
-      resolved-ref: "9e150f71e17495b7361aedbe6df22e89ad52c254"
-      url: "https://github.com/edde746/auto_updater"
-    source: git
+      relative: true
+    source: path
     version: "1.0.0"
   auto_updater_platform_interface:
     dependency: "direct overridden"
     description:
       path: "packages/auto_updater_platform_interface"
-      ref: "9e150f7"
-      resolved-ref: "9e150f71e17495b7361aedbe6df22e89ad52c254"
-      url: "https://github.com/edde746/auto_updater"
-    source: git
+      relative: true
+    source: path
     version: "1.0.0"
   auto_updater_windows:
     dependency: "direct overridden"
     description:
       path: "packages/auto_updater_windows"
-      ref: "9e150f7"
-      resolved-ref: "9e150f71e17495b7361aedbe6df22e89ad52c254"
-      url: "https://github.com/edde746/auto_updater"
-    source: git
+      relative: true
+    source: path
     version: "1.0.0"
   background_downloader:
     dependency: "direct main"
     description:
-      path: "."
-      ref: afa3fe68080327cfa87e725a38961bf5d2e35307
-      resolved-ref: afa3fe68080327cfa87e725a38961bf5d2e35307
-      url: "https://github.com/edde746/background_downloader"
-    source: git
+      path: "packages/background_downloader"
+      relative: true
+    source: path
     version: "9.6.2"
   boolean_selector:
     dependency: transitive
@@ -790,11 +780,9 @@ packages:
   os_media_controls:
     dependency: "direct main"
     description:
-      path: "."
-      ref: a27208e641790029ac54d825b97508575caee1a7
-      resolved-ref: a27208e641790029ac54d825b97508575caee1a7
-      url: "https://github.com/edde746/media_controls"
-    source: git
+      path: "packages/os_media_controls"
+      relative: true
+    source: path
     version: "0.3.0"
   package_config:
     dependency: transitive
