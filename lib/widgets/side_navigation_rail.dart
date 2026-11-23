@@ -972,6 +972,7 @@ class SideNavigationRailState extends State<SideNavigationRail> with MountedSetS
       if (serverId == LocalLibraryClient.localServerId || serverId == TtplayServerClient.primaryServerId) {
         continue;
       }
+      if (!serverManager.isServerOnline(ServerId(serverId))) continue;
       final client = multiServer.getClientForServer(ServerId(serverId));
       if (client == null) continue;
       _remoteSources.putIfAbsent(
@@ -993,6 +994,9 @@ class SideNavigationRailState extends State<SideNavigationRail> with MountedSetS
             !TtplayExternalServerClient.isExternalServerId(serverId) &&
             !serverManager.isSelfHostedServer(serverId) &&
             !_remoteSources.containsKey(serverId)) {
+          continue;
+        }
+        if (serverManager.isSelfHostedServer(serverId) && !serverManager.isServerOnline(ServerId(serverId))) {
           continue;
         }
         _remoteSources.putIfAbsent(serverId, () => (name: lib.serverName ?? serverId, backend: lib.backend));

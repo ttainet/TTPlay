@@ -565,12 +565,12 @@ class JellyfinClient
   /// parental schedule) so the manager can tell a revoked token and a refused
   /// account from a generic transport failure.
   @override
-  Future<HealthStatus> checkHealth() async {
+  Future<HealthStatus> checkHealth({Duration? timeout}) async {
     try {
       // Same dead-pooled-socket case as Plex's probe (#2915).
       final response = await _http.get(
         paths.currentUser,
-        timeout: MediaServerTimeouts.jellyfinProbe,
+        timeout: timeout ?? MediaServerTimeouts.jellyfinProbe,
         retryTimeoutInPlace: true,
       );
       final ok = response.statusCode >= 200 && response.statusCode < 300;

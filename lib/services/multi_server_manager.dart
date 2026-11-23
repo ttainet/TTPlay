@@ -39,6 +39,12 @@ typedef PlexClientFactory =
       bool? seedTranscoderVideoSupport,
     });
 
+typedef JellyfinClientFactory =
+    Future<JellyfinClient> Function(
+      JellyfinConnection connection, {
+      void Function()? onAllEndpointsExhausted,
+    });
+
 /// The refusal a failed connect or token rotation reports, or null when the
 /// server did not answer with one: a rejected token (401, or a rejected
 /// sign-in) needs a new sign-in; a 403 is the server refusing an account it
@@ -59,15 +65,27 @@ HealthStatus? _refusalFor(Object error) => switch (error) {
 class MultiServerManager {
   MultiServerManager({
     PlexClientFactory plexClientFactory = PlexClient.create,
+    JellyfinClientFactory jellyfinClientFactory = JellyfinClient.create,
     Stream<List<ConnectivityResult>> Function()? connectivityChanges,
     Duration connectivityDebounceDuration = const Duration(seconds: 2),
-  }) : this._(plexClientFactory, connectivityChanges ?? _defaultConnectivityChanges, connectivityDebounceDuration);
+  }) : this._(
+         plexClientFactory,
+         jellyfinClientFactory,
+         connectivityChanges ?? _defaultConnectivityChanges,
+         connectivityDebounceDuration,
+       );
 
-  MultiServerManager._(this._plexClientFactory, this._connectivityChanges, this._connectivityDebounceDuration);
+  MultiServerManager._(
+    this._plexClientFactory,
+    this._jellyfinClientFactory,
+    this._connectivityChanges,
+    this._connectivityDebounceDuration,
+  );
 
   static Stream<List<ConnectivityResult>> _defaultConnectivityChanges() => ConnectivityProbe.changes;
 
   final PlexClientFactory _plexClientFactory;
+  final JellyfinClientFactory _jellyfinClientFactory;
   final Stream<List<ConnectivityResult>> Function() _connectivityChanges;
   final Duration _connectivityDebounceDuration;
   FutureOr<void> Function(JellyfinConnection connection)? onJellyfinConnectionUpdated;
@@ -75,6 +93,8 @@ class MultiServerManager {
   final Map<String, MediaServerClient> _clients = {};
   MediaServerClient? _localLibraryClient;
   final Set<String> _selfHostedServerIds = {};
+  final ValueNotifier<Set<String>> probingServerIds = ValueNotifier(const {});
+  bool _disposed = false;
 
   final Map<String, PlexServer> _plexServers = {};
 
@@ -413,6 +433,15 @@ class MultiServerManager {
     _emitStatus();
   }
 
+  MediaServerClient? _forgetSelfHostedServer(String serverId) {
+    final removed = _forgetServer(serverId);
+    if (removed is JellyfinClient && identical(_jellyfinByCompoundId[removed.connection.id], removed)) {
+      _jellyfinByCompoundId.remove(removed.connection.id);
+      _jellyfinHealthByCompoundId.remove(removed.connection.id);
+    }
+    return removed;
+  }
+
   /// Registers direct external clients (such as cloud-synced Emby / Jellyfin
   /// servers from `media_library` v1) without replacing the local library client.
   void registerSelfHostedExternals(List<MediaServerClient> externals) {
@@ -422,7 +451,7 @@ class MultiServerManager {
 
     for (final oldId in _selfHostedServerIds.toList()) {
       if (!incomingIds.contains(oldId)) {
-        final removed = _forgetServer(oldId);
+        final removed = _forgetSelfHostedServer(oldId);
         if (removed != null) {
           toClose.add(removed);
         }
@@ -433,8 +462,22 @@ class MultiServerManager {
       final existing = _clients[client.serverId];
       if (existing != null && !identical(existing, client)) {
         toClose.add(existing);
+        if (existing is JellyfinClient && identical(_jellyfinByCompoundId[existing.connection.id], existing)) {
+          _jellyfinByCompoundId.remove(existing.connection.id);
+          _jellyfinHealthByCompoundId.remove(existing.connection.id);
+        }
       }
       _clients[client.serverId] = client;
+      if (client is JellyfinClient) {
+        final compoundId = client.connection.id;
+        final priorCompound = _jellyfinByCompoundId[compoundId];
+        if (priorCompound != null && !identical(priorCompound, client)) {
+          toClose.add(priorCompound);
+        }
+        _jellyfinByCompoundId[compoundId] = client;
+        _activeJellyfinMachine[client.serverId] = compoundId;
+        _jellyfinHealthByCompoundId[compoundId] = HealthStatus.online;
+      }
       _serverStatus[client.serverId] = true;
       _refusedServers.remove(client.serverId);
       _selfHostedServerIds.add(client.serverId);
@@ -448,6 +491,157 @@ class MultiServerManager {
     _emitStatus();
   }
 
+  /// Reconciles cloud-synced direct Emby / Jellyfin connections using per-device
+  /// local reachability. Unverified connections default to offline so they never
+  /// stall startup/home/library/search, and are probed asynchronously in the background.
+  Future<void> syncDirectCloudExternalConnections(
+    List<JellyfinConnection> connections, {
+    Set<String> seedOnlineServerIds = const {},
+    Duration probeTimeout = const Duration(seconds: 3),
+  }) async {
+    final incomingMachineIds = {for (final c in connections) c.serverMachineId};
+    final toClose = <MediaServerClient>{};
+    final toProbe = <({String machineId, JellyfinClient client})>[];
+
+    for (final oldId in _selfHostedServerIds.toList()) {
+      if (!incomingMachineIds.contains(oldId)) {
+        final removed = _forgetSelfHostedServer(oldId);
+        if (removed != null) {
+          toClose.add(removed);
+        }
+      }
+    }
+
+    for (final conn in connections) {
+      final machineId = conn.serverMachineId;
+      final compoundId = conn.id;
+      final existing = _jellyfinByCompoundId[compoundId];
+      if (existing != null &&
+          _selfHostedServerIds.contains(machineId) &&
+          identical(_clients[machineId], existing) &&
+          canReuseJellyfinClient(live: existing.connection, incoming: conn)) {
+        if (seedOnlineServerIds.contains(machineId) && !isServerOnline(ServerId(machineId))) {
+          _jellyfinHealthByCompoundId[compoundId] = HealthStatus.online;
+          _serverStatus[machineId] = true;
+          _refusedServers.remove(machineId);
+        } else if (!isServerOnline(ServerId(machineId))) {
+          toProbe.add((machineId: machineId, client: existing));
+        }
+        continue;
+      }
+
+      final JellyfinClient client;
+      try {
+        client = await _jellyfinClientFactory(
+          conn,
+          onAllEndpointsExhausted: () => _onJellyfinEndpointsExhausted(machineId, compoundId),
+        );
+      } catch (e, stackTrace) {
+        appLogger.w(
+          'Failed to create cloud direct ${conn.dialect.productName} (${conn.serverName})',
+          error: e,
+          stackTrace: stackTrace,
+        );
+        continue;
+      }
+
+      final oldActive = _clients[machineId];
+      if (oldActive != null && !identical(oldActive, client)) {
+        toClose.add(oldActive);
+        if (oldActive is JellyfinClient && identical(_jellyfinByCompoundId[oldActive.connection.id], oldActive)) {
+          _jellyfinByCompoundId.remove(oldActive.connection.id);
+          _jellyfinHealthByCompoundId.remove(oldActive.connection.id);
+        }
+      }
+      if (existing != null && !identical(existing, client) && !identical(existing, oldActive)) {
+        toClose.add(existing);
+      }
+
+      _jellyfinByCompoundId[compoundId] = client;
+      _activeJellyfinMachine[machineId] = compoundId;
+      _clients[machineId] = client;
+      _selfHostedServerIds.add(machineId);
+
+      final startOnline = seedOnlineServerIds.contains(machineId);
+      _serverStatus[machineId] = startOnline;
+      _jellyfinHealthByCompoundId[compoundId] = startOnline ? HealthStatus.online : HealthStatus.offline;
+      _refusedServers.remove(machineId);
+      if (!startOnline) {
+        toProbe.add((machineId: machineId, client: client));
+      }
+    }
+
+    for (final stale in toClose) {
+      unawaited(_closeClientGracefully(stale));
+    }
+    _emitStatus();
+
+    if (_selfHostedServerIds.isNotEmpty && _connectivitySubscription == null) {
+      _startNetworkMonitoring();
+    }
+    for (final entry in toProbe) {
+      _scheduleProbeDirectCloudExternal(entry.machineId, entry.client, timeout: probeTimeout);
+    }
+  }
+
+  void _scheduleProbeDirectCloudExternal(String machineId, JellyfinClient client, {required Duration timeout}) {
+    final existingTask = _activeOptimizations[machineId];
+    if (existingTask != null) {
+      unawaited(
+        existingTask.whenComplete(() {
+          if (_disposed) return;
+          if (identical(_clients[machineId], client) &&
+              _isActiveJellyfin(machineId, client.connection.id) &&
+              !isServerOnline(ServerId(machineId))) {
+            _scheduleProbeDirectCloudExternal(machineId, client, timeout: timeout);
+          }
+        }),
+      );
+      return;
+    }
+    unawaited(_runServerTask(machineId, () => _probeDirectCloudExternal(machineId, client, timeout: timeout)));
+  }
+
+  Future<void> _probeDirectCloudExternal(
+    String machineId,
+    JellyfinClient client, {
+    required Duration timeout,
+  }) async {
+    final compoundId = client.connection.id;
+    try {
+      final status = await client.checkHealth(timeout: timeout);
+      if (_disposed || !identical(_clients[machineId], client) || !_isActiveJellyfin(machineId, compoundId)) {
+        return;
+      }
+      _jellyfinHealthByCompoundId[compoundId] = status;
+      _applyHealth(ServerId(machineId), status);
+    } catch (e) {
+      appLogger.d('Direct cloud external probe failed for ${client.connection.serverName}: $e');
+    }
+  }
+
+  bool isProbingServer(String serverId) => _activeOptimizations.containsKey(serverId);
+
+  HealthStatus? selfHostedExternalHealth(String serverId) {
+    if (!_clients.containsKey(serverId) && !_refusedServers.containsKey(serverId)) return null;
+    final refusal = _refusedServers[serverId];
+    if (refusal != null) return refusal;
+    return isServerOnline(ServerId(serverId)) ? HealthStatus.online : HealthStatus.offline;
+  }
+
+  Future<void> probeSelfHostedExternals({Duration timeout = const Duration(seconds: 3)}) async {
+    final futures = <Future<void>>[];
+    for (final id in _selfHostedServerIds.toList()) {
+      final client = _clients[id];
+      if (client is JellyfinClient) {
+        futures.add(_runServerTask(id, () => _probeDirectCloudExternal(id, client, timeout: timeout)));
+      }
+    }
+    if (futures.isNotEmpty) {
+      await Future.wait(futures);
+    }
+  }
+
   /// Detaches and gracefully closes all self-hosted `ttplay-server` and
   /// proxied external server clients.
   void clearSelfHostedServers() {
@@ -456,7 +650,7 @@ class MultiServerManager {
     _selfHostedServerIds.clear();
     final toClose = <MediaServerClient>[];
     for (final id in ids) {
-      final client = _forgetServer(id);
+      final client = _forgetSelfHostedServer(id);
       if (client != null) {
         toClose.add(client);
       }
@@ -1226,7 +1420,9 @@ class MultiServerManager {
       final client = entry.value;
       final expectedJellyfinCompoundId = client is JellyfinClient ? client.connection.id : null;
 
-      final status = await client.checkHealth();
+      final status = client is JellyfinClient && _selfHostedServerIds.contains(serverId)
+          ? await client.checkHealth(timeout: const Duration(seconds: 3))
+          : await client.checkHealth();
       if (client is JellyfinClient) {
         final compoundId = expectedJellyfinCompoundId ?? client.connection.id;
         _jellyfinHealthByCompoundId[compoundId] = status;
@@ -1313,6 +1509,18 @@ class MultiServerManager {
   /// is returned, so a caller awaiting a batch never waits on work it did not
   /// start. The registered future always clears its own entry. [timeout] bounds
   /// the task, logging `<timeoutLabel> timed out for <serverId>` when it fires.
+  void _setProbing(String serverId, bool probing) {
+    if (_disposed) return;
+    final current = probingServerIds.value;
+    if (probing) {
+      if (current.contains(serverId)) return;
+      probingServerIds.value = {...current, serverId};
+    } else {
+      if (!current.contains(serverId)) return;
+      probingServerIds.value = Set<String>.of(current)..remove(serverId);
+    }
+  }
+
   Future<void> _runServerTask(
     String serverId,
     Future<void> Function() taskBuilder, {
@@ -1321,6 +1529,7 @@ class MultiServerManager {
   }) {
     if (_activeOptimizations.containsKey(serverId)) return Future<void>.value();
 
+    _setProbing(serverId, true);
     var task = taskBuilder();
     if (timeout != null) {
       task = task.timeout(timeout, onTimeout: () => appLogger.d('$timeoutLabel timed out for $serverId'));
@@ -1328,6 +1537,7 @@ class MultiServerManager {
     // Must not *return* the removed entry — whenComplete would then await this very future.
     final registered = task.whenComplete(() {
       _activeOptimizations.remove(serverId);
+      _setProbing(serverId, false);
     });
     _activeOptimizations[serverId] = registered;
     return registered;
@@ -1609,7 +1819,9 @@ class MultiServerManager {
         'Attempting reconnection for ${client.connection.dialect.productName} server '
         '${client.connection.serverName}',
       );
-      final status = await client.checkHealth();
+      final status = _selfHostedServerIds.contains(machineId)
+          ? await client.checkHealth(timeout: const Duration(seconds: 3))
+          : await client.checkHealth();
       _jellyfinHealthByCompoundId[expectedCompoundId] = status;
       if (!_isActiveJellyfin(machineId, expectedCompoundId)) {
         appLogger.d('Ignoring stale Jellyfin reconnection result for ${client.connection.serverName}');
@@ -1831,6 +2043,9 @@ class MultiServerManager {
     _plexScopeByServer.clear();
     _plexServerListRefreshStartedAt.clear();
     _activeOptimizations.clear();
+    if (!_disposed && probingServerIds.value.isNotEmpty) {
+      probingServerIds.value = const {};
+    }
     if (retainedLocal != null) {
       _clients[retainedLocal.serverId] = retainedLocal;
       _serverStatus[retainedLocal.serverId] = true;
@@ -1857,7 +2072,10 @@ class MultiServerManager {
   }
 
   void dispose() {
+    if (_disposed) return;
     disconnectAll(preserveLocalLibrary: false);
+    _disposed = true;
+    probingServerIds.dispose();
     if (!_statusController.isClosed) {
       _statusController.close();
     }

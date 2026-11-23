@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:io';
 
+import 'package:clock/clock.dart';
 import 'package:flutter/foundation.dart';
 
 import '../services/connectivity_probe.dart';
@@ -34,14 +35,19 @@ class MountManager {
   final StreamProxy proxy;
   final MountDriverFactory? _driverFactory;
 
+  static const Duration quarkProbeTtl = Duration(minutes: 5);
+
   final Map<String, StorageDriver> _drivers = {};
+  final Map<String, DateTime> _lastQuarkOnlineAt = {};
   final ValueNotifier<Map<String, MountOnlineStatus>> onlineStatuses = ValueNotifier(const {});
 
-  bool _showOfflineMounts = false;
+  bool _showOfflineMounts = true;
   bool _monitoring = false;
   bool _disposed = false;
   StreamSubscription<Object?>? _connectivitySub;
   Future<void>? _activeProbeAll;
+  Completer<void>? _queuedProbeAll;
+  bool _reprobeForce = false;
 
   VoidCallback? onReachabilityChanged;
 
@@ -57,6 +63,11 @@ class MountManager {
 
   bool isMountOnline(String mountId) => statusOf(mountId) != MountOnlineStatus.offline;
 
+  bool isMountVerifiedOnline(String mountId) {
+    final status = statusOf(mountId);
+    return status == MountOnlineStatus.onlinePrimary || status == MountOnlineStatus.onlineFallback;
+  }
+
   Set<String> get offlineMountIds => {
     for (final entry in onlineStatuses.value.entries)
       if (entry.value == MountOnlineStatus.offline) entry.key,
@@ -64,9 +75,47 @@ class MountManager {
 
   Set<String> get hiddenOfflineMountIds => _showOfflineMounts ? const {} : offlineMountIds;
 
-  void setStatus(String mountId, MountOnlineStatus status) {
-    if (_disposed || statusOf(mountId) == status) return;
+  void setStatus(String mountId, MountOnlineStatus status, {StorageKind? kind}) {
+    if (_disposed) return;
+    if (status == MountOnlineStatus.onlinePrimary && kind == StorageKind.quark) {
+      _lastQuarkOnlineAt[mountId] = clock.now();
+    } else if (status == MountOnlineStatus.offline) {
+      _lastQuarkOnlineAt.remove(mountId);
+    }
+    if (statusOf(mountId) == status) return;
     onlineStatuses.value = {...onlineStatuses.value, mountId: status};
+  }
+
+  void seedStatusIfAbsent(String mountId, MountOnlineStatus status) {
+    if (_disposed || onlineStatuses.value.containsKey(mountId)) return;
+    onlineStatuses.value = {...onlineStatuses.value, mountId: status};
+  }
+
+  /// Applies a freshly probed [status] for [mountId], dropping any cached
+  /// driver if the active primary/fallback route changed so the next operation
+  /// builds a driver for the winning endpoint while retaining [status].
+  Future<void> applyProbeStatus(String mountId, MountOnlineStatus status, {StorageKind? kind}) async {
+    if (_disposed) return;
+    final prev = statusOf(mountId);
+    final switchedToOrFromFallback =
+        (prev != status) &&
+        (status == MountOnlineStatus.onlineFallback || prev == MountOnlineStatus.onlineFallback);
+    if (switchedToOrFromFallback || (status == MountOnlineStatus.onlineFallback && _drivers.containsKey(mountId))) {
+      await _dropDriver(mountId);
+    }
+    if (status == MountOnlineStatus.onlinePrimary && kind == StorageKind.quark) {
+      _lastQuarkOnlineAt[mountId] = clock.now();
+    } else if (status == MountOnlineStatus.offline) {
+      _lastQuarkOnlineAt.remove(mountId);
+    }
+    final prevHidden = Set<String>.from(hiddenOfflineMountIds);
+    if (prev != status) {
+      onlineStatuses.value = {...onlineStatuses.value, mountId: status};
+    }
+    final nextHidden = hiddenOfflineMountIds;
+    if (switchedToOrFromFallback || !setEquals(prevHidden, nextHidden)) {
+      onReachabilityChanged?.call();
+    }
   }
 
   /// Builds a driver for [mount] without registering it — for validating a
@@ -157,6 +206,7 @@ class MountManager {
   Future<void> remove(String mountId) async {
     await registry.remove(mountId);
     await _dropDriver(mountId);
+    _lastQuarkOnlineAt.remove(mountId);
     if (!_disposed && onlineStatuses.value.containsKey(mountId)) {
       final updated = Map<String, MountOnlineStatus>.from(onlineStatuses.value)..remove(mountId);
       onlineStatuses.value = updated;
@@ -246,19 +296,51 @@ class MountManager {
   /// Concurrently probes all configured mounts, updates [onlineStatuses],
   /// drops drivers whose active primary/fallback endpoint changed, and invokes
   /// [onReachabilityChanged] when visibility or routes changed.
-  Future<void> probeAll({Duration timeout = const Duration(milliseconds: 2000)}) {
+  Future<void> probeAll({Duration timeout = const Duration(milliseconds: 2000), bool force = false}) {
     final running = _activeProbeAll;
-    if (running != null) return running;
-    final job = _runProbeAll(timeout: timeout);
-    _activeProbeAll = job;
-    return job.whenComplete(() {
-      if (identical(_activeProbeAll, job)) _activeProbeAll = null;
-    });
+    if (running != null) {
+      if (force) _reprobeForce = true;
+      return (_queuedProbeAll ??= Completer<void>()).future;
+    }
+    return _startProbeAll(timeout: timeout, force: force);
   }
 
-  Future<void> _runProbeAll({required Duration timeout}) async {
+  Future<void> _startProbeAll({
+    required Duration timeout,
+    required bool force,
+    Completer<void>? ownCompleter,
+  }) {
+    late final Future<void> job;
+    job = _runProbeAll(timeout: timeout, force: force).whenComplete(() {
+      if (identical(_activeProbeAll, job)) _activeProbeAll = null;
+      if (ownCompleter != null && !ownCompleter.isCompleted) {
+        ownCompleter.complete();
+      }
+      final queued = _queuedProbeAll;
+      if (queued != null) {
+        _queuedProbeAll = null;
+        final nextForce = _reprobeForce;
+        _reprobeForce = false;
+        if (_disposed) {
+          if (!queued.isCompleted) queued.complete();
+        } else {
+          unawaited(_startProbeAll(timeout: timeout, force: nextForce, ownCompleter: queued));
+        }
+      }
+    });
+    _activeProbeAll = job;
+    return job;
+  }
+
+  Future<void> _runProbeAll({required Duration timeout, required bool force}) async {
     if (_disposed) return;
-    final mounts = await registry.list();
+    final List<StorageMount> mounts;
+    try {
+      mounts = await registry.list();
+    } catch (e) {
+      appLogger.d('MountManager.probeAll skipped: failed to list mounts ($e)');
+      return;
+    }
     if (_disposed) return;
 
     final previousHidden = Set<String>.from(hiddenOfflineMountIds);
@@ -272,18 +354,39 @@ class MountManager {
     onlineStatuses.value = initial;
 
     final results = await Future.wait([
-      for (final mount in mounts) probeMount(mount, timeout: timeout).then((status) => (mount.id, status)),
+      for (final mount in mounts)
+        () async {
+          if (!force &&
+              mount.kind == StorageKind.quark &&
+              previousStatuses[mount.id] == MountOnlineStatus.onlinePrimary) {
+            final lastAt = _lastQuarkOnlineAt[mount.id];
+            if (lastAt != null && clock.now().difference(lastAt) < quarkProbeTtl) {
+              return (mount, MountOnlineStatus.onlinePrimary, false);
+            }
+          }
+          final status = await probeMount(mount, timeout: timeout);
+          return (mount, status, true);
+        }(),
     ]);
     if (_disposed) return;
 
     var routeChanged = false;
     final nextStatuses = <String, MountOnlineStatus>{};
-    for (final (id, status) in results) {
+    for (final (mount, status, didProbe) in results) {
+      final id = mount.id;
       nextStatuses[id] = status;
+      if (mount.kind == StorageKind.quark) {
+        if (didProbe && status == MountOnlineStatus.onlinePrimary) {
+          _lastQuarkOnlineAt[id] = clock.now();
+        } else if (status == MountOnlineStatus.offline) {
+          _lastQuarkOnlineAt.remove(id);
+        }
+      }
       final prev = previousStatuses[id];
       final switchedRoute =
           (prev == MountOnlineStatus.onlinePrimary && status == MountOnlineStatus.onlineFallback) ||
-          (prev == MountOnlineStatus.onlineFallback && status == MountOnlineStatus.onlinePrimary);
+          (prev == MountOnlineStatus.onlineFallback && status == MountOnlineStatus.onlinePrimary) ||
+          (status == MountOnlineStatus.onlineFallback && _drivers.containsKey(id));
       if (switchedRoute) {
         routeChanged = true;
         await _dropDriver(id);
@@ -292,6 +395,7 @@ class MountManager {
 
     // Remove deleted mounts that disappeared while probing.
     nextStatuses.removeWhere((id, _) => !activeIds.contains(id));
+    _lastQuarkOnlineAt.removeWhere((id, _) => !activeIds.contains(id));
     onlineStatuses.value = nextStatuses;
 
     final nextHidden = hiddenOfflineMountIds;
@@ -311,9 +415,21 @@ class MountManager {
     });
   }
 
-  Future<void> dropCachedDriver(String mountId) async {
+  Future<void> dropCachedDriver(
+    String mountId, {
+    bool resetStatus = true,
+    MountOnlineStatus? nextStatus,
+    StorageKind? kind,
+  }) async {
     await _dropDriver(mountId);
-    if (!_disposed && onlineStatuses.value.containsKey(mountId)) {
+    _lastQuarkOnlineAt.remove(mountId);
+    if (_disposed) return;
+    if (nextStatus != null) {
+      if (nextStatus == MountOnlineStatus.onlinePrimary && kind == StorageKind.quark) {
+        _lastQuarkOnlineAt[mountId] = clock.now();
+      }
+      onlineStatuses.value = {...onlineStatuses.value, mountId: nextStatus};
+    } else if (resetStatus && onlineStatuses.value.containsKey(mountId)) {
       final updated = Map<String, MountOnlineStatus>.from(onlineStatuses.value)..remove(mountId);
       onlineStatuses.value = updated;
     }

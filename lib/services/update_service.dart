@@ -9,14 +9,14 @@ import 'package:plezy/utils/platform_detector.dart';
 import 'base_shared_preferences_service.dart';
 
 /// Service to check for new versions on GitHub
-/// Only enabled when ENABLE_UPDATE_CHECK build flag is set
+/// Enabled by default via ENABLE_UPDATE_CHECK (can be disabled at build time)
 ///
-/// On macOS (non-Homebrew) and installed Windows: delegates to Sparkle/WinSparkle
-/// via auto_updater for native update dialogs and in-app installs.
-/// On all other platforms: falls back to GitHub API check + browser link dialog.
+/// On macOS (non-Homebrew) and installed Windows when ENABLE_NATIVE_UPDATER=true:
+/// delegates to Sparkle/WinSparkle via auto_updater for native update dialogs and in-app installs.
+/// On all other configurations: uses GitHub Releases API check + browser link dialog.
 class UpdateService {
-  static const String _githubRepo = 'edde746/plezy';
-  static const String _feedUrl = 'https://cdn.jsdelivr.net/gh/edde746/plezy@appcast/appcast.xml';
+  static const String _githubRepo = 'ttainet/TTPlay';
+  static const String _feedUrl = 'https://cdn.jsdelivr.net/gh/ttainet/TTPlay@appcast/appcast.xml';
 
   static const String _keySkippedVersion = 'update_skipped_version';
   static const String _keyLastCheckTime = 'update_last_check_time';
@@ -28,7 +28,12 @@ class UpdateService {
 
   /// Check if update checking is enabled via build flag
   static bool get isUpdateCheckEnabled {
-    return const bool.fromEnvironment('ENABLE_UPDATE_CHECK', defaultValue: false);
+    return const bool.fromEnvironment('ENABLE_UPDATE_CHECK', defaultValue: true);
+  }
+
+  /// Whether the native Sparkle/WinSparkle appcast updater is enabled at build time
+  static bool get isNativeUpdaterEnabled {
+    return const bool.fromEnvironment('ENABLE_NATIVE_UPDATER', defaultValue: false);
   }
 
   /// Whether any in-app update path applies to this install.
@@ -39,9 +44,9 @@ class UpdateService {
   static bool get isUpdateCheckAvailable => isUpdateCheckEnabled && !PlatformDetector.isPackagedInstall();
 
   /// Whether the native auto_updater (Sparkle/WinSparkle) should be used.
-  /// True on macOS (non-Homebrew) and installed Windows (has uninstaller).
+  /// True on macOS (non-Homebrew) and installed Windows (has uninstaller) when ENABLE_NATIVE_UPDATER is enabled.
   static bool get useNativeUpdater {
-    if (!isUpdateCheckAvailable) return false;
+    if (!isNativeUpdaterEnabled || !isUpdateCheckAvailable) return false;
     if (Platform.isMacOS) return !_isHomebrewInstall();
     if (Platform.isWindows) return _isInstalledApp() && !_isWingetInstall();
     return false;

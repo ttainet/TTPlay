@@ -2085,6 +2085,7 @@ class _MainAppState extends State<MainApp> with WidgetsBindingObserver {
           // while local ones exist get re-raced: a same-interface sleep/wake
           // never fires the connectivity event that would otherwise do it.
           unawaited(() async {
+            unawaited(_mountManager.probeAll());
             await _serverManager.checkServerHealth();
             await _serverManager.reconnectOfflineServers();
             await _serverManager.reoptimizeDemotedServers(reason: 'resume');

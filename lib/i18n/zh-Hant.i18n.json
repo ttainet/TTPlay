@@ -2707,7 +2707,7 @@
     "versionCount": "${n} 個版本",
     "episodeCount": "${n} 集",
     "emptyShelf": "這裡還沒有內容",
-    "localLibraryName": "本機媒體庫",
+    "localLibraryName": "媒體庫",
     "defaultProfileName": "我",
     "sortTitle": "標題",
     "sortYear": "年份",
@@ -2767,7 +2767,7 @@
   },
   "streamQuality": {
     "preferred": "偏好畫質",
-    "localPreference": "本機媒體庫畫質",
+    "localPreference": "媒體庫畫質",
     "noneForFile": "這個檔案暫時沒有轉碼畫質，會播放原畫",
     "original": "原畫",
     "superHd": "超清",

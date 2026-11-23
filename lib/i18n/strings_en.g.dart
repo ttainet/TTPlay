@@ -6576,8 +6576,8 @@ class Translations$storage$en {
 	/// en: 'Clear scanned local library entries and metadata, then rescan all mounted sources from scratch? Your mount settings and watch history will be kept.'
 	String get rebuildFullScanMessage => 'Clear scanned local library entries and metadata, then rescan all mounted sources from scratch? Your mount settings and watch history will be kept.';
 
-	/// en: 'This will rebuild the entire local library index and may take a while.'
-	String get rebuildFullScanWarning => 'This will rebuild the entire local library index and may take a while.';
+	/// en: 'This will rebuild the entire library index and may take a while.'
+	String get rebuildFullScanWarning => 'This will rebuild the entire library index and may take a while.';
 
 	/// en: 'Stop the current update?'
 	String get cancelUpdateTitle => 'Stop the current update?';
@@ -6714,8 +6714,8 @@ class Translations$storage$en {
 	/// en: 'Nothing here yet'
 	String get emptyShelf => 'Nothing here yet';
 
-	/// en: 'Local library'
-	String get localLibraryName => 'Local library';
+	/// en: 'Library'
+	String get localLibraryName => 'Library';
 
 	/// en: 'Me'
 	String get defaultProfileName => 'Me';
@@ -6879,8 +6879,8 @@ class Translations$streamQuality$en {
 	/// en: 'Preferred quality'
 	String get preferred => 'Preferred quality';
 
-	/// en: 'Local library quality'
-	String get localPreference => 'Local library quality';
+	/// en: 'Library quality'
+	String get localPreference => 'Library quality';
 
 	/// en: 'This file has no transcoded qualities yet; it plays the original'
 	String get noneForFile => 'This file has no transcoded qualities yet; it plays the original';
@@ -12329,7 +12329,7 @@ extension on Translations {
 			'storage.fullUpdateWarning' => 'This can take a while. Missing files will be removed from the media library.',
 			'storage.incrementalCooldown' => ({required Object seconds}) => 'Page refreshed; directory check on cooldown (${seconds}s)',
 			'storage.rebuildFullScanMessage' => 'Clear scanned local library entries and metadata, then rescan all mounted sources from scratch? Your mount settings and watch history will be kept.',
-			'storage.rebuildFullScanWarning' => 'This will rebuild the entire local library index and may take a while.',
+			'storage.rebuildFullScanWarning' => 'This will rebuild the entire library index and may take a while.',
 			'storage.cancelUpdateTitle' => 'Stop the current update?',
 			'storage.cancelUpdateMessage' => 'The current scan or metadata lookup will stop. Changes already saved will be kept.',
 			'storage.updating' => ({required Object mode}) => 'Running ${mode}',
@@ -12375,7 +12375,7 @@ extension on Translations {
 			'storage.versionCount' => ({required Object n}) => '${n} versions',
 			'storage.episodeCount' => ({required Object n}) => '${n} episodes',
 			'storage.emptyShelf' => 'Nothing here yet',
-			'storage.localLibraryName' => 'Local library',
+			'storage.localLibraryName' => 'Library',
 			'storage.defaultProfileName' => 'Me',
 			'storage.sortTitle' => 'Title',
 			'storage.sortYear' => 'Year',
@@ -12429,7 +12429,7 @@ extension on Translations {
 			'storage.addScanFolder' => 'Add folder',
 			'storage.allFolders' => 'All folders (entire storage)',
 			'streamQuality.preferred' => 'Preferred quality',
-			'streamQuality.localPreference' => 'Local library quality',
+			'streamQuality.localPreference' => 'Library quality',
 			'streamQuality.noneForFile' => 'This file has no transcoded qualities yet; it plays the original',
 			'streamQuality.original' => 'Original',
 			'streamQuality.superHd' => 'Full HD',

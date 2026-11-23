@@ -2621,7 +2621,7 @@ class Translations$storage$zh extends Translations$storage$en {
 	@override String get fullUpdateWarning => '此操作可能耗时较长。媒体源中已找不到的文件会从媒体库移除。';
 	@override String incrementalCooldown({required Object seconds}) => '页面已刷新，目录增量检查冷却中（${seconds} 秒）';
 	@override String get rebuildFullScanMessage => '是否删除现有本地扫描条目与刮削数据，并重新全盘扫描所有挂载源？挂载配置与观看记录将会保留。';
-	@override String get rebuildFullScanWarning => '此操作将重建本地媒体库索引，耗时可能较长。';
+	@override String get rebuildFullScanWarning => '此操作将重建媒体库索引，耗时可能较长。';
 	@override String get cancelUpdateTitle => '停止当前更新？';
 	@override String get cancelUpdateMessage => '当前扫描或刮削将停止，已经保存的变更会保留。';
 	@override String updating({required Object mode}) => '正在${mode}';
@@ -2667,7 +2667,7 @@ class Translations$storage$zh extends Translations$storage$en {
 	@override String versionCount({required Object n}) => '${n} 个版本';
 	@override String episodeCount({required Object n}) => '${n} 集';
 	@override String get emptyShelf => '这里还没有内容';
-	@override String get localLibraryName => '本地媒体库';
+	@override String get localLibraryName => '媒体库';
 	@override String get defaultProfileName => '我';
 	@override String get sortTitle => '标题';
 	@override String get sortYear => '年份';
@@ -2728,7 +2728,7 @@ class Translations$streamQuality$zh extends Translations$streamQuality$en {
 
 	// Translations
 	@override String get preferred => '首选画质';
-	@override String get localPreference => '本地媒体库画质';
+	@override String get localPreference => '媒体库画质';
 	@override String get noneForFile => '这个文件暂时没有转码画质，会播放原画';
 	@override String get original => '原画';
 	@override String get superHd => '超清';
@@ -6524,7 +6524,7 @@ extension on TranslationsZh {
 			'storage.fullUpdateWarning' => '此操作可能耗时较长。媒体源中已找不到的文件会从媒体库移除。',
 			'storage.incrementalCooldown' => ({required Object seconds}) => '页面已刷新，目录增量检查冷却中（${seconds} 秒）',
 			'storage.rebuildFullScanMessage' => '是否删除现有本地扫描条目与刮削数据，并重新全盘扫描所有挂载源？挂载配置与观看记录将会保留。',
-			'storage.rebuildFullScanWarning' => '此操作将重建本地媒体库索引，耗时可能较长。',
+			'storage.rebuildFullScanWarning' => '此操作将重建媒体库索引，耗时可能较长。',
 			'storage.cancelUpdateTitle' => '停止当前更新？',
 			'storage.cancelUpdateMessage' => '当前扫描或刮削将停止，已经保存的变更会保留。',
 			'storage.updating' => ({required Object mode}) => '正在${mode}',
@@ -6570,7 +6570,7 @@ extension on TranslationsZh {
 			'storage.versionCount' => ({required Object n}) => '${n} 个版本',
 			'storage.episodeCount' => ({required Object n}) => '${n} 集',
 			'storage.emptyShelf' => '这里还没有内容',
-			'storage.localLibraryName' => '本地媒体库',
+			'storage.localLibraryName' => '媒体库',
 			'storage.defaultProfileName' => '我',
 			'storage.sortTitle' => '标题',
 			'storage.sortYear' => '年份',
@@ -6624,7 +6624,7 @@ extension on TranslationsZh {
 			'storage.addScanFolder' => '添加目录',
 			'storage.allFolders' => '全部目录（扫描整盘）',
 			'streamQuality.preferred' => '首选画质',
-			'streamQuality.localPreference' => '本地媒体库画质',
+			'streamQuality.localPreference' => '媒体库画质',
 			'streamQuality.noneForFile' => '这个文件暂时没有转码画质，会播放原画',
 			'streamQuality.original' => '原画',
 			'streamQuality.superHd' => '超清',

@@ -311,6 +311,111 @@ void main() {
       expect(find.text('Unbound Emby Movies'), findsNothing);
     },
   );
+
+  testWidgets(
+    'hides offline cloud-mounted Emby servers and their libraries in SideNavigationRail until they become online',
+    (tester) async {
+      await SettingsService.getInstance();
+      final storage = await StorageService.getInstance();
+      final db = AppDatabase.forTesting(NativeDatabase.memory());
+      final connections = _EmptyConnections(db);
+      final bindings = _EmptyBindings(db);
+      final plexHome = PlexHomeService(
+        connections: connections,
+        profileConnections: bindings,
+        storage: storage,
+        plexHomeUserFetcher: (_) async => const [],
+      );
+      final ownerProfile = Profile.local(id: 'local-owner', displayName: 'Owner', createdAt: DateTime(2026));
+      final activeProfile = _FixedActiveProfile(
+        registry: ProfileRegistry(db),
+        plexHome: plexHome,
+        connections: connections,
+        profileConnections: bindings,
+        storage: storage,
+        profile: ownerProfile,
+      );
+
+      final directEmby = _FakeDirectServerClient(
+        serverId: ServerId('emby-lan-1'),
+        serverName: 'LAN Emby',
+        backend: MediaBackend.emby,
+      );
+
+      final manager = MultiServerManager();
+      manager.registerSelfHostedExternals([directEmby]);
+      manager.updateServerStatus(directEmby.serverId, false);
+      final multiServer = testMultiServerProvider(manager);
+
+      final librariesProvider = LibrariesProvider();
+      await librariesProvider.updateLibraryOrder([
+        const MediaLibrary(
+          id: 'emby-lan-lib-1',
+          backend: MediaBackend.emby,
+          title: 'LAN Emby Movies',
+          kind: MediaKind.movie,
+          serverId: 'emby-lan-1',
+          serverName: 'LAN Emby',
+        ),
+      ]);
+
+      final hiddenProvider = HiddenLibrariesProvider();
+      await hiddenProvider.ensureInitialized();
+
+      addTearDown(() async {
+        activeProfile.dispose();
+        await plexHome.dispose();
+        await db.close();
+        multiServer.dispose();
+        manager.dispose();
+        librariesProvider.dispose();
+        hiddenProvider.dispose();
+      });
+
+      await tester.pumpWidget(
+        TranslationProvider(
+          child: MultiProvider(
+            providers: [
+              ChangeNotifierProvider<ActiveProfileProvider>.value(value: activeProfile),
+              Provider<ConnectionRegistry>.value(value: connections),
+              Provider<ProfileConnectionRegistry>.value(value: bindings),
+              ChangeNotifierProvider<LibrariesProvider>.value(value: librariesProvider),
+              ChangeNotifierProvider<HiddenLibrariesProvider>.value(value: hiddenProvider),
+              ChangeNotifierProvider<MultiServerProvider>.value(value: multiServer),
+            ],
+            child: MaterialApp(
+              theme: ThemeData(extensions: const [testMonoTokens]),
+              home: Scaffold(
+                body: SideNavigationRail(
+                  selectedTab: NavigationTabId.discover,
+                  alwaysExpanded: true,
+                  onDestinationSelected: (_) {},
+                  onLibrarySelected: (_) {},
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // Offline Emby server and its cached library stay hidden.
+      expect(find.text('LAN Emby'), findsNothing);
+      expect(find.text('LAN Emby Movies'), findsNothing);
+
+      // Once async probe marks the server online, both appear.
+      manager.updateServerStatus(directEmby.serverId, true);
+      await tester.pumpAndSettle();
+      expect(find.text('LAN Emby'), findsOneWidget);
+      expect(find.text('LAN Emby Movies'), findsOneWidget);
+
+      // Dropping offline hides them again.
+      manager.updateServerStatus(directEmby.serverId, false);
+      await tester.pumpAndSettle();
+      expect(find.text('LAN Emby'), findsNothing);
+      expect(find.text('LAN Emby Movies'), findsNothing);
+    },
+  );
 }
 
 class _FakeDirectServerClient implements MediaServerClient {

@@ -1,3 +1,5 @@
+import 'package:flutter/foundation.dart' show listEquals, mapEquals;
+
 import '../connection/connection.dart';
 import '../iptv/iptv_models.dart';
 import '../media/media_browser_dialect.dart';
@@ -50,6 +52,20 @@ class CloudMountMirror {
   List<JellyfinConnection> get lastExternalConnections => _lastExternalConnections;
   List<IptvSource> _lastIptvSources = const [];
   List<IptvSource> get lastIptvSources => _lastIptvSources;
+  final Set<String> _recentlyVerifiedSourceIds = <String>{};
+  Set<String> _lastSeededExternalServerIds = const {};
+
+  void markSourceRecentlyVerified(String sourceId) {
+    if (sourceId.isNotEmpty) {
+      _recentlyVerifiedSourceIds.add(sourceId);
+    }
+  }
+
+  Set<String> consumeSeededExternalServerIds() {
+    final ids = _lastSeededExternalServerIds;
+    _lastSeededExternalServerIds = const {};
+    return ids;
+  }
 
   /// Syncs cloud sources into local [MountRegistry], decrypting credentials
   /// locally with the unlocked E2EE master key. Local-only mounts (such as
@@ -61,9 +77,12 @@ class CloudMountMirror {
 
   Future<CloudMirrorResult> mirrorAllWithExternals() async {
     final remoteSources = await sourceRepository.listSources();
+    final existingMounts = await mountRegistry.list();
+    final existingById = {for (final m in existingMounts) m.id: m};
     final activeCloudMountIds = <String>{};
     final externalConnections = <JellyfinConnection>[];
     final iptvSources = <IptvSource>[];
+    final seededExternalServerIds = <String>{};
 
     for (final src in remoteSources) {
       if (src.status != 'active') continue;
@@ -74,6 +93,9 @@ class CloudMountMirror {
           final conn = _toExternalConnection(src, cred.payload);
           if (conn != null) {
             externalConnections.add(conn);
+            if (_recentlyVerifiedSourceIds.remove(src.id)) {
+              seededExternalServerIds.add(conn.serverMachineId);
+            }
           }
         } catch (e) {
           appLogger.w('CloudMountMirror: skipped external credential sync for ${src.id}: $e');
@@ -103,8 +125,23 @@ class CloudMountMirror {
         final cred = await sourceRepository.fetchCredential(src.id);
         final mount = _toStorageMount(src, mountId, cred.payload);
         if (mount != null) {
-          await mountRegistry.upsert(mount);
-          await mountManager?.dropCachedDriver(mountId);
+          final seedOnline = _recentlyVerifiedSourceIds.remove(src.id);
+          final prev = existingById[mountId];
+          final unchanged = prev != null && _sameStorageMount(prev, mount);
+          if (unchanged) {
+            if (seedOnline) {
+              mountManager?.setStatus(mountId, MountOnlineStatus.onlinePrimary, kind: mount.kind);
+            } else {
+              mountManager?.seedStatusIfAbsent(mountId, MountOnlineStatus.offline);
+            }
+          } else {
+            await mountRegistry.upsert(mount);
+            await mountManager?.dropCachedDriver(
+              mountId,
+              nextStatus: seedOnline ? MountOnlineStatus.onlinePrimary : MountOnlineStatus.offline,
+              kind: mount.kind,
+            );
+          }
         }
       } catch (e) {
         appLogger.w('CloudMountMirror: skipped credential sync for ${src.id}: $e');
@@ -122,11 +159,35 @@ class CloudMountMirror {
 
     _lastExternalConnections = List.unmodifiable(externalConnections);
     _lastIptvSources = List.unmodifiable(iptvSources);
+    _lastSeededExternalServerIds = Set.unmodifiable(seededExternalServerIds);
     return CloudMirrorResult(
       sources: remoteSources,
       directExternalConnections: _lastExternalConnections,
       iptvSources: _lastIptvSources,
     );
+  }
+
+  static bool _sameStorageMount(StorageMount a, StorageMount b) {
+    return a.id == b.id &&
+        a.kind == b.kind &&
+        a.displayName == b.displayName &&
+        mapEquals(a.secrets, b.secrets) &&
+        _sameConfigMap(a.config, b.config);
+  }
+
+  static bool _sameConfigMap(Map<String, Object?> a, Map<String, Object?> b) {
+    if (a.length != b.length) return false;
+    for (final entry in a.entries) {
+      if (!b.containsKey(entry.key)) return false;
+      final va = entry.value;
+      final vb = b[entry.key];
+      if (va is List && vb is List) {
+        if (!listEquals(va, vb)) return false;
+      } else if (va != vb) {
+        return false;
+      }
+    }
+    return true;
   }
 
   StorageMount? _toStorageMount(CloudSource src, String mountId, Map<String, dynamic> cred) {

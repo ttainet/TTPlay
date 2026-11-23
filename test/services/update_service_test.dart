@@ -93,6 +93,41 @@ void main() {
     );
   });
 
+  test('queries ttainet/TTPlay GitHub latest release and returns parsed update info', () async {
+    Uri? requestedUri;
+    final client = MediaServerHttpClient(
+      client: MockClient((request) async {
+        requestedUri = request.url;
+        return http.Response(
+          jsonEncode({
+            'tag_name': 'v2.0.0',
+            'html_url': 'https://github.com/ttainet/TTPlay/releases/tag/v2.0.0',
+            'name': 'TTPlay v2.0.0',
+            'body': 'Release notes',
+            'published_at': '2026-11-23T00:00:00Z',
+          }),
+          200,
+          headers: {'content-type': 'application/json'},
+        );
+      }),
+    );
+    addTearDown(client.close);
+
+    final result = await UpdateService.debugPerformUpdateCheck(
+      respectCooldown: false,
+      client: client,
+      throwOnFailure: true,
+    );
+
+    expect(requestedUri.toString(), 'https://api.github.com/repos/ttainet/TTPlay/releases/latest');
+    expect(result, isNotNull);
+    expect(result!['hasUpdate'], isTrue);
+    expect(result['currentVersion'], '1.0.0');
+    expect(result['latestVersion'], '2.0.0');
+    expect(result['releaseUrl'], 'https://github.com/ttainet/TTPlay/releases/tag/v2.0.0');
+    expect(result['releaseName'], 'TTPlay v2.0.0');
+  });
+
   for (final failure in failedResponses.entries) {
     test('startup ${failure.key} records cooldown before request and manual check bypasses it', () async {
       final prefs = await BaseSharedPreferencesService.sharedCache();

@@ -80,7 +80,8 @@ void configureLocalLibraryClientLabels(LocalLibraryClient local) {
     }
     ..recentlyAddedAllTitle = t.discover.recentlyAdded
     ..recentlyAddedTitle = t.storage.recentlyAdded(shelf: '{shelf}')
-    ..continueWatchingTitle = t.storage.continueWatching;
+    ..continueWatchingTitle = t.storage.continueWatching
+    ..offlineStatusLabel = t.storage.statusOffline;
 }
 
 /// The local media library, presented to the app as a media server.
@@ -120,6 +121,7 @@ class LocalLibraryClient implements MediaServerClient, StreamQualityClient {
   LibraryScrapeRunner? scrapeRunner;
   final Duration seekDebounceDuration;
   String tmdbImageBase = TmdbProvider.defaultImageBase;
+  String offlineStatusLabel = '离线';
 
   /// Active `media_library` server URL used to proxy all remote/TMDB artwork
   /// so the client never connects directly to TMDB. Defaults to the official
@@ -342,6 +344,10 @@ class LocalLibraryClient implements MediaServerClient, StreamQualityClient {
 
   MediaVersion _toVersion(LibraryFileRow file) {
     final extension = StoragePath.extension(file.path);
+    final baseName = [?_mountsById[file.mountId]?.displayName, ?file.versionLabel].join(' · ');
+    final displayName = _mountManager.statusOf(file.mountId) == MountOnlineStatus.offline
+        ? (baseName.isEmpty ? offlineStatusLabel : '$baseName ($offlineStatusLabel)')
+        : baseName;
     return MediaVersion(
       id: '${file.id}',
       width: file.width,
@@ -350,7 +356,7 @@ class LocalLibraryClient implements MediaServerClient, StreamQualityClient {
       container: file.container ?? (extension.isEmpty ? null : extension),
       // The mount leads, so copies of one film on different sources read
       // apart at a glance; the path below says exactly which file it is.
-      name: [?_mountsById[file.mountId]?.displayName, ?file.versionLabel].join(' · '),
+      name: displayName,
       description: file.path,
       parts: [
         MediaPart(
@@ -1306,6 +1312,7 @@ class LocalLibraryClient implements MediaServerClient, StreamQualityClient {
   int _mountPriority(String mountId) {
     final status = _mountManager.statusOf(mountId);
     if (status == MountOnlineStatus.offline) return 99;
+    if (status == MountOnlineStatus.unknown || status == MountOnlineStatus.probing) return 40;
     final mount = _mountsById[mountId];
     if (mount == null) return 50;
     return switch (mount.kind) {
@@ -1388,6 +1395,69 @@ class LocalLibraryClient implements MediaServerClient, StreamQualityClient {
     return added;
   }
 
+  Future<bool> _ensureMountReachable(
+    StorageMount mount, {
+    required bool probeIfOffline,
+    required bool probeUnknownQuark,
+  }) async {
+    final status = _mountManager.statusOf(mount.id);
+    if (status == MountOnlineStatus.onlinePrimary || status == MountOnlineStatus.onlineFallback) {
+      return true;
+    }
+    if (status == MountOnlineStatus.offline) {
+      if (!probeIfOffline) return false;
+      final probed = await _mountManager.probeMount(mount);
+      await _mountManager.applyProbeStatus(mount.id, probed, kind: mount.kind);
+      return probed == MountOnlineStatus.onlinePrimary || probed == MountOnlineStatus.onlineFallback;
+    }
+    final shouldProbe =
+        mount.kind != StorageKind.quark ||
+        probeUnknownQuark ||
+        mount.configString(MountKeys.fallbackUrl) != null;
+    if (!shouldProbe) return true;
+    final probed = await _mountManager.probeMount(mount);
+    await _mountManager.applyProbeStatus(mount.id, probed, kind: mount.kind);
+    return probed == MountOnlineStatus.onlinePrimary || probed == MountOnlineStatus.onlineFallback;
+  }
+
+  Future<PlaybackInitializationResult> _openCandidate(
+    StorageMount mount,
+    ({int index, LibraryFileRow file}) candidate,
+    List<LibraryFileRow> files,
+    PlaybackInitializationOptions options,
+  ) async {
+    final variants = await _streamVariants(mount, candidate.file);
+    final variant = StreamVariant.pick(variants, options.streamQuality, _mountManager.variantOrder(mount));
+    final url =
+        (variant == null
+                ? await _mountManager.streamUrl(mount, _entryOf(candidate.file))
+                : await _mountManager.variantUrl(mount, _entryOf(candidate.file), variant))
+            .toString();
+    final subtitles = await _externalSubtitles(candidate.file);
+
+    return PlaybackInitializationResult(
+      availableVersions: [for (final file in files) _toVersion(file)],
+      videoUrl: url,
+      // Audio and embedded subtitle tracks are read from the file by the player.
+      mediaInfo: MediaSourceInfo(
+        videoUrl: url,
+        audioTracks: const [],
+        subtitleTracks: const [],
+        chapters: const [],
+        mediaSourceId: '${candidate.file.id}',
+        mediaIndex: candidate.index,
+      ),
+      subtitleSidecars: [
+        for (final track in subtitles) PlaybackSubtitleSidecar(sourceStreamId: null, track: track),
+      ],
+      playMethod: variant == null ? 'DirectPlay' : 'DirectStream',
+      selectedMediaIndex: candidate.index,
+      selectedMediaSourceId: '${candidate.file.id}',
+      streamQualities: [for (final v in variants) StreamQuality(id: v.id, width: v.width, height: v.height)],
+      streamQuality: variant?.id ?? StreamQuality.original,
+    );
+  }
+
   @override
   Future<PlaybackInitializationResult> getPlaybackInitialization(PlaybackInitializationOptions options) async {
     final files = await _versions(options.metadata.id);
@@ -1416,6 +1486,8 @@ class LocalLibraryClient implements MediaServerClient, StreamQualityClient {
     ];
 
     PlaybackException? lastError;
+    final offlineCandidates = <({StorageMount mount, ({int index, LibraryFileRow file}) candidate})>[];
+
     for (final candidate in candidates) {
       final StorageMount mount;
       try {
@@ -1425,16 +1497,21 @@ class LocalLibraryClient implements MediaServerClient, StreamQualityClient {
         continue;
       }
 
-      final needsProbe = candidates.length > 1 || mount.configString(MountKeys.fallbackUrl) != null;
-      if (needsProbe && _mountManager.statusOf(candidate.file.mountId) == MountOnlineStatus.unknown) {
-        final probed = await _mountManager.probeMount(mount);
-        _mountManager.setStatus(mount.id, probed);
-        if (probed == MountOnlineStatus.onlineFallback) {
-          await _mountManager.dropCachedDriver(mount.id);
-        }
+      if (_mountManager.statusOf(mount.id) == MountOnlineStatus.offline) {
+        offlineCandidates.add((mount: mount, candidate: candidate));
+        lastError ??= const PlaybackException(
+          'Storage source is currently offline',
+          reason: PlaybackFailureReason.localFileUnavailable,
+        );
+        continue;
       }
 
-      if (!_mountManager.isMountOnline(candidate.file.mountId)) {
+      final reachable = await _ensureMountReachable(
+        mount,
+        probeIfOffline: false,
+        probeUnknownQuark: candidates.length > 1,
+      );
+      if (!reachable) {
         lastError ??= const PlaybackException(
           'Storage source is currently offline',
           reason: PlaybackFailureReason.localFileUnavailable,
@@ -1443,46 +1520,51 @@ class LocalLibraryClient implements MediaServerClient, StreamQualityClient {
       }
 
       try {
-        final variants = await _streamVariants(mount, candidate.file);
-        final variant = StreamVariant.pick(variants, options.streamQuality, _mountManager.variantOrder(mount));
-        final url =
-            (variant == null
-                    ? await _mountManager.streamUrl(mount, _entryOf(candidate.file))
-                    : await _mountManager.variantUrl(mount, _entryOf(candidate.file), variant))
-                .toString();
-        final subtitles = await _externalSubtitles(candidate.file);
-
-        return PlaybackInitializationResult(
-          availableVersions: [for (final file in files) _toVersion(file)],
-          videoUrl: url,
-          // Audio and embedded subtitle tracks are read from the file by the player.
-          mediaInfo: MediaSourceInfo(
-            videoUrl: url,
-            audioTracks: const [],
-            subtitleTracks: const [],
-            chapters: const [],
-            mediaSourceId: '${candidate.file.id}',
-            mediaIndex: candidate.index,
-          ),
-          subtitleSidecars: [
-            for (final track in subtitles) PlaybackSubtitleSidecar(sourceStreamId: null, track: track),
-          ],
-          playMethod: variant == null ? 'DirectPlay' : 'DirectStream',
-          selectedMediaIndex: candidate.index,
-          selectedMediaSourceId: '${candidate.file.id}',
-          streamQualities: [for (final v in variants) StreamQuality(id: v.id, width: v.width, height: v.height)],
-          streamQuality: variant?.id ?? StreamQuality.original,
-        );
+        return await _openCandidate(mount, candidate, files, options);
       } on StorageException catch (e) {
         final reason = e.kind == StorageErrorKind.network || e.kind == StorageErrorKind.notFound
             ? PlaybackFailureReason.localFileUnavailable
             : PlaybackFailureReason.serverUnavailable;
         lastError = PlaybackException(e.message, reason: reason);
         if (e.kind == StorageErrorKind.network || e.kind == StorageErrorKind.notFound) {
-          _mountManager.setStatus(candidate.file.mountId, MountOnlineStatus.offline);
+          await _mountManager.applyProbeStatus(mount.id, MountOnlineStatus.offline, kind: mount.kind);
           continue;
         }
         throw lastError;
+      }
+    }
+
+    if (offlineCandidates.isNotEmpty) {
+      final reprobed = await Future.wait([
+        for (final entry in offlineCandidates)
+          () async {
+            final status = await _mountManager.probeMount(entry.mount);
+            await _mountManager.applyProbeStatus(entry.mount.id, status, kind: entry.mount.kind);
+            return (entry: entry, status: status);
+          }(),
+      ]);
+      for (final result in reprobed) {
+        if (result.status != MountOnlineStatus.onlinePrimary &&
+            result.status != MountOnlineStatus.onlineFallback) {
+          continue;
+        }
+        try {
+          return await _openCandidate(result.entry.mount, result.entry.candidate, files, options);
+        } on StorageException catch (e) {
+          final reason = e.kind == StorageErrorKind.network || e.kind == StorageErrorKind.notFound
+              ? PlaybackFailureReason.localFileUnavailable
+              : PlaybackFailureReason.serverUnavailable;
+          lastError = PlaybackException(e.message, reason: reason);
+          if (e.kind == StorageErrorKind.network || e.kind == StorageErrorKind.notFound) {
+            await _mountManager.applyProbeStatus(
+              result.entry.mount.id,
+              MountOnlineStatus.offline,
+              kind: result.entry.mount.kind,
+            );
+            continue;
+          }
+          throw lastError;
+        }
       }
     }
 
@@ -1502,8 +1584,15 @@ class LocalLibraryClient implements MediaServerClient, StreamQualityClient {
   }) async {
     final picked = _pickVersion(await _versions(item.id), mediaIndex, mediaSourceId);
     if (picked == null) return null;
+    final mount = await _mountOf(picked.file);
+    if (!await _ensureMountReachable(mount, probeIfOffline: true, probeUnknownQuark: false)) {
+      throw const PlaybackException(
+        'Storage source is currently offline',
+        reason: PlaybackFailureReason.localFileUnavailable,
+      );
+    }
     return ExternalPlaybackTarget(
-      url: (await _streamUrl(picked.file)).toString(),
+      url: (await _mountManager.streamUrl(mount, _entryOf(picked.file))).toString(),
       subtitles: await _externalSubtitles(picked.file),
     );
   }
@@ -1514,6 +1603,12 @@ class LocalLibraryClient implements MediaServerClient, StreamQualityClient {
     if (picked == null) return const DownloadResolution(videoUrl: null);
     final subtitles = await _repo.subtitlesOf(picked.file.id);
     final mount = await _mountOf(picked.file);
+    if (!await _ensureMountReachable(mount, probeIfOffline: true, probeUnknownQuark: false)) {
+      throw const PlaybackException(
+        'Storage source is currently offline',
+        reason: PlaybackFailureReason.localFileUnavailable,
+      );
+    }
     var entry = _entryOf(picked.file);
     String? resumeETag;
     final Uri videoUrl;
@@ -1584,6 +1679,7 @@ class LocalLibraryClient implements MediaServerClient, StreamQualityClient {
 
   Future<LibraryFileRow> _probedOnce(LibraryFileRow file) async {
     if (file.probedAt != null) return file;
+    if (!_mountManager.isMountOnline(file.mountId)) return file;
     try {
       final mount = await _mountOf(file);
       final driver = _mountManager.driverFor(mount);

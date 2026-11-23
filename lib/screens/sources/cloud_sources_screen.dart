@@ -4,14 +4,18 @@ import 'package:flutter/material.dart';
 import 'package:material_symbols_icons/symbols.dart';
 
 import '../../library_cloud/cloud_api_client.dart';
+import '../../library_cloud/cloud_mount_mirror.dart';
 import '../../library_cloud/scan_session_runner.dart';
 import '../../library_cloud/source_repository.dart';
+import '../../media/ids.dart';
 import '../../storage/drivers/quark_storage_driver.dart';
 import '../../storage/drivers/smb_storage_driver.dart';
 import '../../storage/drivers/webdav_storage_driver.dart';
+import '../../storage/mount_manager.dart';
 import '../../storage/storage_driver.dart';
 import '../../storage/storage_mount.dart';
 import '../../storage/storage_path.dart';
+import '../../ttplay/ttplay_session_binder.dart';
 import '../../utils/platform_detector.dart';
 import '../../utils/snackbar_helper.dart';
 import '../../widgets/app_icon.dart';
@@ -187,6 +191,7 @@ class _CloudSourcesScreenState extends State<CloudSourcesScreen> {
       context,
       _isScannableKind(created.kind) ? '已添加「${created.name}」，请按需手动触发扫描' : '已添加「${created.name}」',
     );
+    maybeReadTtplayBinder(context)?.markCloudSourceRecentlyVerified(sourceId: created.id);
     await _load();
     unawaited(_syncProjection(quiet: true));
   }
@@ -203,6 +208,7 @@ class _CloudSourcesScreenState extends State<CloudSourcesScreen> {
     if (!mounted || updated == null) return;
 
     showSuccessSnackBar(context, '已保存「${updated.name}」的修改');
+    maybeReadTtplayBinder(context)?.markCloudSourceRecentlyVerified(sourceId: updated.id);
     await _load();
     unawaited(_syncProjection(quiet: true));
   }
@@ -447,6 +453,11 @@ class _CloudSourcesScreenState extends State<CloudSourcesScreen> {
   }
 
   StorageDriver? _buildDriverForSource(CloudSource source, Map<String, dynamic> cred) {
+    final useFallback =
+        maybeReadTtplayBinder(context)?.localLibraryClient.mountManager.statusOf(
+          CloudMountMirror.mountIdForSource(source.id),
+        ) ==
+        MountOnlineStatus.onlineFallback;
     if (source.kind == 'webdav') {
       final mount = StorageMount(
         id: source.id,
@@ -463,7 +474,7 @@ class _CloudSourcesScreenState extends State<CloudSourcesScreen> {
           if ((cred['password'] as String?)?.isNotEmpty == true) MountKeys.secretPassword: cred['password'] as String,
         },
       );
-      return WebDavStorageDriver.fromMount(mount);
+      return WebDavStorageDriver.fromMount(mount, useFallback: useFallback);
     }
     if (source.kind == 'smb') {
       final mount = StorageMount(
@@ -482,7 +493,7 @@ class _CloudSourcesScreenState extends State<CloudSourcesScreen> {
           if ((cred['password'] as String?)?.isNotEmpty == true) MountKeys.secretPassword: cred['password'] as String,
         },
       );
-      return SmbStorageDriver.fromMount(mount);
+      return SmbStorageDriver.fromMount(mount, useFallback: useFallback);
     }
     if (source.kind == 'quark') {
       final mount = StorageMount(
@@ -632,7 +643,14 @@ class _CloudSourcesScreenState extends State<CloudSourcesScreen> {
             label: Text(_syncingProjection ? '同步中...' : '同步片库'),
           ),
           const SizedBox(width: 6),
-          IconButton(tooltip: '刷新', icon: const AppIcon(Symbols.refresh_rounded), onPressed: _load),
+          IconButton(
+            tooltip: '刷新',
+            icon: const AppIcon(Symbols.refresh_rounded),
+            onPressed: () {
+              unawaited(maybeReadTtplayBinder(context)?.probeCloudReachability());
+              unawaited(_load());
+            },
+          ),
           if (!isTv) ...[
             const SizedBox(width: 4),
             FilledButton.icon(
@@ -690,11 +708,108 @@ class _CloudSourcesScreenState extends State<CloudSourcesScreen> {
                   padding: const EdgeInsets.all(16),
                   itemCount: _sources.length,
                   separatorBuilder: (_, _) => const SizedBox(height: 14),
-                  itemBuilder: (context, index) => _buildSourceCard(context, _sources[index], isTv: isTv, runner: runner),
+                  itemBuilder: (context, index) => _buildSourceCard(
+                    context,
+                    _sources[index],
+                    isTv: isTv,
+                    runner: runner,
+                    binder: binder,
+                  ),
                 ),
               ),
             ),
     );
+  }
+
+  Widget _buildReachabilityPill(BuildContext context, String label, Color bg, Color fg) {
+    return Padding(
+      padding: const EdgeInsets.only(left: 8),
+      child: DecoratedBox(
+        decoration: BoxDecoration(color: bg, borderRadius: const BorderRadius.all(Radius.circular(6))),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+          child: Text(label, style: Theme.of(context).textTheme.labelSmall?.copyWith(color: fg)),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildReachabilityBadge(BuildContext context, CloudSource src, TtplaySessionBinder? binder) {
+    if (binder == null) return const SizedBox.shrink();
+    if (_isScannableKind(src.kind)) {
+      final manager = binder.localLibraryClient.mountManager;
+      return ValueListenableBuilder<Map<String, MountOnlineStatus>>(
+        valueListenable: manager.onlineStatuses,
+        builder: (context, statuses, _) {
+          final status = statuses[CloudMountMirror.mountIdForSource(src.id)] ?? MountOnlineStatus.unknown;
+          final scheme = Theme.of(context).colorScheme;
+          return switch (status) {
+            MountOnlineStatus.onlinePrimary => _buildReachabilityPill(
+              context,
+              '在线',
+              scheme.primaryContainer,
+              scheme.onPrimaryContainer,
+            ),
+            MountOnlineStatus.onlineFallback => _buildReachabilityPill(
+              context,
+              '备用地址',
+              scheme.secondaryContainer,
+              scheme.onSecondaryContainer,
+            ),
+            MountOnlineStatus.probing => _buildReachabilityPill(
+              context,
+              '检测中',
+              scheme.surfaceContainerHighest,
+              scheme.onSurfaceVariant,
+            ),
+            MountOnlineStatus.offline => _buildReachabilityPill(
+              context,
+              '本机不可达',
+              scheme.errorContainer,
+              scheme.onErrorContainer,
+            ),
+            MountOnlineStatus.unknown => const SizedBox.shrink(),
+          };
+        },
+      );
+    }
+
+    if (src.kind == 'emby' || src.kind == 'jellyfin') {
+      final serverManager = binder.serverManager;
+      return StreamBuilder<Map<String, bool>>(
+        stream: serverManager.statusStream,
+        builder: (context, _) {
+          return ValueListenableBuilder<Set<String>>(
+            valueListenable: serverManager.probingServerIds,
+            builder: (context, probingIds, _) {
+              final serverId = binder.externalServerIdForCloudSource(src.id);
+              if (serverId == null) return const SizedBox.shrink();
+              final scheme = Theme.of(context).colorScheme;
+              if (serverManager.authErrorServerIds.contains(serverId)) {
+                return _buildReachabilityPill(context, '凭据失效', scheme.errorContainer, scheme.onErrorContainer);
+              }
+              if (serverManager.accessDeniedServerIds.contains(serverId)) {
+                return _buildReachabilityPill(context, '访问受限', scheme.errorContainer, scheme.onErrorContainer);
+              }
+              if (serverManager.isServerOnline(ServerId(serverId))) {
+                return _buildReachabilityPill(context, '在线', scheme.primaryContainer, scheme.onPrimaryContainer);
+              }
+              if (probingIds.contains(serverId) || serverManager.isProbingServer(serverId)) {
+                return _buildReachabilityPill(
+                  context,
+                  '检测中',
+                  scheme.surfaceContainerHighest,
+                  scheme.onSurfaceVariant,
+                );
+              }
+              return _buildReachabilityPill(context, '本机不可达', scheme.errorContainer, scheme.onErrorContainer);
+            },
+          );
+        },
+      );
+    }
+
+    return const SizedBox.shrink();
   }
 
   Widget _buildSourceCard(
@@ -702,6 +817,7 @@ class _CloudSourcesScreenState extends State<CloudSourcesScreen> {
     CloudSource src, {
     required bool isTv,
     required CloudScanSessionRunner? runner,
+    required TtplaySessionBinder? binder,
   }) {
     final theme = Theme.of(context);
     final isScannable = _isScannableKind(src.kind);
@@ -752,6 +868,7 @@ class _CloudSourcesScreenState extends State<CloudSourcesScreen> {
                                 overflow: TextOverflow.ellipsis,
                               ),
                             ),
+                            _buildReachabilityBadge(context, src, binder),
                             if (!isTv) ...[
                               const SizedBox(width: 4),
                               AppIcon(

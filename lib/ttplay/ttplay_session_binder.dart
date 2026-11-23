@@ -17,9 +17,7 @@ import '../library_cloud/scan_session_runner.dart';
 import '../library_cloud/source_repository.dart';
 import '../media/ids.dart';
 import '../media/library_change_event.dart';
-import '../media/media_server_client.dart';
 import '../providers/multi_server_provider.dart';
-import '../services/jellyfin_client.dart';
 import '../services/multi_server_manager.dart';
 import '../session/app_session_controller.dart';
 import '../session/app_session_models.dart';
@@ -65,6 +63,7 @@ class TtplaySessionBinder extends ChangeNotifier {
   List<TtplayExternalServerClient> _externalClients = const [];
   List<TtplayExternalServerSummary> _externalSummaries = const [];
   Set<String> _directCloudExternalServerIds = const {};
+  final Set<String> _recentlyVerifiedExternalServerIds = <String>{};
   String? _boundSessionKey;
   Object? _lastExternalRefreshError;
   int _syncGeneration = 0;
@@ -324,6 +323,9 @@ class TtplaySessionBinder extends ChangeNotifier {
       } else {
         await _mountDirectCloudExternalServers();
         await localLibraryClient.refreshMounts();
+        if (!_disposed) {
+          unawaited(localLibraryClient.mountManager.probeAll());
+        }
         if (res.fullReset ||
             res.hasChanges ||
             res.itemsProjected > 0 ||
@@ -347,6 +349,7 @@ class TtplaySessionBinder extends ChangeNotifier {
         await _mountDirectCloudExternalServers();
         await localLibraryClient.refreshMounts();
         if (_disposed) return;
+        unawaited(localLibraryClient.mountManager.probeAll());
         _notifyLocalLibraryMutated();
         notifyListeners();
       } finally {
@@ -554,38 +557,51 @@ class TtplaySessionBinder extends ChangeNotifier {
     }
   }
 
+  void markCloudSourceRecentlyVerified({String? sourceId, String? externalServerMachineId}) {
+    if (sourceId != null && sourceId.isNotEmpty) {
+      _cloudMountMirror?.markSourceRecentlyVerified(sourceId);
+    }
+    if (externalServerMachineId != null && externalServerMachineId.isNotEmpty) {
+      _recentlyVerifiedExternalServerIds.add(externalServerMachineId);
+    }
+  }
+
+  String? externalServerIdForCloudSource(String sourceId) {
+    final mirror = _cloudMountMirror;
+    if (mirror == null) return null;
+    final targetId = 'cloud-$sourceId';
+    for (final conn in mirror.lastExternalConnections) {
+      if (conn.id == targetId) return conn.serverMachineId;
+    }
+    return null;
+  }
+
+  Future<void> probeCloudReachability() async {
+    if (_disposed) return;
+    await Future.wait([
+      localLibraryClient.mountManager.probeAll(force: true),
+      serverManager.probeSelfHostedExternals(),
+    ]);
+  }
+
   /// Registers decrypted cloud `emby` / `jellyfin` sources as direct
-  /// [JellyfinClient] instances on [serverManager] (no server relay).
+  /// MediaBrowser clients on [serverManager] (no server relay), defaulting
+  /// unverified endpoints to offline until async probing confirms reachability.
   Future<void> _mountDirectCloudExternalServers() async {
     final mirror = _cloudMountMirror;
     if (mirror == null || _disposed || !isMediaLibraryV1Active) return;
     _iptvProvider?.setCloudSources(mirror.lastIptvSources);
     final previousDirectIds = _directCloudExternalServerIds;
     final conns = mirror.lastExternalConnections;
-    if (conns.isEmpty) {
-      _directCloudExternalServerIds = const {};
-      serverManager.registerSelfHostedExternals(const []);
-      _syncVisibleServerIds(includeLocal: true, removedDirectExternalIds: previousDirectIds);
-      return;
-    }
+    final seedOnline = <String>{
+      ..._recentlyVerifiedExternalServerIds,
+      ...mirror.consumeSeededExternalServerIds(),
+    };
+    _recentlyVerifiedExternalServerIds.clear();
 
-    final clients = <MediaServerClient>[];
-    for (final conn in conns) {
-      try {
-        final client = await JellyfinClient.create(conn);
-        clients.add(client);
-      } catch (e) {
-        appLogger.w('Failed to mount cloud direct ${conn.dialect.productName} (${conn.serverName}): $e');
-      }
-    }
-    if (_disposed) {
-      for (final c in clients) {
-        c.close();
-      }
-      return;
-    }
-    _directCloudExternalServerIds = {for (final c in clients) c.serverId};
-    serverManager.registerSelfHostedExternals(clients);
+    await serverManager.syncDirectCloudExternalConnections(conns, seedOnlineServerIds: seedOnline);
+    if (_disposed) return;
+    _directCloudExternalServerIds = {for (final c in conns) c.serverMachineId};
     _syncVisibleServerIds(
       includeLocal: true,
       removedDirectExternalIds: previousDirectIds.difference(_directCloudExternalServerIds),
@@ -730,6 +746,7 @@ class TtplaySessionBinder extends ChangeNotifier {
     _externalClients = const [];
     _externalSummaries = const [];
     _directCloudExternalServerIds = const {};
+    _recentlyVerifiedExternalServerIds.clear();
     _boundSessionKey = null;
     _lastExternalRefreshError = null;
     _iptvProvider?.setCloudSources(const []);

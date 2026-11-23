@@ -1021,7 +1021,7 @@ class _LibrariesScreenState extends State<LibrariesScreen>
           valueListenable: manager.onlineStatuses,
           builder: (context, _, _) {
             final offlineCount = manager.offlineMountIds.length;
-            if (offlineCount == 0) return const SizedBox.shrink();
+            if (offlineCount == 0 || manager.showOfflineMounts) return const SizedBox.shrink();
             final showing = manager.showOfflineMounts;
             final theme = Theme.of(context);
             return Container(

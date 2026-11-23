@@ -2620,7 +2620,7 @@ class _Translations$storage$zh_Hant extends Translations$storage$zh {
 	@override String versionCount({required Object n}) => '${n} 個版本';
 	@override String episodeCount({required Object n}) => '${n} 集';
 	@override String get emptyShelf => '這裡還沒有內容';
-	@override String get localLibraryName => '本機媒體庫';
+	@override String get localLibraryName => '媒體庫';
 	@override String get defaultProfileName => '我';
 	@override String get sortTitle => '標題';
 	@override String get sortYear => '年份';
@@ -2694,7 +2694,7 @@ class _Translations$streamQuality$zh_Hant extends Translations$streamQuality$zh 
 
 	// Translations
 	@override String get preferred => '偏好畫質';
-	@override String get localPreference => '本機媒體庫畫質';
+	@override String get localPreference => '媒體庫畫質';
 	@override String get noneForFile => '這個檔案暫時沒有轉碼畫質，會播放原畫';
 	@override String get original => '原畫';
 	@override String get superHd => '超清';
@@ -6153,7 +6153,7 @@ extension on TranslationsZhHant {
 			'storage.versionCount' => ({required Object n}) => '${n} 個版本',
 			'storage.episodeCount' => ({required Object n}) => '${n} 集',
 			'storage.emptyShelf' => '這裡還沒有內容',
-			'storage.localLibraryName' => '本機媒體庫',
+			'storage.localLibraryName' => '媒體庫',
 			'storage.defaultProfileName' => '我',
 			'storage.sortTitle' => '標題',
 			'storage.sortYear' => '年份',
@@ -6209,7 +6209,7 @@ extension on TranslationsZhHant {
 			'session.errNetwork' => ({required Object error}) => '連線失敗：${error}',
 			'session.errServer' => ({required Object error}) => '伺服器回傳異常：${error}',
 			'streamQuality.preferred' => '偏好畫質',
-			'streamQuality.localPreference' => '本機媒體庫畫質',
+			'streamQuality.localPreference' => '媒體庫畫質',
 			'streamQuality.noneForFile' => '這個檔案暫時沒有轉碼畫質，會播放原畫',
 			'streamQuality.original' => '原畫',
 			'streamQuality.superHd' => '超清',
