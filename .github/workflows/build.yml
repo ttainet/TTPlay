@@ -250,7 +250,26 @@ jobs:
       - name: Build macOS
         run: flutter build macos --release ${{ env.RELEASE_DART_DEFINES }} --dart-define=SENTRY_DIST=github-macos --dart-define=SUPPORTER_MODE=unlocked --split-debug-info=debug-info/macos
 
+      - name: Check macOS signing secrets
+        id: macos_signing
+        env:
+          MACOS_CERTIFICATE_BASE64: ${{ secrets.MACOS_CERTIFICATE_BASE64 }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+        run: |
+          if [ -n "$MACOS_CERTIFICATE_BASE64" ]; then
+            echo "has_cert=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_cert=false" >> "$GITHUB_OUTPUT"
+            echo "Skipping macOS code signing (MACOS_CERTIFICATE_BASE64 not configured)."
+          fi
+          if [ -n "$MACOS_CERTIFICATE_BASE64" ] && [ -n "$APPLE_ID" ]; then
+            echo "has_notary=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_notary=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Import Code Signing Certificate
+        if: steps.macos_signing.outputs.has_cert == 'true'
         env:
           MACOS_CERTIFICATE_BASE64: ${{ secrets.MACOS_CERTIFICATE_BASE64 }}
           MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
@@ -270,6 +289,7 @@ jobs:
           security list-keychains -d user -s $KEYCHAIN_PATH login.keychain
 
       - name: Sign Application
+        if: steps.macos_signing.outputs.has_cert == 'true'
         env:
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: |
@@ -298,6 +318,7 @@ jobs:
           codesign --force --sign "$IDENTITY" --timestamp --options runtime --entitlements macos/Runner/Release.entitlements "$APP_PATH"
 
       - name: Verify Signature
+        if: steps.macos_signing.outputs.has_cert == 'true'
         run: |
           APP_PATH="build/macos/Build/Products/Release/TTPlay.app"
           echo "Verifying signature..."
@@ -310,6 +331,7 @@ jobs:
           codesign --verify --deep --strict --verbose=2 "$APP_PATH"
 
       - name: Notarize Application
+        if: steps.macos_signing.outputs.has_notary == 'true'
         env:
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
