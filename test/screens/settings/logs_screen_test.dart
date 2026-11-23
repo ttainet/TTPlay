@@ -57,10 +57,12 @@ void main() {
     String? uploadedBody;
     http.Request? uploadedRequest;
     String? clipboardText;
+    logUploadBaseUrlOverride = 'https://relay.ttplay.test';
+    addTearDown(() => logUploadBaseUrlOverride = null);
 
     PackageInfo.setMockInitialValues(
-      appName: 'Plezy',
-      packageName: 'com.plezy.test',
+      appName: 'TTPlay',
+      packageName: 'com.ttai.ttplay.test',
       version: '1.2.3',
       buildNumber: '45',
       buildSignature: '',
@@ -141,7 +143,7 @@ void main() {
     expect(find.text(capability, findRichText: true), findsOneWidget);
     expect(utf8.encode(uploadedBody!).length, lessThanOrEqualTo(maxLogUploadBytes));
     expect(uploadedRequest!.method, 'POST');
-    expect(uploadedRequest!.url, Uri.parse('https://ice.plezy.app/logs'));
+    expect(uploadedRequest!.url, Uri.parse('https://relay.ttplay.test/logs'));
     final contentType = uploadedRequest!.headers.entries
         .singleWhere((entry) => entry.key.toLowerCase() == 'content-type')
         .value;
@@ -171,8 +173,8 @@ void main() {
 
     Future<void> pumpLogs(WidgetTester tester) async {
       PackageInfo.setMockInitialValues(
-        appName: 'Plezy',
-        packageName: 'com.plezy.test',
+        appName: 'TTPlay',
+        packageName: 'com.ttai.ttplay.test',
         version: '2.11.0',
         buildNumber: '124',
         buildSignature: '',
@@ -237,8 +239,8 @@ void main() {
 
     setUp(() {
       PackageInfo.setMockInitialValues(
-        appName: 'Plezy',
-        packageName: 'com.plezy.test',
+        appName: 'TTPlay',
+        packageName: 'com.ttai.ttplay.test',
         version: '1.2.3',
         buildNumber: '45',
         buildSignature: '',
@@ -501,8 +503,8 @@ void main() {
       await TvDetectionService.getInstance(forceTv: true);
       TvDetectionService.setForceTVSync(true);
       PackageInfo.setMockInitialValues(
-        appName: 'Plezy',
-        packageName: 'com.plezy.test',
+        appName: 'TTPlay',
+        packageName: 'com.ttai.ttplay.test',
         version: '1.2.3',
         buildNumber: '45',
         buildSignature: '',

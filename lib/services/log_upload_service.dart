@@ -1,10 +1,15 @@
 import 'dart:convert';
 
-import '../utils/media_server_http_client.dart';
-import 'plezy_server.dart';
+import 'package:flutter/foundation.dart';
 
-/// Plezy server endpoint that returns a short, quotable Log ID.
-const String logUploadEndpoint = '$plezyServerBaseUrl/logs';
+import '../utils/media_server_http_client.dart';
+import 'ttplay_server.dart';
+
+/// TTPlay server endpoint that returns a short, quotable Log ID.
+const String logUploadEndpoint = '$ttplayServerBaseUrl/logs';
+
+@visibleForTesting
+String? logUploadBaseUrlOverride;
 
 /// The server's `/logs` accepts 1 MiB. The in-memory buffer intentionally remains
 /// larger for local viewing and copying; uploads retain the device header and
@@ -48,11 +53,12 @@ String constrainLogUploadPayload({required String header, required String logs, 
 /// [payload] must already be redacted and allowlisted by the caller; this
 /// function performs no sanitisation of its own.
 Future<String> uploadDiagnosticText(String payload, {MediaServerHttpClient? client}) async {
-  if (plezyServerBaseUrl.isEmpty) {
+  final baseUrl = logUploadBaseUrlOverride ?? ttplayServerBaseUrl;
+  if (baseUrl.isEmpty) {
     throw StateError('Diagnostic log upload relay is not configured');
   }
   final response = await (client ?? httpClient).post(
-    logUploadEndpoint,
+    '$baseUrl/logs',
     body: payload,
     headers: {'Content-Type': 'text/plain'},
   );

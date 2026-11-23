@@ -237,7 +237,7 @@ void main() {
   });
 
   group('backup exclusion', () {
-    const channel = MethodChannel('com.plezy/backup_exclusion');
+    const channel = MethodChannel('com.ttai.ttplay/backup_exclusion');
     late List<String> excluded;
 
     void handleExclusion(Future<Object?> Function(MethodCall call) handler) {

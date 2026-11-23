@@ -100,7 +100,7 @@ void _logTvTextInput(String message) {
 }
 
 class _NativeTvTextInputFocusBridge {
-  static const _channel = MethodChannel('com.plezy/text_input');
+  static const _channel = MethodChannel('com.ttai.ttplay/text_input');
   static final Set<Object> _focusedTokens = <Object>{};
   static bool _lastSentFocused = false;
 
@@ -1178,7 +1178,7 @@ class _FocusableTextInputHostState extends State<_FocusableTextInputHost> with W
   void _syncNativeTextInputFocus() {
     // Activation-based, not focus-based: the platform hint pauses the gamepad
     // bridge and defers the pre-IME D-pad intercept to the IME, and it arms
-    // PlezyActivity's soft-input show-retry/repair session — all of which must
+    // TTPlayActivity's soft-input show-retry/repair session — all of which must
     // track a *live* text input session, not a merely focused (read-only
     // gated) field. A dismissed keyboard therefore hands D-pad routing back
     // to the app immediately.
@@ -1449,7 +1449,7 @@ class _FocusableTextInputHostState extends State<_FocusableTextInputHost> with W
       } else if (event.logicalKey.isBackKey) {
         // Android: a healthy IME consumes Back to dismiss itself before the
         // app ever sees it. One arriving here means the keyboard is already
-        // gone (or its key session is broken and PlezyActivity's repair budget
+        // gone (or its key session is broken and TTPlayActivity's repair budget
         // ran out): close the session and claim the whole press — coordinator
         // mark so a same-press platform popRoute dedupes, suppressor armed so
         // the matching KeyUp (delivered to this node with the session closed,
@@ -1461,7 +1461,7 @@ class _FocusableTextInputHostState extends State<_FocusableTextInputHost> with W
       } else if (event.isTvSelectEvent) {
         // Android: Select on a field whose keyboard was dismissed re-raises
         // it (EditText parity). Toggle the connection so the engine issues a
-        // fresh TextInput.show; PlezyActivity's show-retry covers the
+        // fresh TextInput.show; TTPlayActivity's show-retry covers the
         // served-view race (#1051/#1079).
         _endNativeTextInput(_NativeTextInputEndReason.restart);
         _scheduleNativeTextInputReactivation();
@@ -1469,7 +1469,7 @@ class _FocusableTextInputHostState extends State<_FocusableTextInputHost> with W
       }
       // Android arrows fall through deliberately: a healthy visible IME
       // consumes them before the app, and leaked ones are repaired and eaten
-      // by PlezyActivity — so an arrow reaching this handler is real caret or
+      // by TTPlayActivity — so an arrow reaching this handler is real caret or
       // traversal input (BT keyboards included) and keeps the caret-aware
       // edge-escape semantics below.
     }

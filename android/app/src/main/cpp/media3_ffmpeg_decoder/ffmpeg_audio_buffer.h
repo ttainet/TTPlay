@@ -13,13 +13,13 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#ifndef PLEZY_FFMPEG_AUDIO_BUFFER_H_
-#define PLEZY_FFMPEG_AUDIO_BUFFER_H_
+#ifndef TTPLAY_FFMPEG_AUDIO_BUFFER_H_
+#define TTPLAY_FFMPEG_AUDIO_BUFFER_H_
 
 #include <limits.h>
 #include <stdint.h>
 
-namespace plezy {
+namespace ttplay {
 namespace ffmpeg {
 
 inline bool CheckedAudioByteCount(int sample_count, int channel_count, int bytes_per_sample, int* byte_count) {
@@ -43,6 +43,6 @@ inline bool CheckedAddByteCount(int current_size, int additional_size, int* tota
 }
 
 }  // namespace ffmpeg
-}  // namespace plezy
+}  // namespace ttplay
 
-#endif  // PLEZY_FFMPEG_AUDIO_BUFFER_H_
+#endif  // TTPLAY_FFMPEG_AUDIO_BUFFER_H_

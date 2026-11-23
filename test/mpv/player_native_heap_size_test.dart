@@ -21,8 +21,8 @@ void main() {
     required Future<void> Function() testBody,
   }) {
     return withMockPlayerChannels(
-      methodChannelName: 'com.plezy/mpv_player',
-      eventChannelName: 'com.plezy/mpv_player/events',
+      methodChannelName: 'com.ttai.ttplay/mpv_player',
+      eventChannelName: 'com.ttai.ttplay/mpv_player/events',
       methodHandler: methodHandler,
       testBody: testBody,
     );

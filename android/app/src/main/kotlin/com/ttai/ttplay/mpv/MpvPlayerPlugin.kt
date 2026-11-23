@@ -55,7 +55,7 @@ internal fun completeMpvPropertyNotInitialized(result: MethodChannel.Result) {
  * - all video-only surface work is skipped inside the core.
  */
 open class MpvPlayerPlugin(
-  private val channelBase: String = "com.plezy/mpv_player",
+  private val channelBase: String = "com.ttai.ttplay/mpv_player",
   private val audioOnly: Boolean = false
 ) : FlutterPlugin,
   MethodChannel.MethodCallHandler,
@@ -753,9 +753,9 @@ open class MpvPlayerPlugin(
 }
 
 /**
- * The audio-only music instance on `com.plezy/mpv_audio_player[/events]`.
+ * The audio-only music instance on `com.ttai.ttplay/mpv_audio_player[/events]`.
  * A distinct class (not just a configured [MpvPlayerPlugin]) because
  * FlutterEngine's plugin registry keys plugins by class and would silently
  * drop a second [MpvPlayerPlugin] registration.
  */
-class MpvAudioPlayerPlugin : MpvPlayerPlugin(channelBase = "com.plezy/mpv_audio_player", audioOnly = true)
+class MpvAudioPlayerPlugin : MpvPlayerPlugin(channelBase = "com.ttai.ttplay/mpv_audio_player", audioOnly = true)

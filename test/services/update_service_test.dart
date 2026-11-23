@@ -17,7 +17,7 @@ void main() {
   setUp(resetSharedPreferencesForTest);
   PackageInfo.setMockInitialValues(
     appName: 'Plezy',
-    packageName: 'com.plezy.test',
+    packageName: 'com.ttai.ttplay.test',
     version: '1.0.0',
     buildNumber: '1',
     buildSignature: '',

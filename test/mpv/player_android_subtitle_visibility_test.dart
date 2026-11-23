@@ -20,8 +20,8 @@ import '../test_helpers/prefs.dart';
 Future<void> _withPlayer(Future<void> Function(PlayerAndroid player, _PlayerHarness harness) body) async {
   final harness = _PlayerHarness();
   await withMockPlayerChannels(
-    methodChannelName: 'com.plezy/exo_player',
-    eventChannelName: 'com.plezy/exo_player/events',
+    methodChannelName: 'com.ttai.ttplay/exo_player',
+    eventChannelName: 'com.ttai.ttplay/exo_player/events',
     methodHandler: harness.handle,
     testBody: () async {
       final player = PlayerAndroid();
@@ -57,7 +57,7 @@ class _PlayerHarness {
   Future<void> sendTrackList(List<Map<String, Object?>> tracks) async {
     final done = Completer<void>();
     await TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.handlePlatformMessage(
-      'com.plezy/exo_player/events',
+      'com.ttai.ttplay/exo_player/events',
       const StandardMethodCodec().encodeSuccessEnvelope([observations['track-list'], jsonEncode(tracks)]),
       (_) => done.complete(),
     );

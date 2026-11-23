@@ -1119,11 +1119,11 @@ MpvPlugin* mpv_plugin_new(FlPluginRegistrar* registrar, const gchar* channel_nam
 [[maybe_unused]] static MpvPlugin* g_mpv_audio_plugin = nullptr;
 
 void mpv_plugin_register_with_registrar(FlPluginRegistrar* registrar) {
-  g_mpv_plugin = mpv_plugin_new(registrar, "com.plezy/mpv_player", FALSE);
+  g_mpv_plugin = mpv_plugin_new(registrar, "com.ttai.ttplay/mpv_player", FALSE);
 }
 
 void mpv_audio_plugin_register_with_registrar(FlPluginRegistrar* registrar) {
-  g_mpv_audio_plugin = mpv_plugin_new(registrar, "com.plezy/mpv_audio_player", TRUE);
+  g_mpv_audio_plugin = mpv_plugin_new(registrar, "com.ttai.ttplay/mpv_audio_player", TRUE);
 }
 
 // fl_method_success_response_new() takes its own reference to the result, so
@@ -1217,7 +1217,7 @@ static void mpv_plugin_handle_method_call(FlMethodChannel* channel, FlMethodCall
             // events; every other command answers null.
             int64_t playlist_entry_id = 0;
             g_autoptr(FlValue) reply = nullptr;
-            if (plezy::mpv_common::PlaylistEntryIdFromCommandResult(command_result, &playlist_entry_id)) {
+            if (ttplay::mpv_common::PlaylistEntryIdFromCommandResult(command_result, &playlist_entry_id)) {
               reply = fl_value_new_map();
               fl_value_set_string_take(reply, "playlistEntryId", fl_value_new_int(playlist_entry_id));
             }
@@ -1232,7 +1232,7 @@ static void mpv_plugin_handle_method_call(FlMethodChannel* channel, FlMethodCall
   } else if (strcmp(method, "setProperty") == 0) {
     if (!self->player || !self->initialized) {
       response = FL_METHOD_RESPONSE(fl_method_error_response_new(
-          plezy::mpv_common::kSetPropertyNotInitializedCode, "Player not initialized", nullptr));
+          ttplay::mpv_common::kSetPropertyNotInitializedCode, "Player not initialized", nullptr));
     } else {
       FlValue* name_value = fl_value_lookup_string(args, "name");
       FlValue* value_value = fl_value_lookup_string(args, "value");
@@ -1280,7 +1280,7 @@ static void mpv_plugin_handle_method_call(FlMethodChannel* channel, FlMethodCall
             submit_hdr_transaction(
                 self, self->hdr_wanted != FALSE, requested, [self, method_call, serial, mode_string](int error) {
                   g_autoptr(FlMethodResponse) async_response = nullptr;
-                  if (plezy::mpv_common::SetPropertyStatusSucceeded(error)) {
+                  if (ttplay::mpv_common::SetPropertyStatusSucceeded(error)) {
                     async_response = FL_METHOD_RESPONSE(fl_method_success_response_new(nullptr));
                   } else {
                     // Hand the desire back to whatever is actually in force, read
@@ -1296,7 +1296,7 @@ static void mpv_plugin_handle_method_call(FlMethodChannel* channel, FlMethodCall
                     // moves mpv's whole output colour space. The name is still
                     // worth having - it says which side of the plane refused.
                     async_response = FL_METHOD_RESPONSE(fl_method_error_response_new(
-                        plezy::mpv_common::kSetPropertyFailedCode,
+                        ttplay::mpv_common::kSetPropertyFailedCode,
                         (std::string("hdr-tone-mapping='") + mode_string + "' failed: " + mpv_error_string(error))
                             .c_str(),
                         nullptr));
@@ -1312,7 +1312,7 @@ static void mpv_plugin_handle_method_call(FlMethodChannel* channel, FlMethodCall
         // HDR spans both halves of the plane: mpv has to emit PQ / BT.2020, and
         // the compositor has to be told that is what the buffer holds. Neither
         // alone produces HDR, so this cannot go through the plain property path.
-        const bool enabled = plezy::mpv_common::ParseEnabledFlag(fl_value_get_string(value_value));
+        const bool enabled = ttplay::mpv_common::ParseEnabledFlag(fl_value_get_string(value_value));
         // What every internal re-apply reads. This records the user's
         // permission, which is app policy and not a capability, so it is kept
         // even when the output cannot show HDR right now: decide_hdr gates on
@@ -1337,7 +1337,7 @@ static void mpv_plugin_handle_method_call(FlMethodChannel* channel, FlMethodCall
           submit_hdr_transaction(
               self, enabled, std::nullopt, [self, method_call, serial, previous_wanted, enabled](int error) {
                 g_autoptr(FlMethodResponse) async_response = nullptr;
-                if (plezy::mpv_common::SetPropertyStatusSucceeded(error)) {
+                if (ttplay::mpv_common::SetPropertyStatusSucceeded(error)) {
                   async_response = FL_METHOD_RESPONSE(fl_method_success_response_new(nullptr));
                 } else {
                   // Only if no newer request has claimed the field since, for the
@@ -1346,7 +1346,7 @@ static void mpv_plugin_handle_method_call(FlMethodChannel* channel, FlMethodCall
                   // The requested value is named, not the restored one: the
                   // refusal is about the request that failed.
                   async_response = FL_METHOD_RESPONSE(fl_method_error_response_new(
-                      plezy::mpv_common::kSetPropertyFailedCode,
+                      ttplay::mpv_common::kSetPropertyFailedCode,
                       (std::string("hdr-enabled='") + (enabled ? "yes" : "no") + "' failed: " + mpv_error_string(error))
                           .c_str(),
                       nullptr));
@@ -1367,7 +1367,7 @@ static void mpv_plugin_handle_method_call(FlMethodChannel* channel, FlMethodCall
         // the native invariant beneath the Dart-side filter: it is the last
         // line, and it names why.
         response = FL_METHOD_RESPONSE(fl_method_error_response_new(
-            plezy::mpv_common::kSetPropertyFailedCode,
+            ttplay::mpv_common::kSetPropertyFailedCode,
             "vo is owned by Plezy: embedded video renders through vo=libmpv and a windowed VO "
             "(gpu-next) cannot be used inside the app",
             nullptr));
@@ -1385,18 +1385,18 @@ static void mpv_plugin_handle_method_call(FlMethodChannel* channel, FlMethodCall
         self->player->SetPropertyAsync(
             property_name, property_value, [method_call, property_name, property_value](int error) {
               g_autoptr(FlMethodResponse) async_response = nullptr;
-              if (plezy::mpv_common::SetPropertyStatusSucceeded(error)) {
+              if (ttplay::mpv_common::SetPropertyStatusSucceeded(error)) {
                 async_response = FL_METHOD_RESPONSE(fl_method_success_response_new(nullptr));
               } else {
-                const char* error_code = plezy::mpv_common::SetPropertyErrorCode(error);
+                const char* error_code = ttplay::mpv_common::SetPropertyErrorCode(error);
                 std::string description;
                 if (error == MPV_ERROR_UNINITIALIZED) {
                   description = "Player not initialized";
                 } else {
                   description = "setProperty '" + property_name + "'='" + property_value +
-                                "' failed: " + plezy::mpv_common::SetPropertyErrorDescription(error);
-                  if (description.size() > plezy::mpv_common::kSetPropertyErrorDescriptionLimit) {
-                    description.resize(plezy::mpv_common::kSetPropertyErrorDescriptionLimit);
+                                "' failed: " + ttplay::mpv_common::SetPropertyErrorDescription(error);
+                  if (description.size() > ttplay::mpv_common::kSetPropertyErrorDescriptionLimit) {
+                    description.resize(ttplay::mpv_common::kSetPropertyErrorDescriptionLimit);
                   }
                 }
                 async_response =

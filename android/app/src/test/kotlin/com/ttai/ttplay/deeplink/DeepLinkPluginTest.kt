@@ -24,7 +24,7 @@ import org.robolectric.RuntimeEnvironment
 @RunWith(RobolectricTestRunner::class)
 class DeepLinkPluginTest {
   private companion object {
-    const val CHANNEL = "com.plezy/deep_link"
+    const val CHANNEL = "com.ttai.ttplay/deep_link"
     val codec: MethodCodec = StandardMethodCodec.INSTANCE
   }
 

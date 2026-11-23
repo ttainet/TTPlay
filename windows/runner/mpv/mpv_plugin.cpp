@@ -16,7 +16,7 @@ void MpvPlayerPluginRegisterWithRegistrar(FlutterDesktopPluginRegistrarRef regis
 void MpvAudioPlayerPluginRegisterWithRegistrar(FlutterDesktopPluginRegistrarRef registrar) {
   mpv::MpvPlayerPlugin::RegisterWithRegistrar(
       flutter::PluginRegistrarManager::GetInstance()->GetRegistrar<flutter::PluginRegistrarWindows>(registrar),
-      "com.plezy/mpv_audio_player", /*audio_only=*/true);
+      "com.ttai.ttplay/mpv_audio_player", /*audio_only=*/true);
 }
 
 namespace mpv {
@@ -246,7 +246,7 @@ void MpvPlayerPlugin::HandleMethodCall(
       // so the id is read here, before the hop to the platform thread.
       int64_t playlist_entry_id = 0;
       const bool has_playlist_entry =
-          error >= 0 && plezy::mpv_common::PlaylistEntryIdFromCommandResult(command_result, &playlist_entry_id);
+          error >= 0 && ttplay::mpv_common::PlaylistEntryIdFromCommandResult(command_result, &playlist_entry_id);
       PostToPlatformThread([result_ptr, cmd_name, error, has_playlist_entry, playlist_entry_id]() {
         if (error < 0) {
           (*result_ptr)
@@ -263,7 +263,7 @@ void MpvPlayerPlugin::HandleMethodCall(
     return;  // Response will be sent asynchronously
   } else if (method == "setProperty") {
     if (!player_ || !player_->IsInitialized()) {
-      result->Error(plezy::mpv_common::kSetPropertyNotInitializedCode, "Player not initialized");
+      result->Error(ttplay::mpv_common::kSetPropertyNotInitializedCode, "Player not initialized");
       return;
     }
 
@@ -291,13 +291,13 @@ void MpvPlayerPlugin::HandleMethodCall(
     player_->SetPropertyAsync(
         std::get<std::string>(name_it->second), std::get<std::string>(value_it->second), [this, result_ptr](int error) {
           PostToPlatformThread([result_ptr, error]() {
-            if (plezy::mpv_common::SetPropertyStatusSucceeded(error)) {
+            if (ttplay::mpv_common::SetPropertyStatusSucceeded(error)) {
               (*result_ptr)->Success();
             } else {
-              const auto* error_code = plezy::mpv_common::SetPropertyErrorCode(error);
+              const auto* error_code = ttplay::mpv_common::SetPropertyErrorCode(error);
               const auto description = error == MPV_ERROR_UNINITIALIZED
                                            ? std::string("Player not initialized")
-                                           : plezy::mpv_common::SetPropertyErrorDescription(error);
+                                           : ttplay::mpv_common::SetPropertyErrorDescription(error);
               (*result_ptr)->Error(error_code, description);
             }
           });

@@ -319,14 +319,14 @@ void main() {
   for (final adapter in <({String name, String methodChannel, String eventChannel, Player Function() create})>[
     (
       name: 'PlayerNative',
-      methodChannel: 'com.plezy/mpv_player',
-      eventChannel: 'com.plezy/mpv_player/events',
+      methodChannel: 'com.ttai.ttplay/mpv_player',
+      eventChannel: 'com.ttai.ttplay/mpv_player/events',
       create: PlayerNative.new,
     ),
     (
       name: 'PlayerAndroid',
-      methodChannel: 'com.plezy/exo_player',
-      eventChannel: 'com.plezy/exo_player/events',
+      methodChannel: 'com.ttai.ttplay/exo_player',
+      eventChannel: 'com.ttai.ttplay/exo_player/events',
       create: PlayerAndroid.new,
     ),
   ]) {

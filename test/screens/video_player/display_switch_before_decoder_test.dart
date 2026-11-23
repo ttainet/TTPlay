@@ -114,8 +114,8 @@ void main() {
     testWidgets(description, (tester) async {
       final player = _HeldDecoderPlayer(containerFps: containerFps, presentedFps: presentedFps);
       await withMockPlayerChannels(
-        methodChannelName: 'com.plezy/mpv_player',
-        eventChannelName: 'com.plezy/mpv_player/events',
+        methodChannelName: 'com.ttai.ttplay/mpv_player',
+        eventChannelName: 'com.ttai.ttplay/mpv_player/events',
         testBody: () async {
           final key = await _pushScreen(tester, db: db, player: player, client: _MovieClient());
           player.events.clear();

@@ -32,7 +32,7 @@ class ExoPlayerPlugin :
     private const val TAG = "ExoPlayerPlugin"
     private const val MPV_FALLBACK_INIT_TIMEOUT_MS = 10_000L
     private const val MPV_OPEN_TIMEOUT_MS = 10_000L
-    private const val METHOD_CHANNEL = "com.plezy/exo_player"
+    private const val METHOD_CHANNEL = "com.ttai.ttplay/exo_player"
   }
 
   private val channels = PlayerChannelBinding(METHOD_CHANNEL, this, this, TAG)
@@ -215,7 +215,7 @@ class ExoPlayerPlugin :
   }
 
   override fun onDetachedFromActivityForConfigChanges() {
-    // PlezyActivity owns a self-created engine which is destroyed with the old
+    // TTPlayActivity owns a self-created engine which is destroyed with the old
     // Activity. There is no cached-engine transfer contract, so retaining an
     // Activity-bound core here would orphan its views and native resources.
     teardownSession(clearActivity = true)

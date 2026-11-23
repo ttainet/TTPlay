@@ -27,7 +27,7 @@ import org.junit.Test
 import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
-class PlezyAudioModePlaybackTest {
+class TTPlayAudioModePlaybackTest {
   private enum class AudioMode {
     PASSTHROUGH_ALLOWED,
     FORCE_DECODED,
@@ -61,7 +61,7 @@ class PlezyAudioModePlaybackTest {
 
     handler.post {
       try {
-        val factory = PlezyRenderersFactory(context).apply {
+        val factory = TTPlayRenderersFactory(context).apply {
           setEnableDecoderFallback(true)
           setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON)
           shouldBlockDirectAudioOutput = { format ->

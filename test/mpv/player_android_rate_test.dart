@@ -23,8 +23,8 @@ void main() {
   Future<void> withPlayer(Future<void> Function(PlayerAndroid player, List<MethodCall> calls) body) async {
     final calls = <MethodCall>[];
     await withMockPlayerChannels(
-      methodChannelName: 'com.plezy/exo_player',
-      eventChannelName: 'com.plezy/exo_player/events',
+      methodChannelName: 'com.ttai.ttplay/exo_player',
+      eventChannelName: 'com.ttai.ttplay/exo_player/events',
       methodHandler: (call) async {
         calls.add(call);
         return call.method == 'initialize' ? true : null;

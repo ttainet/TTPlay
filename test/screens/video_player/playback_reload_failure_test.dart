@@ -129,8 +129,8 @@ void main() {
           await tester.pump();
         });
         await withMockPlayerChannels(
-          methodChannelName: 'com.plezy/mpv_player',
-          eventChannelName: 'com.plezy/mpv_player/events',
+          methodChannelName: 'com.ttai.ttplay/mpv_player',
+          eventChannelName: 'com.ttai.ttplay/mpv_player/events',
           testBody: () async {
             final key = GlobalKey<VideoPlayerScreenState>();
             await tester.pumpWidget(
@@ -292,8 +292,8 @@ void main() {
       );
       try {
         await withMockPlayerChannels(
-          methodChannelName: 'com.plezy/mpv_player',
-          eventChannelName: 'com.plezy/mpv_player/events',
+          methodChannelName: 'com.ttai.ttplay/mpv_player',
+          eventChannelName: 'com.ttai.ttplay/mpv_player/events',
           testBody: () async {
             final screen = await _pushExitScreen(tester, db: db, client: client, fakePlayer: fakePlayer);
             if (blocked == 'started') {
@@ -387,8 +387,8 @@ void main() {
     addTearDown(timer.cancelTimer);
     final oldPlayer = _ExitPlayer();
     await withMockPlayerChannels(
-      methodChannelName: 'com.plezy/mpv_player',
-      eventChannelName: 'com.plezy/mpv_player/events',
+      methodChannelName: 'com.ttai.ttplay/mpv_player',
+      eventChannelName: 'com.ttai.ttplay/mpv_player/events',
       testBody: () async {
         final screen = await _pushExitScreen(tester, db: db, client: _ReloadClient(), fakePlayer: oldPlayer);
         timer.armEndOfVideo();
@@ -475,8 +475,8 @@ void main() {
     testWidgets('Play Next during credits: $action', (tester) async {
       await initializeDateFormatting();
       await withMockPlayerChannels(
-        methodChannelName: 'com.plezy/mpv_player',
-        eventChannelName: 'com.plezy/mpv_player/events',
+        methodChannelName: 'com.ttai.ttplay/mpv_player',
+        eventChannelName: 'com.ttai.ttplay/mpv_player/events',
         testBody: () async {
           final settings = SettingsService.instance;
           await settings.write(SettingsService.autoSkipDelay, action == 'post-credit scene' ? 0 : 25);
@@ -608,8 +608,8 @@ void main() {
     await SettingsService.instance.write(SettingsService.streamQuality, 'high');
     await saveMediaVersionPreferenceFor(item, index: quark, versions: versions);
     await withMockPlayerChannels(
-      methodChannelName: 'com.plezy/mpv_player',
-      eventChannelName: 'com.plezy/mpv_player/events',
+      methodChannelName: 'com.ttai.ttplay/mpv_player',
+      eventChannelName: 'com.ttai.ttplay/mpv_player/events',
       testBody: () async {
         final screen = await pumpReloadScreen(tester, client: client);
         final player = screen.player;
@@ -664,8 +664,8 @@ void main() {
       });
 
       await withMockPlayerChannels(
-        methodChannelName: 'com.plezy/mpv_player',
-        eventChannelName: 'com.plezy/mpv_player/events',
+        methodChannelName: 'com.ttai.ttplay/mpv_player',
+        eventChannelName: 'com.ttai.ttplay/mpv_player/events',
         testBody: () async {
           final screen = await pumpReloadScreen(tester);
           final state = screen.key.currentState!;
@@ -749,8 +749,8 @@ void main() {
     addTearDown(() => TvDetectionService.debugSetAppleTVOverride(null));
 
     await withMockPlayerChannels(
-      methodChannelName: 'com.plezy/mpv_player',
-      eventChannelName: 'com.plezy/mpv_player/events',
+      methodChannelName: 'com.ttai.ttplay/mpv_player',
+      eventChannelName: 'com.ttai.ttplay/mpv_player/events',
       testBody: () async {
         final screen = await pumpReloadScreen(tester);
         final state = screen.key.currentState!;
@@ -814,8 +814,8 @@ void main() {
 
       try {
         await withMockPlayerChannels(
-          methodChannelName: 'com.plezy/mpv_player',
-          eventChannelName: 'com.plezy/mpv_player/events',
+          methodChannelName: 'com.ttai.ttplay/mpv_player',
+          eventChannelName: 'com.ttai.ttplay/mpv_player/events',
           testBody: () async {
             final screen = await _pushExitScreen(tester, db: db, client: client, fakePlayer: fakePlayer);
             final state = screen.key.currentState!;
@@ -852,8 +852,8 @@ void main() {
   group('Windows display-switch hold', () {
     testWidgets("a source reload during the hold owns the replacement's play state", (tester) async {
       await withMockPlayerChannels(
-        methodChannelName: 'com.plezy/mpv_player',
-        eventChannelName: 'com.plezy/mpv_player/events',
+        methodChannelName: 'com.ttai.ttplay/mpv_player',
+        eventChannelName: 'com.ttai.ttplay/mpv_player/events',
         testBody: () async {
           final screen = await pumpReloadScreen(tester);
           final fakePlayer = screen.player;
@@ -924,8 +924,8 @@ void main() {
       });
 
       await withMockPlayerChannels(
-        methodChannelName: 'com.plezy/mpv_player',
-        eventChannelName: 'com.plezy/mpv_player/events',
+        methodChannelName: 'com.ttai.ttplay/mpv_player',
+        eventChannelName: 'com.ttai.ttplay/mpv_player/events',
         testBody: () async {
           final key = GlobalKey<VideoPlayerScreenState>();
           await tester.pumpWidget(

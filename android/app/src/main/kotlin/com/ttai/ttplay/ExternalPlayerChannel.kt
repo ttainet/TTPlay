@@ -15,7 +15,7 @@ import java.io.File
 
 internal class ExternalPlayerChannel(private val activity: Activity) {
   companion object {
-    private const val CHANNEL = "com.plezy/external_player"
+    private const val CHANNEL = "com.ttai.ttplay/external_player"
     const val REQUEST_CODE = 7461
 
     private const val API_MX_RETURN_RESULT = "return_result"

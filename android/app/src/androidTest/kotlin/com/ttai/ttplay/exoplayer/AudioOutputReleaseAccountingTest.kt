@@ -69,7 +69,7 @@ class AudioOutputReleaseAccountingTest {
 
     try {
       handler.runAndWait {
-        val factory = PlezyRenderersFactory(context).apply {
+        val factory = TTPlayRenderersFactory(context).apply {
           setEnableDecoderFallback(true)
           setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON)
           // Decoded PCM is the only output the cache parks, so it is the path whose reuse and
@@ -176,7 +176,7 @@ class AudioOutputReleaseAccountingTest {
 
     try {
       handler.runAndWait {
-        val factory = PlezyRenderersFactory(context).apply {
+        val factory = TTPlayRenderersFactory(context).apply {
           setEnableDecoderFallback(true)
           setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON)
           shouldBlockDirectAudioOutput = { false }

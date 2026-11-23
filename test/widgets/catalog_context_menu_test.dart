@@ -57,7 +57,7 @@ void main() {
   });
 
   group('tvOS runner', () {
-    const handoffChannel = MethodChannel('com.plezy/external_player');
+    const handoffChannel = MethodChannel('com.ttai.ttplay/external_player');
     late bool youTubeInstalled;
     late List<String> opened;
 

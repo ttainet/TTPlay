@@ -200,7 +200,7 @@ class ExoPlayerCore(private val activity: Activity) :
   private var overlayLayoutListener: ViewTreeObserver.OnGlobalLayoutListener? = null
   private var lastVideoSize: VideoSize? = null
   private var exoPlayer: ExoPlayer? = null
-  private var renderersFactory: PlezyRenderersFactory? = null
+  private var renderersFactory: TTPlayRenderersFactory? = null
   private val subtitleDelayUs = AtomicLong(0L)
 
   /**
@@ -210,7 +210,7 @@ class ExoPlayerCore(private val activity: Activity) :
    * content-time shift, so it never delays the overlay's present (delaying the
    * present freezes the single-slot latest-wins pipeline). Device-specific: ~1 on
    * low-end TV boxes (longer video pipeline), 0 on phones. Set from Dart at init
-   * from the device performance tier ([com.plezy/device] auto low-end signal).
+   * from the device performance tier ([com.ttai.ttplay/device] auto low-end signal).
    */
   @Volatile private var assVideoLatencyFrames = 0
   private var subtitlePositionPercent: Int = 100
@@ -692,7 +692,7 @@ class ExoPlayerCore(private val activity: Activity) :
       val audioAttributes = buildMovieAudioAttributes()
 
       // Use DefaultRenderersFactory with FFmpeg fallback for unsupported or blocked audio codecs.
-      val renderersFactory = PlezyRenderersFactory(activity).apply {
+      val renderersFactory = TTPlayRenderersFactory(activity).apply {
         audioDiagnosticsLogger = { level, prefix, message -> emitLog(level, prefix, message) }
         videoDiagnosticsLogger = { level, prefix, message -> emitLog(level, prefix, message) }
         shouldBlockDirectAudioOutput = { format -> this@ExoPlayerCore.shouldBlockDirectAudioOutput(format, "sink support") }

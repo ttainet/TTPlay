@@ -22,7 +22,7 @@ class WatchNextPlugin() :
 
   companion object {
     private const val TAG = "WatchNextPlugin"
-    private const val METHOD_CHANNEL = "com.plezy/watch_next"
+    private const val METHOD_CHANNEL = "com.ttai.ttplay/watch_next"
     internal const val SCHEMA_VERSION = 3
   }
 

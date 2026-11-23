@@ -25,7 +25,7 @@ import 'offline_watch_sync_service.dart';
 import 'playback_initialization_service.dart';
 import 'trackers/tracker_coordinator.dart';
 
-const _externalPlayerChannel = MethodChannel('com.plezy/external_player');
+const _externalPlayerChannel = MethodChannel('com.ttai.ttplay/external_player');
 
 class _ExternalPlayerLaunchResult {
   const _ExternalPlayerLaunchResult({

@@ -28,7 +28,7 @@ import '../test_helpers/theme.dart';
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
-  const adjustmentChannel = MethodChannel('com.plezy/device_adjustment');
+  const adjustmentChannel = MethodChannel('com.ttai.ttplay/device_adjustment');
 
   late _RecordingPlayer player;
   late PlayerChromeController chrome;

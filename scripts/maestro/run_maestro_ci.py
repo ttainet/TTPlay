@@ -11,8 +11,8 @@ import run_maestro
 
 
 ANDROID_15_INSTRUMENTATION_CLASSES = (
-    "androidx.media3.decoder.ffmpeg.PlezyFfmpegPlaybackTest,"
-    "com.edde746.plezy.exoplayer.PlezyAudioModePlaybackTest"
+    "androidx.media3.decoder.ffmpeg.TTPlayFfmpegPlaybackTest,"
+    "com.ttai.ttplay.exoplayer.TTPlayAudioModePlaybackTest"
 )
 ANDROID_15_INSTRUMENTATION_TARGET = "android-15-instrumentation"
 # Keep reachability separate from the debug playback suites above: those exercise

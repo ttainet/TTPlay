@@ -32,8 +32,8 @@ void main() {
     addTearDown(player.dispose);
 
     await withMockPlayerChannels(
-      methodChannelName: 'com.plezy/mpv_player',
-      eventChannelName: 'com.plezy/mpv_player/events',
+      methodChannelName: 'com.ttai.ttplay/mpv_player',
+      eventChannelName: 'com.ttai.ttplay/mpv_player/events',
       testBody: () async {
         final key = GlobalKey<VideoPlayerScreenState>();
         await tester.pumpWidget(_screen(key));

@@ -50,7 +50,7 @@ class TrueHdSpeedTransitionTest {
     val player = AtomicReference<ExoPlayer?>(null)
 
     handler.post {
-      val factory = PlezyRenderersFactory(context).apply {
+      val factory = TTPlayRenderersFactory(context).apply {
         setEnableDecoderFallback(true)
         setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON)
       }
@@ -219,7 +219,7 @@ class TrueHdSpeedTransitionTest {
     val player = AtomicReference<ExoPlayer?>(null)
 
     handler.post {
-      val factory = PlezyRenderersFactory(context).apply {
+      val factory = TTPlayRenderersFactory(context).apply {
         setEnableDecoderFallback(true)
         setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON)
         audioDiagnosticsLogger = { _, _, message ->

@@ -52,7 +52,7 @@
              automation) wake the device; set at runtime it comes too late, as the activity
              is already launched behind the screensaver. -->
         <activity
-            android:name=".PlezyActivity"
+            android:name=".TTPlayActivity"
             android:turnScreenOn="true"
             android:exported="true"
             android:launchMode="singleTop"
@@ -86,7 +86,7 @@
         <activity-alias
             android:name=".MainActivity"
             android:exported="true"
-            android:targetActivity=".PlezyActivity">
+            android:targetActivity=".TTPlayActivity">
             <meta-data
                 android:name="io.flutter.embedding.android.NormalTheme"
                 android:resource="@style/NormalTheme" />
@@ -107,7 +107,7 @@
             android:exported="true"
             android:icon="@mipmap/ic_launcher_midnight"
             android:banner="@drawable/tv_banner_midnight"
-            android:targetActivity=".PlezyActivity">
+            android:targetActivity=".TTPlayActivity">
             <meta-data
                 android:name="io.flutter.embedding.android.NormalTheme"
                 android:resource="@style/NormalTheme" />
@@ -126,7 +126,7 @@
             android:exported="true"
             android:icon="@mipmap/ic_launcher_ember"
             android:banner="@drawable/tv_banner_ember"
-            android:targetActivity=".PlezyActivity">
+            android:targetActivity=".TTPlayActivity">
             <meta-data
                 android:name="io.flutter.embedding.android.NormalTheme"
                 android:resource="@style/NormalTheme" />
@@ -145,7 +145,7 @@
             android:exported="true"
             android:icon="@mipmap/ic_launcher_paper"
             android:banner="@drawable/tv_banner_paper"
-            android:targetActivity=".PlezyActivity">
+            android:targetActivity=".TTPlayActivity">
             <meta-data
                 android:name="io.flutter.embedding.android.NormalTheme"
                 android:resource="@style/NormalTheme" />
@@ -164,7 +164,7 @@
             android:exported="true"
             android:icon="@mipmap/ic_launcher_oled"
             android:banner="@drawable/tv_banner_oled"
-            android:targetActivity=".PlezyActivity">
+            android:targetActivity=".TTPlayActivity">
             <meta-data
                 android:name="io.flutter.embedding.android.NormalTheme"
                 android:resource="@style/NormalTheme" />
@@ -183,7 +183,7 @@
             android:exported="true"
             android:icon="@mipmap/ic_launcher_line"
             android:banner="@drawable/tv_banner_line"
-            android:targetActivity=".PlezyActivity">
+            android:targetActivity=".TTPlayActivity">
             <meta-data
                 android:name="io.flutter.embedding.android.NormalTheme"
                 android:resource="@style/NormalTheme" />
@@ -202,7 +202,7 @@
             android:exported="true"
             android:icon="@mipmap/ic_launcher_ocean"
             android:banner="@drawable/tv_banner_ocean"
-            android:targetActivity=".PlezyActivity">
+            android:targetActivity=".TTPlayActivity">
             <meta-data
                 android:name="io.flutter.embedding.android.NormalTheme"
                 android:resource="@style/NormalTheme" />
@@ -221,7 +221,7 @@
             android:exported="true"
             android:icon="@mipmap/ic_launcher_ultraviolet"
             android:banner="@drawable/tv_banner_ultraviolet"
-            android:targetActivity=".PlezyActivity">
+            android:targetActivity=".TTPlayActivity">
             <meta-data
                 android:name="io.flutter.embedding.android.NormalTheme"
                 android:resource="@style/NormalTheme" />
@@ -240,7 +240,7 @@
             android:exported="true"
             android:icon="@mipmap/ic_launcher_matcha"
             android:banner="@drawable/tv_banner_matcha"
-            android:targetActivity=".PlezyActivity">
+            android:targetActivity=".TTPlayActivity">
             <meta-data
                 android:name="io.flutter.embedding.android.NormalTheme"
                 android:resource="@style/NormalTheme" />
@@ -259,7 +259,7 @@
             android:exported="true"
             android:icon="@mipmap/ic_launcher_sunset"
             android:banner="@drawable/tv_banner_sunset"
-            android:targetActivity=".PlezyActivity">
+            android:targetActivity=".TTPlayActivity">
             <meta-data
                 android:name="io.flutter.embedding.android.NormalTheme"
                 android:resource="@style/NormalTheme" />
@@ -278,7 +278,7 @@
             android:exported="true"
             android:icon="@mipmap/ic_launcher_gold"
             android:banner="@drawable/tv_banner_gold"
-            android:targetActivity=".PlezyActivity">
+            android:targetActivity=".TTPlayActivity">
             <meta-data
                 android:name="io.flutter.embedding.android.NormalTheme"
                 android:resource="@style/NormalTheme" />
@@ -297,7 +297,7 @@
             android:exported="true"
             android:icon="@mipmap/ic_launcher_titanium"
             android:banner="@drawable/tv_banner_titanium"
-            android:targetActivity=".PlezyActivity">
+            android:targetActivity=".TTPlayActivity">
             <meta-data
                 android:name="io.flutter.embedding.android.NormalTheme"
                 android:resource="@style/NormalTheme" />
@@ -316,7 +316,7 @@
             android:exported="true"
             android:icon="@mipmap/ic_launcher_glass"
             android:banner="@drawable/tv_banner_glass"
-            android:targetActivity=".PlezyActivity">
+            android:targetActivity=".TTPlayActivity">
             <meta-data
                 android:name="io.flutter.embedding.android.NormalTheme"
                 android:resource="@style/NormalTheme" />
@@ -335,7 +335,7 @@
             android:exported="true"
             android:icon="@mipmap/ic_launcher_crt"
             android:banner="@drawable/tv_banner_crt"
-            android:targetActivity=".PlezyActivity">
+            android:targetActivity=".TTPlayActivity">
             <meta-data
                 android:name="io.flutter.embedding.android.NormalTheme"
                 android:resource="@style/NormalTheme" />
@@ -354,7 +354,7 @@
             android:exported="true"
             android:icon="@mipmap/ic_launcher_vhs"
             android:banner="@drawable/tv_banner_vhs"
-            android:targetActivity=".PlezyActivity">
+            android:targetActivity=".TTPlayActivity">
             <meta-data
                 android:name="io.flutter.embedding.android.NormalTheme"
                 android:resource="@style/NormalTheme" />
@@ -373,7 +373,7 @@
             android:exported="true"
             android:icon="@mipmap/ic_launcher_synthwave"
             android:banner="@drawable/tv_banner_synthwave"
-            android:targetActivity=".PlezyActivity">
+            android:targetActivity=".TTPlayActivity">
             <meta-data
                 android:name="io.flutter.embedding.android.NormalTheme"
                 android:resource="@style/NormalTheme" />
@@ -392,7 +392,7 @@
             android:exported="true"
             android:icon="@mipmap/ic_launcher_pixel"
             android:banner="@drawable/tv_banner_pixel"
-            android:targetActivity=".PlezyActivity">
+            android:targetActivity=".TTPlayActivity">
             <meta-data
                 android:name="io.flutter.embedding.android.NormalTheme"
                 android:resource="@style/NormalTheme" />
@@ -411,7 +411,7 @@
             android:exported="true"
             android:icon="@mipmap/ic_launcher_neon"
             android:banner="@drawable/tv_banner_neon"
-            android:targetActivity=".PlezyActivity">
+            android:targetActivity=".TTPlayActivity">
             <meta-data
                 android:name="io.flutter.embedding.android.NormalTheme"
                 android:resource="@style/NormalTheme" />
@@ -430,7 +430,7 @@
             android:exported="true"
             android:icon="@mipmap/ic_launcher_sticker"
             android:banner="@drawable/tv_banner_sticker"
-            android:targetActivity=".PlezyActivity">
+            android:targetActivity=".TTPlayActivity">
             <meta-data
                 android:name="io.flutter.embedding.android.NormalTheme"
                 android:resource="@style/NormalTheme" />
@@ -449,7 +449,7 @@
             android:exported="true"
             android:icon="@mipmap/ic_launcher_ticket"
             android:banner="@drawable/tv_banner_ticket"
-            android:targetActivity=".PlezyActivity">
+            android:targetActivity=".TTPlayActivity">
             <meta-data
                 android:name="io.flutter.embedding.android.NormalTheme"
                 android:resource="@style/NormalTheme" />
@@ -468,7 +468,7 @@
             android:exported="true"
             android:icon="@mipmap/ic_launcher_pop"
             android:banner="@drawable/tv_banner_pop"
-            android:targetActivity=".PlezyActivity">
+            android:targetActivity=".TTPlayActivity">
             <meta-data
                 android:name="io.flutter.embedding.android.NormalTheme"
                 android:resource="@style/NormalTheme" />
@@ -487,7 +487,7 @@
             android:exported="true"
             android:icon="@mipmap/ic_launcher_strata"
             android:banner="@drawable/tv_banner_strata"
-            android:targetActivity=".PlezyActivity">
+            android:targetActivity=".TTPlayActivity">
             <meta-data
                 android:name="io.flutter.embedding.android.NormalTheme"
                 android:resource="@style/NormalTheme" />
@@ -506,7 +506,7 @@
             android:exported="true"
             android:icon="@mipmap/ic_launcher_facet"
             android:banner="@drawable/tv_banner_facet"
-            android:targetActivity=".PlezyActivity">
+            android:targetActivity=".TTPlayActivity">
             <meta-data
                 android:name="io.flutter.embedding.android.NormalTheme"
                 android:resource="@style/NormalTheme" />
@@ -525,7 +525,7 @@
             android:exported="true"
             android:icon="@mipmap/ic_launcher_tilde"
             android:banner="@drawable/tv_banner_tilde"
-            android:targetActivity=".PlezyActivity">
+            android:targetActivity=".TTPlayActivity">
             <meta-data
                 android:name="io.flutter.embedding.android.NormalTheme"
                 android:resource="@style/NormalTheme" />
@@ -564,7 +564,7 @@
             </intent-filter>
         </receiver>
         <!-- Setting this stops FlutterLoader from appending its half-of-RAM default after
-             PlezyActivity's shell args, where it would override the low-RAM cap. PlezyActivity
+             TTPlayActivity's shell args, where it would override the low-RAM cap. TTPlayActivity
              always passes the per-device value; this one applies only if another engine
              initializes Flutter first. -->
         <meta-data

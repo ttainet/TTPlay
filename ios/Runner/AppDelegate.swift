@@ -74,7 +74,7 @@ import MediaPlayer
   }
 
   private func registerDeviceAdjustmentChannel(messenger: FlutterBinaryMessenger) {
-    let channel = FlutterMethodChannel(name: "com.plezy/device_adjustment", binaryMessenger: messenger)
+    let channel = FlutterMethodChannel(name: "com.ttai.ttplay/device_adjustment", binaryMessenger: messenger)
     channel.setMethodCallHandler { [weak self] call, result in
       DispatchQueue.main.async {
         self?.handleDeviceAdjustmentCall(call, result: result)
@@ -87,7 +87,7 @@ import MediaPlayer
   /// `Documents`, which is backed up by default (#2958); a directory's mark
   /// covers everything stored in it later.
   private func registerBackupExclusionChannel(messenger: FlutterBinaryMessenger) {
-    let channel = FlutterMethodChannel(name: "com.plezy/backup_exclusion", binaryMessenger: messenger)
+    let channel = FlutterMethodChannel(name: "com.ttai.ttplay/backup_exclusion", binaryMessenger: messenger)
     channel.setMethodCallHandler { call, result in
       guard call.method == "excludeFromBackup" else {
         result(FlutterMethodNotImplemented)

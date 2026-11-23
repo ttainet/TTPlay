@@ -113,8 +113,8 @@ Future<void> runServerLimitPlayer(
   const mediaControlMethods = MethodChannel('com.edde746.os_media_controls/methods');
   const mediaControlEvents = MethodChannel('com.edde746.os_media_controls/events');
   // Leaving the player on a macOS host restores the window chrome and PiP.
-  const macWindowChannel = MethodChannel('com.plezy/window_utils');
-  const pipChannel = MethodChannel('com.plezy/pip');
+  const macWindowChannel = MethodChannel('com.ttai.ttplay/window_utils');
+  const pipChannel = MethodChannel('com.ttai.ttplay/pip');
   messenger.setMockMethodCallHandler(windowChannel, (call) async => call.method.startsWith('is') ? false : null);
   messenger.setMockMethodCallHandler(mediaControlMethods, (call) async => null);
   messenger.setMockMethodCallHandler(mediaControlEvents, (call) async => null);
@@ -140,8 +140,8 @@ Future<void> runServerLimitPlayer(
   final run = ServerLimitRun(tester, key, client);
 
   await withMockPlayerChannels(
-    methodChannelName: 'com.plezy/mpv_player',
-    eventChannelName: 'com.plezy/mpv_player/events',
+    methodChannelName: 'com.ttai.ttplay/mpv_player',
+    eventChannelName: 'com.ttai.ttplay/mpv_player/events',
     methodHandler: (call) async {
       if (call.method == 'initialize') return true;
       if (call.method != 'command') return null;

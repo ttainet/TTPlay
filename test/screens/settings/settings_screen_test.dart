@@ -272,7 +272,7 @@ void main() {
   });
 
   testWidgets('background downloads tile renders and opens the injected blocked status', (tester) async {
-    const channel = MethodChannel('com.plezy/device.settings-background-test');
+    const channel = MethodChannel('com.ttai.ttplay/device.settings-background-test');
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockMethodCallHandler(channel, (call) async {
       return switch (call.method) {
         'getBackgroundWorkSignals' => {

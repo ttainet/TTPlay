@@ -9,7 +9,7 @@ import '../../utils/app_logger.dart';
 import '../../utils/platform_http_client_stub.dart'
     if (dart.library.io) '../../utils/platform_http_client_io.dart'
     as platform;
-import '../plezy_server.dart';
+import '../ttplay_server.dart';
 import 'tracker_constants.dart';
 
 /// Client for the Plezy server's `/auth/*` OAuth proxy.
@@ -20,7 +20,7 @@ import 'tracker_constants.dart';
 /// scheme is required — works identically on TVs without a browser.
 class OAuthProxyClient {
   /// Public base URL of the Plezy server.
-  static String get baseUrl => plezyServerBaseUrl;
+  static String get baseUrl => ttplayServerBaseUrl;
 
   final http.Client _http;
 

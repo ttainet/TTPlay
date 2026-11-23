@@ -239,7 +239,7 @@ FlutterWindow::MessageHandler(HWND hwnd, UINT const message, WPARAM const wparam
 }
 
 // ---------------------------------------------------------------------------
-// Native fullscreen (plezy/window method channel)
+// Native fullscreen (com.ttai.ttplay/window method channel)
 //
 // Works around window_manager 0.5.1's multi-monitor fullscreen bug where the
 // window ends up on the wrong monitor and renders only a fragment of the
@@ -257,7 +257,7 @@ FlutterWindow::MessageHandler(HWND hwnd, UINT const message, WPARAM const wparam
 void FlutterWindow::RegisterWindowChannel() {
   auto messenger = flutter_controller_->engine()->messenger();
   window_channel_ = std::make_unique<flutter::MethodChannel<flutter::EncodableValue>>(
-      messenger, "plezy/window", &flutter::StandardMethodCodec::GetInstance());
+      messenger, "com.ttai.ttplay/window", &flutter::StandardMethodCodec::GetInstance());
 
   window_channel_->SetMethodCallHandler([this](
                                             const flutter::MethodCall<flutter::EncodableValue>& call,

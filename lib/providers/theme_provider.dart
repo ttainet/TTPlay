@@ -212,7 +212,7 @@ class ThemeProvider extends ChangeNotifier with DisposableChangeNotifierMixin, W
     applyWindowChromeBrightness(dark);
   }
 
-  static const _themeChannel = MethodChannel('com.plezy/theme');
+  static const _themeChannel = MethodChannel('com.ttai.ttplay/theme');
 
   @visibleForTesting
   Future<void> setThemeMode(settings.ThemeMode mode) async {

@@ -34,7 +34,7 @@ const _fixedEndpointSourcePaths = <String>[
   'lib/services/catalog/seerr_catalog_source.dart',
   'lib/services/discord_rpc_service.dart',
   'lib/services/update_service.dart',
-  'lib/services/plezy_server.dart',
+  'lib/services/ttplay_server.dart',
   'lib/main.dart',
 ];
 

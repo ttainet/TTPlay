@@ -126,9 +126,9 @@ class MpvPlayer {
   void Command(const std::vector<std::string>& args);
 
   /// Callback types for async mpv requests.
-  using StatusCallback = plezy::mpv_common::StatusCallback;
-  using CommandCallback = plezy::mpv_common::CommandCallback;
-  using GetPropertyCallback = plezy::mpv_common::GetPropertyCallback;
+  using StatusCallback = ttplay::mpv_common::StatusCallback;
+  using CommandCallback = ttplay::mpv_common::CommandCallback;
+  using GetPropertyCallback = ttplay::mpv_common::GetPropertyCallback;
 
   /// Executes an mpv command asynchronously to prevent UI blocking.
   void CommandAsync(const std::vector<std::string>& args, CommandCallback callback);
@@ -436,7 +436,7 @@ class MpvPlayer {
 
   /// Helper to convert mpv_node to FlValue, bounded by the shared node budget.
   ::_FlValue* NodeToFlValue(mpv_node* node);
-  ::_FlValue* NodeToFlValue(mpv_node* node, plezy::mpv_common::NodeConversionBudget* budget);
+  ::_FlValue* NodeToFlValue(mpv_node* node, ttplay::mpv_common::NodeConversionBudget* budget);
 
   const bool audio_only_;
   mpv_handle* mpv_ = nullptr;
@@ -510,19 +510,19 @@ class MpvPlayer {
   RedrawCallback redraw_callback_;
   SourceMetadataCallback source_metadata_callback_;
   std::mutex callback_mutex_;
-  plezy::mpv_common::AudioRecoveryState audio_recovery_;
+  ttplay::mpv_common::AudioRecoveryState audio_recovery_;
   // Set when audio recovery gave up and stopped playback itself; the END_FILE
   // that stop produces is then reported as the AO_INIT_FAILED error the core
   // would have raised without audio-fallback-to-null. Main-context thread
   // only: the recovery timer and event dispatch both run there.
   bool audio_output_failed_ = false;
-  plezy::mpv_common::AsyncRequestRegistry pending_requests_;
-  plezy::mpv_common::PropertyObservationRegistry observed_properties_;
+  ttplay::mpv_common::AsyncRequestRegistry pending_requests_;
+  ttplay::mpv_common::PropertyObservationRegistry observed_properties_;
   // What an error END_FILE's pass holds back until the pass is over, so the log
   // lines explaining the failure reach Dart first (see ErrorEndFileHold). Each
   // entry owns a reference. GLib main context only, like ProcessEvents, and
   // empty between passes.
-  plezy::mpv_common::ErrorEndFileHold<::_FlValue*> held_events_;
+  ttplay::mpv_common::ErrorEndFileHold<::_FlValue*> held_events_;
   // The playlist entry whose START_FILE event was most recently dequeued.
   // Payload construction consumes this value synchronously, before any
   // EventChannel fanout can outlive the corresponding mpv event.

@@ -9,7 +9,7 @@ import FlutterMacOS
 class AppLookupPlugin: NSObject, FlutterPlugin {
   static func register(with registrar: FlutterPluginRegistrar) {
     let channel = FlutterMethodChannel(
-      name: "com.plezy/app_lookup",
+      name: "com.ttai.ttplay/app_lookup",
       binaryMessenger: registrar.messenger
     )
     registrar.addMethodCallDelegate(AppLookupPlugin(), channel: channel)

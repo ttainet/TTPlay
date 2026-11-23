@@ -4,7 +4,7 @@ import UIKit
 /// Root view controller (set in Main.storyboard). Bridges the iPhone Duo
 /// layout signals Flutter does not expose on iOS — the edge holding the
 /// system's vertical bar, the hinge, and the reserved regions (fold and
-/// camera/status occlusions) — over `com.plezy/iphone_duo`, and lets Dart
+/// camera/status occlusions) — over `com.ttai.ttplay/iphone_duo`, and lets Dart
 /// opt the video player out of the vertical bar.
 ///
 /// All geometry is in this view's coordinate space, which is Flutter's
@@ -15,7 +15,7 @@ import UIKit
 /// compile time: Swift 6.4 (Xcode 27) plus a UIKit at least as new as the iOS
 /// 27.1 SDK's (Xcode 27.0 ships Swift 6.4 with the 27.0 SDK). Older toolchains
 /// build an inert controller whose channel reports no Duo state.
-class PlezyFlutterViewController: FlutterViewController {
+class TTPlayFlutterViewController: FlutterViewController {
   private var duoChannel: FlutterMethodChannel?
   private var verticalBarDisabled = false
   private var hingeStatus: String?
@@ -24,7 +24,7 @@ class PlezyFlutterViewController: FlutterViewController {
   override func viewDidLoad() {
     super.viewDidLoad()
 
-    let channel = FlutterMethodChannel(name: "com.plezy/iphone_duo", binaryMessenger: binaryMessenger)
+    let channel = FlutterMethodChannel(name: "com.ttai.ttplay/iphone_duo", binaryMessenger: binaryMessenger)
     channel.setMethodCallHandler { [weak self] call, result in
       self?.handle(call, result: result)
     }

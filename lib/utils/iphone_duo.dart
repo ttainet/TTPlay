@@ -14,7 +14,7 @@ enum VerticalBarEdge { left, right }
 
 enum HingeStatus { closed, partiallyOpen, fullyOpen, unknown }
 
-/// iPhone Duo layout signals bridged from `PlezyFlutterViewController`.
+/// iPhone Duo layout signals bridged from `TTPlayFlutterViewController`.
 /// Empty on every other device and on iOS before 27.1.
 @immutable
 class IphoneDuoState {
@@ -75,13 +75,13 @@ class IphoneDuoState {
   int get hashCode => Object.hash(verticalBarEdge, hingeStatus, Object.hashAll(folds), Object.hashAll(occlusions));
 }
 
-/// Owner of the `com.plezy/iphone_duo` channel.
+/// Owner of the `com.ttai.ttplay/iphone_duo` channel.
 class IphoneDuo {
   IphoneDuo._();
 
   static final IphoneDuo instance = IphoneDuo._();
 
-  static const _channel = MethodChannel('com.plezy/iphone_duo');
+  static const _channel = MethodChannel('com.ttai.ttplay/iphone_duo');
 
   final ValueNotifier<IphoneDuoState> state = ValueNotifier(IphoneDuoState.empty);
   bool _started = false;

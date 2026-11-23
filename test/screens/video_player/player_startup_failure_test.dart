@@ -106,8 +106,8 @@ void main() {
     var loadfileCalls = 0;
 
     await withMockPlayerChannels(
-      methodChannelName: 'com.plezy/mpv_player',
-      eventChannelName: 'com.plezy/mpv_player/events',
+      methodChannelName: 'com.ttai.ttplay/mpv_player',
+      eventChannelName: 'com.ttai.ttplay/mpv_player/events',
       methodHandler: (call) async {
         if (call.method == 'initialize') return true;
         if (call.method != 'command') return null;

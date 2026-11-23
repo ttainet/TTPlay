@@ -49,7 +49,7 @@ class DownloadStorageService {
   }
 
   static const bool _tvosBuild = bool.fromEnvironment('TVOS_BUILD');
-  static const MethodChannel _backupExclusionChannel = MethodChannel('com.plezy/backup_exclusion');
+  static const MethodChannel _backupExclusionChannel = MethodChannel('com.ttai.ttplay/backup_exclusion');
 
   /// Whether the default download and artwork roots are marked excluded from
   /// device backup. iOS includes `Documents` in iCloud Backup, and hundreds of

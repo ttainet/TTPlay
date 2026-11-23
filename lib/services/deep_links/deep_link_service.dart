@@ -62,7 +62,7 @@ class DeepLinkService {
   }
 
   static final DeepLinkService instance = DeepLinkService._(
-    const MethodChannel('com.plezy/deep_link'),
+    const MethodChannel('com.ttai.ttplay/deep_link'),
     // Windows and Linux register no URL scheme yet.
     Platform.isAndroid || Platform.isIOS || Platform.isMacOS,
   );

@@ -22,7 +22,7 @@ class AppIconException implements Exception {
   String toString() => 'AppIconException($code${message == null ? '' : ': $message'})';
 }
 
-/// The home-screen icon over `com.plezy/app_icon`: iOS, iPadOS and tvOS
+/// The home-screen icon over `com.ttai.ttplay/app_icon`: iOS, iPadOS and tvOS
 /// alternate icons, Android launcher aliases. Provided at the root scope
 /// because the icon belongs to the device, like the Supporter entitlement it
 /// follows.
@@ -38,7 +38,7 @@ class AppIconService extends ChangeNotifier with DisposableChangeNotifierMixin {
     supporter.addListener(_onSupporterChanged);
   }
 
-  static const channel = MethodChannel('com.plezy/app_icon');
+  static const channel = MethodChannel('com.ttai.ttplay/app_icon');
 
   /// Alternate icons ship on iOS/iPadOS, tvOS (reported as iOS) and Android,
   /// and only in builds that offer the Supporter perks. The native side still

@@ -57,7 +57,7 @@ mixin PointerScrollAxisLock on GestureBinding {
 
 /// The app's binding: installs [PointerScrollAxisLock], [SemanticsTreeGate] and
 /// [MemoryPressureBreadcrumbs].
-class PlezyWidgetsBinding extends WidgetsFlutterBinding
+class TTPlayWidgetsBinding extends WidgetsFlutterBinding
     with PointerScrollAxisLock, SemanticsTreeGate, MemoryPressureBreadcrumbs {
   static bool _initialized = false;
 
@@ -65,7 +65,7 @@ class PlezyWidgetsBinding extends WidgetsFlutterBinding
   /// [WidgetsFlutterBinding.ensureInitialized].
   static WidgetsBinding ensureInitialized() {
     if (!_initialized) {
-      PlezyWidgetsBinding();
+      TTPlayWidgetsBinding();
       _initialized = true;
     }
     return WidgetsBinding.instance;

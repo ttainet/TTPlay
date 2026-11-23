@@ -11,7 +11,7 @@ import 'fullscreen_state_manager.dart';
 /// No-op on non-Windows platforms — callers should keep using
 /// `MacOSWindowService` on macOS and `window_manager` on Linux.
 class NativeWindowService {
-  static const _channel = MethodChannel('plezy/window');
+  static const _channel = MethodChannel('com.ttai.ttplay/window');
   static bool _initialized = false;
 
   /// Hook the native → Dart callback that keeps [FullscreenStateManager] in

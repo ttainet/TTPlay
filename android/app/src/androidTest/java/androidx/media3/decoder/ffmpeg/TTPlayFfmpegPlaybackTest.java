@@ -47,7 +47,7 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 
 @RunWith(AndroidJUnit4.class)
-public final class PlezyFfmpegPlaybackTest {
+public final class TTPlayFfmpegPlaybackTest {
   private static final String[] FIXTURES = {
     "ffmpeg/stereo.flac",
     "ffmpeg/surround_5_1.flac",

@@ -24,7 +24,7 @@ import java.security.cert.X509Certificate
 internal class UserCertificateChannel {
   companion object {
     private const val TAG = "UserCertificateChannel"
-    private const val CHANNEL = "com.plezy/user_certificates"
+    private const val CHANNEL = "com.ttai.ttplay/user_certificates"
     private const val USER_ALIAS_PREFIX = "user:"
     private const val PEM_LINE_LENGTH = 64
 

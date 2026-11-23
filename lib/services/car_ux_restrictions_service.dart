@@ -32,7 +32,7 @@ class CarUxRestrictionsService {
   static final CarUxRestrictionsService instance = CarUxRestrictionsService._();
 
   @visibleForTesting
-  static const MethodChannel channel = MethodChannel('com.plezy/car_restrictions');
+  static const MethodChannel channel = MethodChannel('com.ttai.ttplay/car_restrictions');
 
   static CarUxRestrictionState? _debugOverride;
 

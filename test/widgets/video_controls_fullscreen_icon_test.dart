@@ -38,7 +38,7 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
   const windowChannel = MethodChannel('window_manager');
-  const macWindowChannel = MethodChannel('com.plezy/window_utils');
+  const macWindowChannel = MethodChannel('com.ttai.ttplay/window_utils');
 
   late _PlayingPlayer player;
   late PlayerChromeController chrome;

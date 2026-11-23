@@ -95,7 +95,7 @@ struct EncodableNodeBuilder {
 };
 
 flutter::EncodableValue NodeToEncodableValue(const mpv_node* node) {
-  return plezy::mpv_common::ConvertNode<EncodableNodeBuilder>(node);
+  return ttplay::mpv_common::ConvertNode<EncodableNodeBuilder>(node);
 }
 
 // Input ownership for the DComp video child.
@@ -567,7 +567,7 @@ bool MpvPlayer::Initialize(HWND view) {
     return false;
   }
 
-  plezy::mpv_common::ApplyCommonStartupOptions(mpv_, audio_only_);
+  ttplay::mpv_common::ApplyCommonStartupOptions(mpv_, audio_only_);
 
   if (!audio_only_) {
     // Create a child window for mpv to render into, parented to the Flutter
@@ -606,7 +606,7 @@ bool MpvPlayer::Initialize(HWND view) {
 
   if (!audio_only_) {
     // Let mpv use display/context detection instead of forcing HDR signaling.
-    mpv_set_option_string(mpv_, "target-colorspace-hint", plezy::mpv_common::TargetColorspaceHint(hdr_enabled_));
+    mpv_set_option_string(mpv_, "target-colorspace-hint", ttplay::mpv_common::TargetColorspaceHint(hdr_enabled_));
 
     // Keep the display black point at absolute black. Under target-contrast=auto
     // mpv's d3d11 context takes the black level Windows reports for the display
@@ -706,7 +706,7 @@ void MpvPlayer::CommandAsync(const std::vector<std::string>& args, CommandCallba
     return;
   }
 
-  plezy::mpv_common::SubmitCommandAsync(mpv_, pending_requests_, args, std::move(callback));
+  ttplay::mpv_common::SubmitCommandAsync(mpv_, pending_requests_, args, std::move(callback));
 }
 
 void MpvPlayer::SetProperty(const std::string& name, const std::string& value) {
@@ -721,11 +721,11 @@ void MpvPlayer::SetPropertyAsync(const std::string& name, const std::string& val
 
   // Handle custom HDR toggle property (same pattern as iOS/macOS)
   if (name == "hdr-enabled") {
-    SetHDREnabled(plezy::mpv_common::ParseEnabledFlag(value), std::move(callback));
+    SetHDREnabled(ttplay::mpv_common::ParseEnabledFlag(value), std::move(callback));
     return;
   }
 
-  plezy::mpv_common::SubmitSetPropertyAsync(mpv_, pending_requests_, name, value, std::move(callback));
+  ttplay::mpv_common::SubmitSetPropertyAsync(mpv_, pending_requests_, name, value, std::move(callback));
 }
 
 void MpvPlayer::GetPropertyAsync(const std::string& name, GetPropertyCallback callback) {
@@ -734,7 +734,7 @@ void MpvPlayer::GetPropertyAsync(const std::string& name, GetPropertyCallback ca
     return;
   }
 
-  plezy::mpv_common::SubmitGetPropertyAsync(mpv_, pending_requests_, name, std::move(callback));
+  ttplay::mpv_common::SubmitGetPropertyAsync(mpv_, pending_requests_, name, std::move(callback));
 }
 
 void MpvPlayer::ObserveProperty(const std::string& name, const std::string& format, int id) {
@@ -825,11 +825,11 @@ void MpvPlayer::TryAudioReload(const char* reason, int attempt, uint64_t request
 }
 
 void MpvPlayer::MaybeRunAudioRecovery() {
-  const auto action = audio_recovery_.NextReload(plezy::mpv_common::AudioRecoveryState::Clock::now());
-  if (action.reason == plezy::mpv_common::AudioReloadReason::kNone) {
+  const auto action = audio_recovery_.NextReload(ttplay::mpv_common::AudioRecoveryState::Clock::now());
+  if (action.reason == ttplay::mpv_common::AudioReloadReason::kNone) {
     return;
   }
-  if (action.reason == plezy::mpv_common::AudioReloadReason::kGiveUp) {
+  if (action.reason == ttplay::mpv_common::AudioReloadReason::kGiveUp) {
     // audio-fallback-to-null means the core will never end the file over a
     // dead device itself, so the outcome is produced here: stop, and let the
     // END_FILE handler report it as the AO_INIT_FAILED error Dart handles.
@@ -838,7 +838,7 @@ void MpvPlayer::MaybeRunAudioRecovery() {
     Command({"stop"});
     return;
   }
-  const char* reason = action.reason == plezy::mpv_common::AudioReloadReason::kResume ? "resume" : "null-fallback";
+  const char* reason = action.reason == ttplay::mpv_common::AudioReloadReason::kResume ? "resume" : "null-fallback";
   TryAudioReload(reason, action.attempt, action.request_generation);
   if (action.exhausted) {
     LogRecovery("audio recovery budget exhausted; ending playback if this reload fails");
@@ -872,7 +872,7 @@ void MpvPlayer::EventLoop() {
       // failed open are among the last mpv hands out, so an error END_FILE is
       // followed here by a drain to MPV_EVENT_NONE, cut off once the hold has
       // spanned its limit; see ErrorEndFileHold.
-      const bool error_end_file = plezy::mpv_common::IsErrorEndFile(event);
+      const bool error_end_file = ttplay::mpv_common::IsErrorEndFile(event);
       if (error_end_file) held_events_.Begin();
       HandleMpvEvent(event);
       if (error_end_file) {
@@ -899,7 +899,7 @@ void MpvPlayer::EventLoop() {
 }
 
 void MpvPlayer::HandleMpvEvent(mpv_event* event) {
-  if (plezy::mpv_common::DispatchReplyEvent(
+  if (ttplay::mpv_common::DispatchReplyEvent(
           pending_requests_, event, [](const char* value) { return SanitizeUtf8(value); })) {
     return;
   }
@@ -921,10 +921,10 @@ void MpvPlayer::HandleMpvEvent(mpv_event* event) {
     }
     case MPV_EVENT_PROPERTY_CHANGE: {
       auto* prop = static_cast<mpv_event_property*>(event->data);
-      mpv_node node = plezy::mpv_common::ExtractPropertyNode(prop);
+      mpv_node node = ttplay::mpv_common::ExtractPropertyNode(prop);
 
       // The 100ms mpv_wait_event tick already polls for scheduled reloads.
-      const auto notice = plezy::mpv_common::ObserveAudioRecoveryProperty(audio_recovery_, event, prop);
+      const auto notice = ttplay::mpv_common::ObserveAudioRecoveryProperty(audio_recovery_, event, prop);
       if (notice.message) LogRecovery(notice.message);
 
       SendPropertyChange(prop->name, &node);
@@ -949,7 +949,7 @@ void MpvPlayer::HandleMpvEvent(mpv_event* event) {
         data[flutter::EncodableValue("error")] = flutter::EncodableValue(error);
         data[flutter::EncodableValue("message")] = flutter::EncodableValue(SanitizeUtf8(mpv_error_string(error)));
         if (audio_output_failed) {
-          data[flutter::EncodableValue("cause")] = flutter::EncodableValue(plezy::mpv_common::kAudioOutputFailedCause);
+          data[flutter::EncodableValue("cause")] = flutter::EncodableValue(ttplay::mpv_common::kAudioOutputFailedCause);
         }
       }
       SendEvent("end-file", data);
@@ -1063,7 +1063,7 @@ void MpvPlayer::SetHDREnabled(bool enabled, StatusCallback callback) {
     if (callback) callback(0);
     return;
   }
-  SetPropertyAsync("target-colorspace-hint", plezy::mpv_common::TargetColorspaceHint(enabled), std::move(callback));
+  SetPropertyAsync("target-colorspace-hint", ttplay::mpv_common::TargetColorspaceHint(enabled), std::move(callback));
 }
 
 }  // namespace mpv

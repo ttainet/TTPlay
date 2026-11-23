@@ -49,10 +49,10 @@ class AppIconSwitcherTest {
         packageName = PACKAGE
         applicationInfo = application
         activities = arrayOf(
-          activity("$PACKAGE.PlezyActivity", enabled = true, target = null),
-          activity("$PACKAGE.MainActivity", enabled = true, target = "$PACKAGE.PlezyActivity"),
-          activity("$PACKAGE.appicon.midnight", enabled = false, target = "$PACKAGE.PlezyActivity"),
-          activity("$PACKAGE.appicon.ember", enabled = false, target = "$PACKAGE.PlezyActivity")
+          activity("$PACKAGE.TTPlayActivity", enabled = true, target = null),
+          activity("$PACKAGE.MainActivity", enabled = true, target = "$PACKAGE.TTPlayActivity"),
+          activity("$PACKAGE.appicon.midnight", enabled = false, target = "$PACKAGE.TTPlayActivity"),
+          activity("$PACKAGE.appicon.ember", enabled = false, target = "$PACKAGE.TTPlayActivity")
         )
       }
     )

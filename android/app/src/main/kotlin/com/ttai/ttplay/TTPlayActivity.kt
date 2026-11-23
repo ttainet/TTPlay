@@ -55,10 +55,10 @@ import kotlin.math.roundToInt
  * `.appicon.<id>` for the alternates), and [AppIconChannel] switches the icon by enabling one
  * of them.
  */
-class PlezyActivity : FlutterActivity() {
+class TTPlayActivity : FlutterActivity() {
 
   companion object {
-    private const val TAG = "PlezyActivity"
+    private const val TAG = "TTPlayActivity"
     private const val TEXT_INPUT_DIAGNOSTICS_ENABLED = false
 
     // Safety net for a device where the text-editor proxy (see
@@ -104,14 +104,14 @@ class PlezyActivity : FlutterActivity() {
     private var selectedFlutterRenderer = FlutterRenderer.IMPELLER
   }
 
-  private val PIP_CHANNEL = "com.plezy/pip"
-  private val THEME_CHANNEL = "com.plezy/theme"
-  private val DEVICE_CHANNEL = "com.plezy/device"
-  private val DEVICE_ADJUSTMENT_CHANNEL = "com.plezy/device_adjustment"
-  private val TEXT_INPUT_CHANNEL = "com.plezy/text_input"
-  private val APP_EXIT_CHANNEL = "com.plezy/app_exit"
-  private val CAR_RESTRICTIONS_CHANNEL = "com.plezy/car_restrictions"
-  private val ASSISTIVE_TECHNOLOGY_CHANNEL = "com.plezy/assistive_technology"
+  private val PIP_CHANNEL = "com.ttai.ttplay/pip"
+  private val THEME_CHANNEL = "com.ttai.ttplay/theme"
+  private val DEVICE_CHANNEL = "com.ttai.ttplay/device"
+  private val DEVICE_ADJUSTMENT_CHANNEL = "com.ttai.ttplay/device_adjustment"
+  private val TEXT_INPUT_CHANNEL = "com.ttai.ttplay/text_input"
+  private val APP_EXIT_CHANNEL = "com.ttai.ttplay/app_exit"
+  private val CAR_RESTRICTIONS_CHANNEL = "com.ttai.ttplay/car_restrictions"
+  private val ASSISTIVE_TECHNOLOGY_CHANNEL = "com.ttai.ttplay/assistive_technology"
 
   // Created with the activity rather than in configureFlutterEngine, so a link
   // handled before the engine attaches still lands in the retained slot.

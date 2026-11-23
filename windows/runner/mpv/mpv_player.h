@@ -53,9 +53,9 @@ class MpvPlayer {
   void Command(const std::vector<std::string>& args);
 
   // Callback types for async mpv requests.
-  using StatusCallback = plezy::mpv_common::StatusCallback;
-  using CommandCallback = plezy::mpv_common::CommandCallback;
-  using GetPropertyCallback = plezy::mpv_common::GetPropertyCallback;
+  using StatusCallback = ttplay::mpv_common::StatusCallback;
+  using CommandCallback = ttplay::mpv_common::CommandCallback;
+  using GetPropertyCallback = ttplay::mpv_common::GetPropertyCallback;
 
   // Executes an mpv command asynchronously to prevent UI blocking.
   void CommandAsync(const std::vector<std::string>& args, CommandCallback callback);
@@ -136,18 +136,18 @@ class MpvPlayer {
   std::atomic<bool> running_{false};
   EventCallback event_callback_;
   std::mutex callback_mutex_;
-  plezy::mpv_common::AudioRecoveryState audio_recovery_;
+  ttplay::mpv_common::AudioRecoveryState audio_recovery_;
   // Set when audio recovery gave up and stopped playback itself; the END_FILE
   // that stop produces is then reported as the AO_INIT_FAILED error the core
   // would have raised without audio-fallback-to-null. Event thread only.
   bool audio_output_failed_ = false;
 
-  plezy::mpv_common::AsyncRequestRegistry pending_requests_;
-  plezy::mpv_common::PropertyObservationRegistry observed_properties_;
+  ttplay::mpv_common::AsyncRequestRegistry pending_requests_;
+  ttplay::mpv_common::PropertyObservationRegistry observed_properties_;
   // What an error END_FILE's drain holds back until it reaches
   // MPV_EVENT_NONE, so the log lines explaining the failure reach Dart first
   // (see ErrorEndFileHold). Event thread only; empty outside that drain.
-  plezy::mpv_common::ErrorEndFileHold<flutter::EncodableValue> held_events_;
+  ttplay::mpv_common::ErrorEndFileHold<flutter::EncodableValue> held_events_;
   // The playlist entry whose START_FILE event was most recently dequeued.
   // Event payloads copy this value before the plugin queues them to the
   // platform thread, so a later START_FILE cannot relabel delayed properties.

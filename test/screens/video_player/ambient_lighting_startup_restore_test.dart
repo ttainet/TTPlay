@@ -123,8 +123,8 @@ void main() {
     }
 
     await withMockPlayerChannels(
-      methodChannelName: 'com.plezy/mpv_player',
-      eventChannelName: 'com.plezy/mpv_player/events',
+      methodChannelName: 'com.ttai.ttplay/mpv_player',
+      eventChannelName: 'com.ttai.ttplay/mpv_player/events',
       methodHandler: (call) async {
         switch (call.method) {
           case 'initialize':

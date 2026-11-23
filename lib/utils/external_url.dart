@@ -9,7 +9,7 @@ const _tvosBuild = bool.fromEnvironment('TVOS_BUILD');
 /// The tvOS Runner has no url_launcher implementation; it hands URLs to other
 /// apps itself on this channel (external players and Android's `openVideo`
 /// share it).
-const _tvosHandoffChannel = MethodChannel('com.plezy/external_player');
+const _tvosHandoffChannel = MethodChannel('com.ttai.ttplay/external_player');
 
 bool? _debugTvosRunnerOverride;
 

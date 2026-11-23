@@ -60,7 +60,7 @@ class MpvPlayerLifecycleTestPeer {
   static FlValue* ConvertNode(MpvPlayer& player, mpv_node* node) { return player.NodeToFlValue(node); }
   static FlValue* ConvertNodeWithBudget(
       MpvPlayer& player, mpv_node* node, size_t remaining_entries, size_t remaining_bytes) {
-    plezy::mpv_common::NodeConversionBudget budget{remaining_entries, remaining_bytes};
+    ttplay::mpv_common::NodeConversionBudget budget{remaining_entries, remaining_bytes};
     return player.NodeToFlValue(node, &budget);
   }
   static void RegisterObservedNode(MpvPlayer& player, const std::string& name, int id) {
@@ -71,7 +71,7 @@ class MpvPlayerLifecycleTestPeer {
   static void SendPlaybackRestart(MpvPlayer& player, int64_t source_id, const double* position_seconds) {
     player.SendPlaybackRestartEvent(true, source_id, position_seconds);
   }
-  static plezy::mpv_common::AudioRecoveryState& AudioRecovery(MpvPlayer& player) { return player.audio_recovery_; }
+  static ttplay::mpv_common::AudioRecoveryState& AudioRecovery(MpvPlayer& player) { return player.audio_recovery_; }
   static void RunAudioRecovery(MpvPlayer& player) { player.MaybeRunAudioRecovery(); }
 
   static void HoldLease(
@@ -456,13 +456,13 @@ void TestAudioRecoveryGiveUpEndsFileAsAudioOutputFailure() {
   // An outage whose whole reload budget was spent a minute ago, so the
   // give-up is what the recovery tick owes now.
   auto& recovery = MpvPlayerLifecycleTestPeer::AudioRecovery(player);
-  const auto start = plezy::mpv_common::AudioRecoveryState::Clock::now() - std::chrono::minutes(1);
+  const auto start = ttplay::mpv_common::AudioRecoveryState::Clock::now() - std::chrono::minutes(1);
   recovery.SetFileLoaded(true, start);
   recovery.SetCurrentAudioOutputNull(true, start);
   const int schedule_ms[] = {500, 1000, 2000, 4000, 8000};
   for (int due_ms : schedule_ms) {
     const auto action = recovery.NextReload(start + std::chrono::milliseconds(due_ms));
-    Check(action.reason == plezy::mpv_common::AudioReloadReason::kNullFallback, "null-fallback schedule changed");
+    Check(action.reason == ttplay::mpv_common::AudioReloadReason::kNullFallback, "null-fallback schedule changed");
     Check(recovery.CompleteReload(action.request_generation), "reload completion was refused");
   }
   MpvPlayerLifecycleTestPeer::RunAudioRecovery(player);
@@ -494,7 +494,7 @@ void TestAudioRecoveryGiveUpEndsFileAsAudioOutputFailure() {
   FlValue* cause = RequireMapField(failed, "cause", "the give-up end-file must carry a cause");
   Check(
       fl_value_get_type(cause) == FL_VALUE_TYPE_STRING &&
-          std::string(fl_value_get_string(cause)) == plezy::mpv_common::kAudioOutputFailedCause,
+          std::string(fl_value_get_string(cause)) == ttplay::mpv_common::kAudioOutputFailedCause,
       "the give-up cause must be the one Dart handles as audio-output-failed");
 
   FlValue* plain = RequireEventData(events[1], "end-file");
@@ -885,7 +885,7 @@ void TestCommandReplyCarriesPlaylistEntryId() {
       MpvPlayerLifecycleTestPeer::RegisterPendingCommand(player, [&](int error, const mpv_node* result) {
         ++callback_count;
         status = error;
-        reported_entry = plezy::mpv_common::PlaylistEntryIdFromCommandResult(result, &reported_entry_id);
+        reported_entry = ttplay::mpv_common::PlaylistEntryIdFromCommandResult(result, &reported_entry_id);
       });
 
   const char* keys[] = {"playlist_entry_id"};
@@ -915,7 +915,7 @@ void TestCommandReplyCarriesPlaylistEntryId() {
   bool unexpected_entry = true;
   const uint64_t plain_request_id =
       MpvPlayerLifecycleTestPeer::RegisterPendingCommand(player, [&](int, const mpv_node* result) {
-        unexpected_entry = plezy::mpv_common::PlaylistEntryIdFromCommandResult(result, &unexpected_entry_id);
+        unexpected_entry = ttplay::mpv_common::PlaylistEntryIdFromCommandResult(result, &unexpected_entry_id);
       });
   mpv_event_command plain_command{};
   plain_command.result.format = MPV_FORMAT_NONE;

@@ -347,7 +347,7 @@ def _alias_xml(icon: str) -> str:
             android:exported="true"
             android:icon="@mipmap/ic_launcher_{icon}"
             android:banner="@drawable/tv_banner_{icon}"
-            android:targetActivity=".PlezyActivity">
+            android:targetActivity=".TTPlayActivity">
             <meta-data
                 android:name="io.flutter.embedding.android.NormalTheme"
                 android:resource="@style/NormalTheme" />

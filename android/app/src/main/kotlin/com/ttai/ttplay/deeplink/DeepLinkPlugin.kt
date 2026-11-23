@@ -14,7 +14,7 @@ class DeepLinkPlugin :
   FlutterPlugin,
   MethodChannel.MethodCallHandler {
   companion object {
-    private const val METHOD_CHANNEL = "com.plezy/deep_link"
+    private const val METHOD_CHANNEL = "com.ttai.ttplay/deep_link"
     private const val SCHEME = "ttplay"
     private const val LEGACY_SCHEME = "plezy"
 

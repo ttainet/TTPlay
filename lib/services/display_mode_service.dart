@@ -9,9 +9,9 @@ import 'settings_service.dart';
 
 /// Orchestrates desktop display mode matching during video playback: refresh
 /// rate on Windows and macOS, system HDR on Windows only.
-/// Uses the same platform channel as the mpv player (com.plezy/mpv_player).
+/// Uses the same platform channel as the mpv player (com.ttai.ttplay/mpv_player).
 class DisplayModeService {
-  static const _defaultChannel = MethodChannel('com.plezy/mpv_player');
+  static const _defaultChannel = MethodChannel('com.ttai.ttplay/mpv_player');
 
   final SettingsService _settings;
   final FullscreenStateManager _fullscreen;

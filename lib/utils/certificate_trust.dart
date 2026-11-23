@@ -26,7 +26,7 @@ import 'app_logger.dart';
 /// Schannel) and is left alone.
 abstract final class CertificateTrust {
   @visibleForTesting
-  static const MethodChannel channel = MethodChannel('com.plezy/user_certificates');
+  static const MethodChannel channel = MethodChannel('com.ttai.ttplay/user_certificates');
 
   /// Parent domains of every hard-coded HTTPS endpoint, matched together with
   /// their subdomains. Kept equal to the `<domain-config>` in
