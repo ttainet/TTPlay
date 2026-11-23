@@ -495,9 +495,9 @@ class _CloudSourceEditScreenState extends State<CloudSourceEditScreen> {
           newUser != (existingPayload['username'] as String? ?? '');
       if (needsReAuth) {
         final auth = JellyfinConnectionAuthService(
-          clientName: 'Plezy',
+          clientName: 'TTPlay',
           clientVersion: '1.0.0',
-          deviceName: PlatformDetector.isDesktopOS() ? 'Plezy Desktop' : 'Plezy Mobile',
+          deviceName: PlatformDetector.isDesktopOS() ? 'TTPlay Desktop' : 'TTPlay Mobile',
           dialect: dialect,
         );
         final conn = await auth.authenticateByName(
@@ -649,9 +649,9 @@ class _CloudSourceEditScreenState extends State<CloudSourceEditScreen> {
     final user = _usernameCtrl.text.trim();
     final pass = _passwordCtrl.text;
     final auth = JellyfinConnectionAuthService(
-      clientName: 'Plezy',
+      clientName: 'TTPlay',
       clientVersion: '1.0.0',
-      deviceName: PlatformDetector.isDesktopOS() ? 'Plezy Desktop' : 'Plezy Mobile',
+      deviceName: PlatformDetector.isDesktopOS() ? 'TTPlay Desktop' : 'TTPlay Mobile',
       dialect: dialect,
     );
     final conn = await auth.authenticateByName(

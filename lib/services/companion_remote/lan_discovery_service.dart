@@ -117,7 +117,7 @@ class LanDiscoveryService {
       );
 
       final packet = jsonEncode({
-        'app': 'plezy',
+        'app': 'ttplay',
         'v': _beaconVersion,
         'homeHash': homeHash,
         'name': deviceName,
@@ -202,7 +202,7 @@ class LanDiscoveryService {
       final packet = utf8.decode(datagram.data);
       final json = jsonDecode(packet) as Map<String, dynamic>;
 
-      if (json['app'] != 'plezy') return;
+      if (json['app'] != 'ttplay' && json['app'] != 'plezy') return;
 
       final version = json['v'] as int? ?? 0;
       final homeHash = json['homeHash'] as String? ?? '';
