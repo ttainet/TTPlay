@@ -26,7 +26,7 @@ param(
     # Engine zip published at flutter-plezy release windows-v3.47.1+2 - x64 + arm64
     # (cache dirs windows-{x64,arm64}{,-release}). The asset name is the same across
     # tags, so a version bump only changes the tag segment of the URL.
-    [string]$Url = 'https://github.com/edde746/flutter-plezy/releases/download/windows-v3.47.1%2B2/flutter-plezy-windows-3.47.1.zip',
+    [string]$Url = 'https://github.com/ttainet/TTPlay-deps/releases/download/windows-v3.47.1%2B2/flutter-plezy-windows-3.47.1.zip',
     [string]$Sha256 = '95ec830738a43eb2f3433db778efc1997b3270e912ce7ed9ba9b11a13a90feb2',
     # Engine revision the artifacts were built from. Must match the SDK's
     # engine.stamp (gen_snapshot/dart in the SDK must come from the same

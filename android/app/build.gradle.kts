@@ -225,7 +225,7 @@ val doviArtifacts = mapOf(
     "eba59678f89b792f5c6f802962e237542fe8328f6aa03a0a90ee77353dac3194"
   )
 )
-val doviBaseUrl = "https://github.com/edde746/libdovi-builds/releases/download/v$doviVersion"
+val doviBaseUrl = "https://github.com/ttainet/TTPlay-deps/releases/download/libdovi-v$doviVersion"
 
 val downloadLibdovi = tasks.register("downloadLibdovi") {
   val manifest = File(doviDir, ".manifest")

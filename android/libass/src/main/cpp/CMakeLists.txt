@@ -6,7 +6,7 @@ project("asskt")
 # of git; the pinned hash makes that network step reproducible.
 set(LIBASS_VERSION "0.18.3")
 set(LIBASS_SHA256 "fc98637752695d7cf9e26b02befaa634dd4cad25a2f38fba80de814bfd310a17")
-set(LIBASS_ZIP_URL "https://github.com/edde746/libass/releases/download/${LIBASS_VERSION}/libass-android-${LIBASS_VERSION}.zip")
+set(LIBASS_ZIP_URL "https://github.com/ttainet/TTPlay-deps/releases/download/libass-${LIBASS_VERSION}/libass-android-${LIBASS_VERSION}.zip")
 
 # Gradle passes one cache root so per-ABI CMake builds share the download.
 if(NOT DEFINED LIBASS_CACHE_DIR)

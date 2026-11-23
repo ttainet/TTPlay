@@ -6,7 +6,7 @@
         "checksum": "4bf8a9720bfdec00cb854fc73095ee3d322afc3caaa66d6322ad1dd4abc69df7",
         "key": "d633bbc71269"
       },
-      "assetBase": "https://github.com/edde746/mpv-build/releases/download/binaries-f78e66727714",
+      "assetBase": "https://github.com/ttainet/TTPlay-deps/releases/download/binaries-f78e66727714",
       "symbols": {
         "arm64-v8a": {
           "asset": "mpv-android-d633bbc71269-arm64-v8a-symbols.zip",
@@ -27,7 +27,7 @@
       }
     },
     "linux": {
-      "assetBase": "https://github.com/edde746/mpv-build/releases/download/binaries-42bac6793cc8",
+      "assetBase": "https://github.com/ttainet/TTPlay-deps/releases/download/binaries-42bac6793cc8",
       "assets": {
         "aarch64": {
           "asset": "libmpv-linux-4ac45772c2fc-aarch64.tar.zst",
@@ -51,7 +51,7 @@
       }
     },
     "windows": {
-      "assetBase": "https://github.com/edde746/mpv-build/releases/download/binaries-42bac6793cc8",
+      "assetBase": "https://github.com/ttainet/TTPlay-deps/releases/download/binaries-42bac6793cc8",
       "assets": {
         "aarch64": {
           "asset": "libmpv-windows-2f8afcbefc37-aarch64.zip",
@@ -77,5 +77,5 @@
   },
   "commit": "6dbda06021b128b7adc30161bf7870977e575135",
   "formatVersion": 1,
-  "repo": "edde746/mpv-build"
+  "repo": "ttainet/TTPlay-deps"
 }

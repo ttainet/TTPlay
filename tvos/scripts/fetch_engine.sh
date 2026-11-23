@@ -36,7 +36,7 @@ if [[ ! "$EXPECTED_SHA256" =~ ^[0-9a-f]{64}$ ]]; then
 fi
 
 CACHE_ROOT="${FLUTTER_TVOS_ENGINE_CACHE:-$HOME/.cache/flutter-tvos-engine}"
-RELEASES_URL="${FLUTTER_TVOS_RELEASES_URL:-https://github.com/edde746/flutter-plezy}"
+RELEASES_URL="${FLUTTER_TVOS_RELEASES_URL:-https://github.com/ttainet/TTPlay-deps}"
 
 ENGINE_DIR="${CACHE_ROOT}/v${VERSION}"
 TARBALL_URL="${RELEASES_URL}/releases/download/v${VERSION}/flutter-tvos-${VERSION}.tar.gz"
