@@ -6,7 +6,7 @@ import '../i18n/strings.g.dart';
 import '../utils/platform_detector.dart';
 
 /// Navigation tab identifiers
-enum NavigationTabId { discover, explore, libraries, liveTv, search, downloads, settings }
+enum NavigationTabId { discover, explore, libraries, liveTv, search, iptv, downloads, settings }
 
 /// Represents a navigation tab with its configuration
 class NavigationTab {
@@ -45,11 +45,13 @@ class NavigationTab {
     required bool isOffline,
     bool hasLiveTv = false,
     bool hasExplore = false,
+    bool hasIptv = false,
   }) {
     return allNavigationTabs.where((tab) {
       if (isOffline && tab.onlineOnly) return false;
       if (tab.id == NavigationTabId.liveTv && !hasLiveTv) return false;
       if (tab.id == NavigationTabId.explore && !hasExplore) return false;
+      if (tab.id == NavigationTabId.iptv && !hasIptv) return false;
       if (tab.id == NavigationTabId.downloads && PlatformDetector.isAppleTV()) return false;
       return true;
     }).toList();
@@ -64,9 +66,10 @@ class NavigationTab {
     required bool isOffline,
     required bool hasLiveTv,
     bool hasExplore = false,
+    bool hasIptv = false,
     required NavigationTabId? preferredStartup,
   }) {
-    final tabs = getVisibleTabs(isOffline: isOffline, hasLiveTv: hasLiveTv, hasExplore: hasExplore);
+    final tabs = getVisibleTabs(isOffline: isOffline, hasLiveTv: hasLiveTv, hasExplore: hasExplore, hasIptv: hasIptv);
     if (isOffline && tabs.any((t) => t.id == NavigationTabId.downloads)) {
       return NavigationTabId.downloads;
     }
@@ -77,14 +80,15 @@ class NavigationTab {
   }
 }
 
-/// Sections offered as a startup destination, in navigation order. Live TV and
-/// Explore are listed even while unavailable: startup opens Home and switches
-/// once a server or catalog source provides them.
+/// Sections offered as a startup destination, in navigation order. Live TV,
+/// Explore, and IPTV are listed even while unavailable: startup opens Home and
+/// switches once a server or source provides them.
 const startupSectionTabs = [
   NavigationTabId.discover,
   NavigationTabId.libraries,
   NavigationTabId.liveTv,
   NavigationTabId.explore,
+  NavigationTabId.iptv,
   NavigationTabId.search,
 ];
 
@@ -93,6 +97,7 @@ String _getHomeLabel() => t.common.home;
 String _getExploreLabel() => t.navigation.explore;
 String _getLibrariesLabel() => t.navigation.libraries;
 String _getLiveTvLabel() => t.navigation.liveTv;
+String _getIptvLabel() => 'IPTV';
 String _getSearchLabel() => t.common.search;
 String _getDownloadsLabel() => t.navigation.downloads;
 String _getSettingsLabel() => t.common.settings;
@@ -113,6 +118,7 @@ const allNavigationTabs = [
     icon: Symbols.explore_rounded,
     getLabel: _getExploreLabel,
   ),
+  NavigationTab(id: NavigationTabId.iptv, onlineOnly: false, icon: Symbols.live_tv_rounded, getLabel: _getIptvLabel),
   NavigationTab(id: NavigationTabId.search, onlineOnly: true, icon: Symbols.search_rounded, getLabel: _getSearchLabel),
   NavigationTab(
     id: NavigationTabId.downloads,

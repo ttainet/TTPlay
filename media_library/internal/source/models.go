@@ -118,7 +118,7 @@ type ReportCredentialStatusRequest struct {
 
 func IsValidKind(kind string) bool {
 	switch strings.TrimSpace(kind) {
-	case db.SourceKindQuark, db.SourceKindWebDAV, db.SourceKindSMB, db.SourceKindEmby, db.SourceKindJellyfin:
+	case db.SourceKindQuark, db.SourceKindWebDAV, db.SourceKindSMB, db.SourceKindEmby, db.SourceKindJellyfin, db.SourceKindIPTV:
 		return true
 	default:
 		return false

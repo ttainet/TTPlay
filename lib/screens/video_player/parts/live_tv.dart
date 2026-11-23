@@ -168,6 +168,8 @@ extension _VideoPlayerLiveTvMethods on VideoPlayerScreenState {
   /// session on it — the shared resolution path for initial launch and
   /// channel zapping (Plex tunes a DVR, Jellyfin negotiates a direct URL).
   Future<LiveTvPlaybackSession?> _startLiveSession(LiveTvChannel channel) async {
+    final customStarter = widget.live?.startSession;
+    if (customStarter != null) return customStarter(channel);
     final multiServer = context.read<MultiServerProvider>();
     final serverInfo = liveTvServerInfoForChannel(multiServer, channel);
     if (serverInfo == null) {
@@ -188,6 +190,9 @@ extension _VideoPlayerLiveTvMethods on VideoPlayerScreenState {
   /// cross-server channel list cannot leave every `_currentMetadata` consumer
   /// describing the channel that was tuned first.
   MediaItem _liveChannelItem(LiveTvChannel channel) {
+    if (widget.live?.startSession != null) {
+      return liveTvChannelItem(channel, backend: _currentMetadata.backend, serverId: channel.serverId);
+    }
     final multiServer = context.read<MultiServerProvider>();
     final serverInfo = liveTvServerInfoForChannel(multiServer, channel);
     // An unscoped channel names no server of its own; the live TV server the
@@ -255,10 +260,12 @@ extension _VideoPlayerLiveTvMethods on VideoPlayerScreenState {
     // video outranks keeping subtitles — a failed burn re-apply drops them.
     MediaSubtitleTrack? recoveredSubtitle;
     CaptureBuffer? recoveredCaptureBuffer;
+    var recoveredHeaders = liveTvStreamHeadersFor(session);
     final result = await runLiveStreamRetry<LiveTvPlaybackSession>(
       recover: () => session.recover(directStream: ds, directStreamAudio: dsa),
       lookupStreamUrl: (recovered) async {
         recoveredCaptureBuffer = recovered.captureBuffer;
+        recoveredHeaders = liveTvStreamHeadersFor(recovered);
         recoveredSubtitle = LiveTvSessionState.remapSubtitleSelection(recovered.subtitleTracks, _live.selectedSubtitle);
         if (recoveredSubtitle != null) {
           final url = await recovered.streamUrlAt(subtitleTrack: recoveredSubtitle);
@@ -272,7 +279,13 @@ extension _VideoPlayerLiveTvMethods on VideoPlayerScreenState {
       open: (streamUrl) async {
         _live.markStreamRestartedAtLiveEdge(recoveredCaptureBuffer);
         final targetEpoch = recoveredCaptureBuffer == null ? null : _live.streamStartEpoch.round();
-        await _openLiveStream(currentPlayer, streamUrl, targetEpoch: targetEpoch, applyOptions: false);
+        await _openLiveStream(
+          currentPlayer,
+          streamUrl,
+          headers: recoveredHeaders,
+          targetEpoch: targetEpoch,
+          applyOptions: false,
+        );
       },
       isCurrent: isCurrent,
       adoptSession: (recovered) {
@@ -313,6 +326,7 @@ extension _VideoPlayerLiveTvMethods on VideoPlayerScreenState {
   Future<bool> _openLiveStream(
     Player player,
     String streamUrl, {
+    Map<String, String>? headers,
     int? targetEpoch,
     bool awaitClock = false,
     bool? play,
@@ -322,7 +336,7 @@ extension _VideoPlayerLiveTvMethods on VideoPlayerScreenState {
   }) async {
     if (_shuttingDown || !_launchCurrent) return false;
     _live.streamGeneration++;
-    final media = Media(streamUrl, headers: const {'Accept-Language': 'en'});
+    final media = Media(streamUrl, headers: headers ?? const {'Accept-Language': 'en'});
     final playNow = play ?? automotivePlaybackAllowedNow();
     if (targetEpoch == null || player is! PlayerNative) {
       if (applyOptions) await _setLiveStreamOptions(player);
@@ -467,6 +481,7 @@ extension _VideoPlayerLiveTvMethods on VideoPlayerScreenState {
     final opened = await _openLiveStream(
       currentPlayer,
       streamUrl,
+      headers: liveTvStreamHeadersFor(session),
       targetEpoch: clamped,
       awaitClock: currentPlayer is PlayerNative,
       timeShifted: true,
@@ -521,6 +536,7 @@ extension _VideoPlayerLiveTvMethods on VideoPlayerScreenState {
     await _openLiveStream(
       currentPlayer,
       streamUrl,
+      headers: liveTvStreamHeadersFor(session),
       targetEpoch: _live.captureBuffer == null ? null : _live.streamStartEpoch.round(),
     );
     if (mounted) _setPlayerState(() {});
@@ -647,6 +663,7 @@ extension _VideoPlayerLiveTvMethods on VideoPlayerScreenState {
       final opened = await _openLiveStream(
         currentPlayer,
         streamUrl,
+        headers: liveTvStreamHeadersFor(session),
         targetEpoch: targetEpoch,
         play: (frameRatePlan?.holdPlaybackStart ?? false) ? false : null,
         onOpenStarted: () {

@@ -183,7 +183,10 @@ class _CloudSourcesScreenState extends State<CloudSourcesScreen> {
     if (!mounted || created == null) return;
 
     // Do NOT auto-scan on add; user manually scans mount or individual folders.
-    showSuccessSnackBar(context, '已添加「${created.name}」，请按需手动触发扫描');
+    showSuccessSnackBar(
+      context,
+      _isScannableKind(created.kind) ? '已添加「${created.name}」，请按需手动触发扫描' : '已添加「${created.name}」',
+    );
     await _load();
     unawaited(_syncProjection(quiet: true));
   }
@@ -811,7 +814,7 @@ class _CloudSourcesScreenState extends State<CloudSourcesScreen> {
                   wholeErr != null ||
                   wholeLatest != null))
             Padding(
-              padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
+              padding: const EdgeInsets.fromLTRB(52, 0, 16, 10),
               child: _buildStatusLine(
                 theme: theme,
                 scanning: wholeScanning,
@@ -828,7 +831,7 @@ class _CloudSourcesScreenState extends State<CloudSourcesScreen> {
           if (isScannable && !isTv) ...[
             const Divider(height: 1),
             Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+              padding: const EdgeInsets.fromLTRB(44, 6, 16, 6),
               child: Row(
                 children: [
                   AppIcon(
@@ -892,10 +895,10 @@ class _CloudSourcesScreenState extends State<CloudSourcesScreen> {
 
           // Per-folder rows (one folder per line, each with independent scan button, live status & result)
           if (isScannable) ...[
-            const Divider(height: 1),
+            Divider(height: 1, indent: isTv ? 0 : 44, endIndent: isTv ? 0 : 16),
             if (src.folders.isEmpty)
               Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                padding: const EdgeInsets.fromLTRB(44, 12, 16, 12),
                 child: Row(
                   children: [
                     AppIcon(Symbols.folder_off_rounded, size: 18, color: theme.colorScheme.onSurfaceVariant),
@@ -912,7 +915,7 @@ class _CloudSourcesScreenState extends State<CloudSourcesScreen> {
             else
               for (var i = 0; i < src.folders.length; i++) ...[
                 _buildFolderRow(context, src, src.folders[i], isTv: isTv, runner: runner),
-                if (i < src.folders.length - 1) const Divider(height: 1, indent: 48),
+                if (i < src.folders.length - 1) const Divider(height: 1, indent: 76, endIndent: 16),
               ],
           ],
         ],
@@ -947,7 +950,7 @@ class _CloudSourcesScreenState extends State<CloudSourcesScreen> {
     _scheduleSessionRefreshIfNewlyFinished(src.id, key, live);
 
     return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 10, 12, 10),
+      padding: const EdgeInsets.fromLTRB(44, 10, 12, 10),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
@@ -1010,6 +1013,7 @@ class _CloudSourcesScreenState extends State<CloudSourcesScreen> {
     'smb' => 'SMB 共享',
     'emby' => 'Emby',
     'jellyfin' => 'Jellyfin',
+    'iptv' => 'IPTV',
     _ => kind.toUpperCase(),
   };
 
@@ -1018,6 +1022,7 @@ class _CloudSourcesScreenState extends State<CloudSourcesScreen> {
     'webdav' => Symbols.dns_rounded,
     'smb' => Symbols.lan_rounded,
     'emby' || 'jellyfin' => Symbols.video_library_rounded,
+    'iptv' => Symbols.live_tv_rounded,
     _ => Symbols.hard_drive_rounded,
   };
 }

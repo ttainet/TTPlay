@@ -106,6 +106,7 @@ extension _VideoPlayerPlaybackStartMethods on VideoPlayerScreenState {
         final opened = await _openLiveStream(
           currentPlayer,
           streamUrl,
+          headers: liveTvStreamHeadersFor(session),
           targetEpoch: targetEpoch,
           play: !holdPlaybackStart && !PlatformDetector.isAutomotive(),
           timeShifted: offsetSeconds != null,

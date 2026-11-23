@@ -22,6 +22,8 @@ import 'package:provider/provider.dart';
 import '../focus/dpad_navigator.dart';
 import '../focus/focus_memory_tracker.dart';
 import '../focus/input_mode_tracker.dart';
+import '../iptv/iptv_models.dart';
+import '../iptv/iptv_provider.dart';
 import '../media/media_item.dart';
 import '../media/media_library.dart';
 import '../mixins/mounted_set_state_mixin.dart';
@@ -133,6 +135,9 @@ class NavigationRailItem extends StatelessWidget {
   /// Horizontal content padding of the expanded row.
   final double horizontalPadding;
 
+  /// Optional left padding override for expanded sub-menu items.
+  final double? leadingPadding;
+
   /// Fixed content width of the expanded layout, so the collapse morph and
   /// the rail width animation stay in lockstep.
   final double expandedContentWidth;
@@ -168,6 +173,7 @@ class NavigationRailItem extends StatelessWidget {
     this.autofocus = false,
     this.iconSize = 22,
     this.horizontalPadding = 17,
+    this.leadingPadding,
     this.expandedContentWidth = SideNavigationRailState.expandedWidth - 24,
     this.expandedHeight = 48,
     this.suppressSelectedBackground = false,
@@ -279,7 +285,12 @@ class NavigationRailItem extends StatelessWidget {
     return Container(
       constraints: fixedHeight ? null : BoxConstraints(minHeight: expandedHeight),
       alignment: .centerLeft,
-      padding: EdgeInsets.symmetric(horizontal: horizontalPadding, vertical: fixedHeight ? 0 : 8),
+      padding: EdgeInsets.fromLTRB(
+        leadingPadding ?? horizontalPadding,
+        fixedHeight ? 0 : 8,
+        horizontalPadding,
+        fixedHeight ? 0 : 8,
+      ),
       decoration: BoxDecoration(
         color: _indicatorColor(t, focused: focused, expansion: 1),
         borderRadius: BorderRadius.circular(MonoTokens.radiusFull),
@@ -306,7 +317,7 @@ class NavigationRailItem extends StatelessWidget {
     final collapsedPillWidth = collapsedWidth < collapsedIndicatorWidth ? collapsedWidth : collapsedIndicatorWidth;
     final indicatorLeft = lerpDouble((collapsedWidth - collapsedPillWidth) / 2, 0, expansion);
     final indicatorTop = lerpDouble((collapsedHeight - collapsedIndicatorHeight) / 2, 0, expansion);
-    final iconLeft = lerpDouble((collapsedWidth - iconSize) / 2, horizontalPadding, expansion);
+    final iconLeft = lerpDouble((collapsedWidth - iconSize) / 2, leadingPadding ?? horizontalPadding, expansion);
     final iconTop = lerpDouble((collapsedHeight - iconSize) / 2, (expandedHeight - iconSize) / 2, expansion);
 
     return SizedBox(
@@ -478,6 +489,7 @@ class SideNavigationRailState extends State<SideNavigationRail> with MountedSetS
 
   static const _kHome = 'home';
   static const _kExplore = 'explore';
+  static const _kIptv = 'iptv';
   static const _kNowPlaying = 'nowPlaying';
   static const _kLibraries = 'libraries';
   static const _kSearch = 'search';
@@ -488,6 +500,8 @@ class SideNavigationRailState extends State<SideNavigationRail> with MountedSetS
   static const _kHiddenLibraries = 'hiddenLibraries';
   static const _kServerHeaderPrefix = 'serverHeader';
   static const _kLibraryItemPrefix = 'library';
+  static const double _subItemLeadingPadding = 34;
+  static const double _nestedSubItemLeadingPadding = 46;
 
   bool _hiddenLibrariesExpanded = false;
   final Set<String> _collapsedServerGroupKeys = {};
@@ -499,6 +513,10 @@ class SideNavigationRailState extends State<SideNavigationRail> with MountedSetS
   String? _sourcesProfileId;
   bool _hasProfileScope = false;
   Map<String, ({String name, MediaBackend backend})> _remoteSources = {};
+  List<IptvSource> _iptvSources = const [];
+  String? _activeIptvSourceId;
+
+  String _iptvSourceFocusKey(String sourceId) => '$_kIptv:$sourceId';
 
   @override
   void didChangeDependencies() {
@@ -695,6 +713,11 @@ class SideNavigationRailState extends State<SideNavigationRail> with MountedSetS
         return _kSettings;
       case NavigationTabId.liveTv:
         return 'liveTv';
+      case NavigationTabId.iptv:
+        final activeId = _activeIptvSourceId ?? (_iptvSources.isNotEmpty ? _iptvSources.first.id : null);
+        if (activeId == null) return null;
+        final key = _iptvSourceFocusKey(activeId);
+        return _mountedFocusNodeFor(key) != null ? key : null;
     }
   }
 
@@ -728,6 +751,7 @@ class SideNavigationRailState extends State<SideNavigationRail> with MountedSetS
     required bool hasLiveTv,
     required bool hasNowPlaying,
     required bool hasExplore,
+    required List<IptvSource> iptvSources,
   }) {
     return {
       _kHome,
@@ -735,6 +759,7 @@ class SideNavigationRailState extends State<SideNavigationRail> with MountedSetS
       _kLibraries,
       if (hasExplore) _kExplore,
       _kSearch,
+      for (final src in iptvSources) _iptvSourceFocusKey(src.id),
       if (_showDownloads) _kDownloads,
       _kSettings,
       _kReconnect,
@@ -796,6 +821,7 @@ class SideNavigationRailState extends State<SideNavigationRail> with MountedSetS
     required bool hasLiveTv,
     required bool hasNowPlaying,
     required bool hasExplore,
+    required List<IptvSource> iptvSources,
     required bool isCollapsed,
   }) {
     return [
@@ -817,8 +843,11 @@ class SideNavigationRailState extends State<SideNavigationRail> with MountedSetS
         ..._focusKeysForLibraryRows(remoteRows),
         if (hasLiveTv) 'liveTv',
         if (hasExplore) _kExplore,
+        for (final src in iptvSources) _iptvSourceFocusKey(src.id),
         _kSearch,
       ],
+      if (widget.isOfflineMode)
+        for (final src in iptvSources) _iptvSourceFocusKey(src.id),
       if (_showDownloads) _kDownloads,
       _kSettings,
       if (_showFullscreenToggle) _kFullscreen,
@@ -896,6 +925,31 @@ class SideNavigationRailState extends State<SideNavigationRail> with MountedSetS
     return basePadding;
   }
 
+  List<Widget> _buildIptvNavItems({
+    required bool isCollapsed,
+    required List<IptvSource> iptvSources,
+    required String? activeSourceId,
+    required IptvProvider? iptvProvider,
+  }) {
+    return [
+      for (final src in iptvSources) ...[
+        _buildNavItem(
+          icon: Symbols.live_tv_rounded,
+          selectedIcon: Symbols.live_tv_rounded,
+          label: src.name,
+          isSelected: widget.selectedTab == NavigationTabId.iptv && activeSourceId == src.id,
+          onTap: () {
+            iptvProvider?.selectSource(src.id);
+            widget.onDestinationSelected(NavigationTabId.iptv);
+          },
+          focusNode: _focusTracker.get(_iptvSourceFocusKey(src.id)),
+          isCollapsed: isCollapsed,
+        ),
+        const SizedBox(height: _itemGap),
+      ],
+    ];
+  }
+
   @override
   Widget build(BuildContext context) {
     final t = tokens(context);
@@ -959,6 +1013,11 @@ class SideNavigationRailState extends State<SideNavigationRail> with MountedSetS
     // Nullable watch: rail tests (and any host without the profile session
     // scope) simply never show the Explore item.
     final hasExploreSource = context.watch<CatalogSourcesProvider?>()?.hasAnySource ?? false;
+    final iptvProvider = context.watch<IptvProvider?>();
+    final iptvSources = iptvProvider?.sources ?? const <IptvSource>[];
+    final activeIptvSourceId = iptvProvider?.activeSource?.id;
+    _iptvSources = iptvSources;
+    _activeIptvSourceId = activeIptvSourceId;
     // Nullable watch: rail tests (and any host without the profile session
     // scope) simply never show the Now Playing item. TV-only — it is the
     // way back into the now-playing screen there; desktop already has the
@@ -1031,6 +1090,7 @@ class SideNavigationRailState extends State<SideNavigationRail> with MountedSetS
             hasLiveTv: hasLiveTv,
             hasNowPlaying: nowPlayingTrack != null,
             hasExplore: hasExplore,
+            iptvSources: iptvSources,
           ),
         );
         final focusOrder = _buildFocusOrder(
@@ -1041,6 +1101,7 @@ class SideNavigationRailState extends State<SideNavigationRail> with MountedSetS
           hasLiveTv: hasLiveTv,
           hasNowPlaying: nowPlayingTrack != null,
           hasExplore: hasExplore,
+          iptvSources: iptvSources,
           isCollapsed: isCollapsed,
         );
         _debugAssertUniqueFocusOrder(focusOrder);
@@ -1189,6 +1250,13 @@ class SideNavigationRailState extends State<SideNavigationRail> with MountedSetS
                                         ),
                                         const SizedBox(height: _itemGap),
                                       ],
+                                      if (iptvSources.isNotEmpty)
+                                        ..._buildIptvNavItems(
+                                          isCollapsed: isCollapsed,
+                                          iptvSources: iptvSources,
+                                          activeSourceId: activeIptvSourceId,
+                                          iptvProvider: iptvProvider,
+                                        ),
                                       _buildNavItem(
                                         icon: Symbols.search_rounded,
                                         selectedIcon: Symbols.search_rounded,
@@ -1200,6 +1268,13 @@ class SideNavigationRailState extends State<SideNavigationRail> with MountedSetS
                                       ),
                                       const SizedBox(height: _itemGap),
                                     ],
+                                    if (widget.isOfflineMode && iptvSources.isNotEmpty)
+                                      ..._buildIptvNavItems(
+                                        isCollapsed: isCollapsed,
+                                        iptvSources: iptvSources,
+                                        activeSourceId: activeIptvSourceId,
+                                        iptvProvider: iptvProvider,
+                                      ),
                                     // Downloads (hidden on Apple TV — no user
                                     // file storage)
                                     if (_showDownloads) ...[
@@ -1471,7 +1546,7 @@ class SideNavigationRailState extends State<SideNavigationRail> with MountedSetS
                   )
                 else if (allEmpty)
                   Padding(
-                    padding: const EdgeInsets.all(16),
+                    padding: const EdgeInsets.fromLTRB(_subItemLeadingPadding, 8, 17, 8),
                     child: Text(
                       Translations.of(context).libraries.noLibrariesFound,
                       style: TextStyle(fontSize: 12, color: t.textMuted),
@@ -1536,6 +1611,7 @@ class SideNavigationRailState extends State<SideNavigationRail> with MountedSetS
       label: serverName,
       labelStyle: TextStyle(fontSize: 11, fontWeight: .w600, letterSpacing: 0.4, color: t.textMuted),
       verticalPadding: 6,
+      leadingPadding: _subItemLeadingPadding,
       isExpanded: !_collapsedServerGroupKeys.contains(_serverGroupStateKey(section, serverId)),
       onToggle: () => _toggleServerCollapse(section, serverId),
       t: t,
@@ -1558,6 +1634,7 @@ class SideNavigationRailState extends State<SideNavigationRail> with MountedSetS
         label: row.serverName,
         labelStyle: TextStyle(fontSize: 12, color: t.textMuted),
         verticalPadding: 8,
+        leadingPadding: _subItemLeadingPadding,
         isExpanded: _expandedHiddenServers.contains(row.serverId),
         onToggle: () => setState(() {
           if (!_expandedHiddenServers.add(row.serverId)) _expandedHiddenServers.remove(row.serverId);
@@ -1594,7 +1671,7 @@ class SideNavigationRailState extends State<SideNavigationRail> with MountedSetS
         ),
         if (expanded && !isCollapsed && !hasLibraries)
           Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 17, vertical: 8),
+            padding: const EdgeInsets.fromLTRB(_subItemLeadingPadding, 8, 17, 8),
             child: Text(
               context.read<MultiServerProvider>().isServerOnline(serverId)
                   ? Translations.of(context).libraries.noLibrariesFound
@@ -1623,6 +1700,7 @@ class SideNavigationRailState extends State<SideNavigationRail> with MountedSetS
       label: Translations.of(context).libraries.hiddenLibrariesCount(count: count),
       labelStyle: TextStyle(fontSize: 12, fontWeight: .w500, color: t.textMuted),
       verticalPadding: 8,
+      leadingPadding: _subItemLeadingPadding,
       isExpanded: _hiddenLibrariesExpanded,
       onToggle: () => setState(() => _hiddenLibrariesExpanded = !_hiddenLibrariesExpanded),
       t: t,
@@ -1637,6 +1715,7 @@ class SideNavigationRailState extends State<SideNavigationRail> with MountedSetS
     required String label,
     required TextStyle labelStyle,
     required double verticalPadding,
+    double leadingPadding = 17,
     required bool isExpanded,
     required VoidCallback onToggle,
     required dynamic t,
@@ -1672,7 +1751,7 @@ class SideNavigationRailState extends State<SideNavigationRail> with MountedSetS
                 child: SizedBox(
                   width: expandedWidth - 24,
                   child: Padding(
-                    padding: .symmetric(vertical: verticalPadding, horizontal: 17),
+                    padding: EdgeInsets.fromLTRB(leadingPadding, verticalPadding, 17, verticalPadding),
                     child: Row(
                       children: [
                         leading ?? AppIcon(icon, fill: 1, size: iconSize, color: t.textMuted),
@@ -1732,6 +1811,7 @@ class SideNavigationRailState extends State<SideNavigationRail> with MountedSetS
       onTap: () => widget.onLibrarySelected(library.globalKey),
       focusNode: focusNode,
       iconSize: 18,
+      leadingPadding: section == _LibraryNavSection.hidden ? _nestedSubItemLeadingPadding : _subItemLeadingPadding,
       expandedHeight: 40,
       suppressSelectedBackground: widget.isSidebarFocused,
       onNavigateRight: widget.onNavigateToContent,

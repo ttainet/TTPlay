@@ -76,5 +76,37 @@ void main() {
       final offline = NavigationTab.getVisibleTabs(isOffline: true, hasExplore: true);
       expect(offline.map((tab) => tab.id), isNot(contains(NavigationTabId.explore)));
     });
+
+    test('hides IPTV until a source exists and shows it online and offline when available', () {
+      final withoutOnline = NavigationTab.getVisibleTabs(isOffline: false);
+      expect(withoutOnline.map((tab) => tab.id), isNot(contains(NavigationTabId.iptv)));
+
+      final withOnline = NavigationTab.getVisibleTabs(isOffline: false, hasIptv: true);
+      final onlineIds = withOnline.map((tab) => tab.id).toList();
+      expect(onlineIds, contains(NavigationTabId.iptv));
+      expect(onlineIds.indexOf(NavigationTabId.iptv), onlineIds.indexOf(NavigationTabId.search) - 1);
+
+      final withOffline = NavigationTab.getVisibleTabs(isOffline: true, hasIptv: true);
+      expect(withOffline.map((tab) => tab.id), contains(NavigationTabId.iptv));
+
+      expect(
+        NavigationTab.resolveDefaultTab(
+          isOffline: false,
+          hasLiveTv: false,
+          hasIptv: true,
+          preferredStartup: NavigationTabId.iptv,
+        ),
+        NavigationTabId.iptv,
+      );
+      expect(
+        NavigationTab.resolveDefaultTab(
+          isOffline: false,
+          hasLiveTv: false,
+          hasIptv: false,
+          preferredStartup: NavigationTabId.iptv,
+        ),
+        NavigationTabId.discover,
+      );
+    });
   });
 }

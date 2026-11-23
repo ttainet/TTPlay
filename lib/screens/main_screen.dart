@@ -72,9 +72,11 @@ import '../focus/dpad_navigator.dart';
 import '../focus/key_event_utils.dart';
 import 'discover_screen.dart';
 import 'explore_screen.dart';
+import 'iptv/iptv_screen.dart';
 import 'libraries/library_quick_picker_sheet.dart';
 import 'libraries/libraries_screen.dart';
 import 'livetv/live_tv_screen.dart';
+import '../iptv/iptv_provider.dart';
 import 'search_screen.dart';
 import 'downloads/downloads_screen.dart';
 import 'settings/settings_screen.dart';
@@ -438,10 +440,12 @@ class _MainScreenState extends State<MainScreen>
   OfflineModeProvider? _offlineModeProvider;
   MultiServerProvider? _multiServerProvider;
   CatalogSourcesProvider? _catalogSourcesProvider;
+  IptvProvider? _iptvProvider;
   ValueListenable<bool>? _showExploreTabListenable;
   RouteObserver<PageRoute<dynamic>>? _profileRouteObserver;
   bool _lastHasLiveTv = false;
   bool _lastHasExplore = false;
+  bool _lastHasIptv = false;
 
   /// Whether a reconnection attempt is in progress
   bool _isReconnecting = false;
@@ -569,6 +573,11 @@ class _MainScreenState extends State<MainScreen>
       _lastHasExplore = context.read<CatalogSourcesProvider>().hasAnySource && _showExploreTabSetting;
     } catch (_) {
       _lastHasExplore = false;
+    }
+    try {
+      _lastHasIptv = context.read<IptvProvider?>()?.hasSources ?? false;
+    } catch (_) {
+      _lastHasIptv = false;
     }
     // Re-evaluate Explore tab visibility when the appearance toggle flips
     // mid-session; the catalog-sources listener covers source changes.
@@ -971,6 +980,13 @@ class _MainScreenState extends State<MainScreen>
       _catalogSourcesProvider!.addListener(_handleCatalogSourcesChanged);
     }
 
+    final iptv = context.read<IptvProvider?>();
+    if (iptv != _iptvProvider) {
+      _iptvProvider?.removeListener(_handleIptvChanged);
+      _iptvProvider = iptv;
+      _iptvProvider?.addListener(_handleIptvChanged);
+    }
+
     // Wire up Companion Remote command routing on all platforms so any
     // device can receive handoffs when enableCompanionRemoteServer is enabled.
     if (!_companionRemoteSetup) {
@@ -1119,6 +1135,7 @@ class _MainScreenState extends State<MainScreen>
     _offlineModeProvider?.removeListener(_handleOfflineStatusChanged);
     _multiServerProvider?.removeListener(_handleLiveTvChanged);
     _catalogSourcesProvider?.removeListener(_handleCatalogSourcesChanged);
+    _iptvProvider?.removeListener(_handleIptvChanged);
     _showExploreTabListenable?.removeListener(_handleCatalogSourcesChanged);
     _lanForCompanionRemote?.removeListener(_onLanChangedForCompanionRemote);
     _lanForCompanionRemote = null;
@@ -1340,6 +1357,7 @@ class _MainScreenState extends State<MainScreen>
       ),
       NavigationTabId.liveTv => LiveTvScreen(key: _screenKeys[tab]),
       NavigationTabId.search => SearchScreen(key: _screenKeys[tab]),
+      NavigationTabId.iptv => IptvScreen(key: _screenKeys[tab]),
       NavigationTabId.downloads => DownloadsScreen(key: _screenKeys[tab]),
       NavigationTabId.settings => SettingsScreen(key: _screenKeys[tab]),
     };
@@ -1357,6 +1375,7 @@ class _MainScreenState extends State<MainScreen>
     isOffline: isOffline,
     hasLiveTv: _hasLiveTv,
     hasExplore: _lastHasExplore,
+    hasIptv: _lastHasIptv,
     preferredStartup: SettingsService.instanceOrNull?.read(SettingsService.startupSection),
   );
 
@@ -1444,6 +1463,15 @@ class _MainScreenState extends State<MainScreen>
     final hasExplore = (_catalogSourcesProvider?.hasAnySource ?? false) && _showExploreTabSetting;
     if (hasExplore == _lastHasExplore) return;
     _lastHasExplore = hasExplore;
+
+    _handleTabAvailabilityChanged();
+    _applyPendingStartupTab();
+  }
+
+  void _handleIptvChanged() {
+    final hasIptv = _iptvProvider?.hasSources ?? false;
+    if (hasIptv == _lastHasIptv) return;
+    _lastHasIptv = hasIptv;
 
     _handleTabAvailabilityChanged();
     _applyPendingStartupTab();
@@ -2034,7 +2062,12 @@ class _MainScreenState extends State<MainScreen>
   bool get _hasLiveTv => _lastHasLiveTv;
 
   List<NavigationTab> _getVisibleTabs(bool isOffline) {
-    return NavigationTab.getVisibleTabs(isOffline: isOffline, hasLiveTv: _hasLiveTv, hasExplore: _lastHasExplore);
+    return NavigationTab.getVisibleTabs(
+      isOffline: isOffline,
+      hasLiveTv: _hasLiveTv,
+      hasExplore: _lastHasExplore,
+      hasIptv: _lastHasIptv,
+    );
   }
 
   List<NavigationTab> _getBottomNavigationTabs(BuildContext context) {

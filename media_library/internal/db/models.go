@@ -41,6 +41,7 @@ const (
 	SourceKindSMB      = "smb"
 	SourceKindEmby     = "emby"
 	SourceKindJellyfin = "jellyfin"
+	SourceKindIPTV     = "iptv"
 
 	RegistrationModeOpen   = "open"
 	RegistrationModeInvite = "invite"

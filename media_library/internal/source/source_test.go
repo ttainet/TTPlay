@@ -126,7 +126,7 @@ func TestDeviceAddPolicyAndDynamicUpdate(t *testing.T) {
 
 	// TV and Web cannot add any source by default
 	for _, dev := range []*account.AuthResult{tv, web} {
-		for _, k := range []string{db.SourceKindQuark, db.SourceKindWebDAV, db.SourceKindSMB, db.SourceKindEmby, db.SourceKindJellyfin} {
+		for _, k := range []string{db.SourceKindQuark, db.SourceKindWebDAV, db.SourceKindSMB, db.SourceKindEmby, db.SourceKindJellyfin, db.SourceKindIPTV} {
 			if _, err := srcSvc.CreateSource(dev.Principal, CreateSourceRequest{
 				Kind:        k,
 				Name:        "Disallowed",
@@ -240,6 +240,30 @@ func TestDeduplicationQuotasAndFolders(t *testing.T) {
 		Folders:     []FolderInput{{Path: "/"}},
 	}, "10.1.0.1"); !errors.Is(err, ErrInvalidInput) {
 		t.Fatalf("expected ErrInvalidInput for emby folders, got %v", err)
+	}
+
+	// IPTV does not accept folders, and allows multiple sources
+	if _, err := srcSvc.CreateSource(pcA.Principal, CreateSourceRequest{
+		Kind:        db.SourceKindIPTV,
+		Name:        "IPTVBad",
+		IdentityKey: "iptv_bad",
+		Ciphertext:  "c",
+		Folders:     []FolderInput{{Path: "/"}},
+	}, "10.1.0.1"); !errors.Is(err, ErrInvalidInput) {
+		t.Fatalf("expected ErrInvalidInput for iptv folders, got %v", err)
+	}
+	iptv1, err := srcSvc.CreateSource(pcA.Principal, CreateSourceRequest{
+		Kind:        db.SourceKindIPTV,
+		Name:        "Home IPTV",
+		IdentityKey: "iptv_1",
+		Ciphertext:  "c_iptv_1",
+	}, "10.1.0.1")
+	if err != nil || iptv1.Kind != db.SourceKindIPTV || len(iptv1.Folders) != 0 {
+		t.Fatalf("expected IPTV create without folders to succeed, got %+v err=%v", iptv1, err)
+	}
+	// Clean up iptv1 so quota count below remains 3 active sources
+	if err := srcSvc.DeleteSource(pcA.Principal, iptv1.ID, "10.1.0.1"); err != nil {
+		t.Fatalf("DeleteSource iptv1 failed: %v", err)
 	}
 
 	// WebDAV soft dedup: first warns with SimilarSourceError, confirm_duplicate=true permits

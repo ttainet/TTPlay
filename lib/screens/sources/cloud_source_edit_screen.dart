@@ -7,6 +7,7 @@ import 'package:material_symbols_icons/symbols.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../i18n/strings.g.dart';
+import '../../iptv/iptv_provider.dart';
 import '../../library_cloud/cloud_api_client.dart';
 import '../../library_cloud/source_repository.dart';
 import '../../media/media_browser_dialect.dart';
@@ -84,6 +85,12 @@ class _CloudSourceEditScreenState extends State<CloudSourceEditScreen> {
       desc: '端到端加密同步 Jellyfin 凭据，各设备直连播放（不经服务端中转）',
       icon: Symbols.movie_rounded,
     ),
+    (
+      kind: 'iptv',
+      title: 'IPTV 直播源',
+      desc: '端到端加密同步 M3U/TXT 订阅与 EPG 地址，各设备直连播放直播频道',
+      icon: Symbols.live_tv_rounded,
+    ),
   ];
 
   final _formKey = GlobalKey<FormState>();
@@ -101,6 +108,9 @@ class _CloudSourceEditScreenState extends State<CloudSourceEditScreen> {
   final _requestIntervalCtrl = TextEditingController(
     text: '${QuarkStorageDriver.defaultRequestInterval.inMilliseconds}',
   );
+  final _epgUrlCtrl = TextEditingController();
+  final _userAgentCtrl = TextEditingController();
+  final _refererCtrl = TextEditingController();
 
   bool _allowInsecureTls = false;
   bool _autoIncrementalScan = false;
@@ -182,6 +192,11 @@ class _CloudSourceEditScreenState extends State<CloudSourceEditScreen> {
           _usernameCtrl.text = (p['username'] as String? ?? '').trim();
           _passwordCtrl.text = (p['password'] as String? ?? '');
           _domainCtrl.text = (p['domain'] as String? ?? '').trim();
+        } else if (existing.kind == 'iptv') {
+          _baseUrlCtrl.text = (p['m3u_url'] as String? ?? p['url'] as String? ?? '').trim();
+          _epgUrlCtrl.text = (p['epg_url'] as String? ?? '').trim();
+          _userAgentCtrl.text = (p['user_agent'] as String? ?? '').trim();
+          _refererCtrl.text = (p['referer'] as String? ?? '').trim();
         } else {
           _baseUrlCtrl.text = (p['base_url'] as String? ?? p['url'] as String? ?? '').trim();
           _usernameCtrl.text = (p['username'] as String? ?? '').trim();
@@ -210,6 +225,9 @@ class _CloudSourceEditScreenState extends State<CloudSourceEditScreen> {
       _domainCtrl,
       _cookieCtrl,
       _requestIntervalCtrl,
+      _epgUrlCtrl,
+      _userAgentCtrl,
+      _refererCtrl,
     ]) {
       c.dispose();
     }
@@ -390,6 +408,8 @@ class _CloudSourceEditScreenState extends State<CloudSourceEditScreen> {
       if (mounted) setState(() => _error = e.message);
     } on StorageException catch (e) {
       if (mounted) setState(() => _error = e.message);
+    } on FormatException catch (e) {
+      if (mounted) setState(() => _error = e.message);
     } catch (e) {
       if (mounted) setState(() => _error = '$e');
     } finally {
@@ -403,6 +423,7 @@ class _CloudSourceEditScreenState extends State<CloudSourceEditScreen> {
     'smb' => _createSmb(),
     'emby' => _createMediaBrowser(MediaBrowserDialect.emby),
     'jellyfin' => _createMediaBrowser(MediaBrowserDialect.jellyfin),
+    'iptv' => _createIptv(),
     _ => throw UnsupportedError('Unsupported cloud source kind: $kind'),
   };
 
@@ -459,6 +480,9 @@ class _CloudSourceEditScreenState extends State<CloudSourceEditScreen> {
         'auto_incremental_scan': _autoIncrementalScan,
         'auto_incremental_interval_minutes': _autoIncrementalIntervalMinutes,
       };
+    } else if (kind == 'iptv') {
+      final res = await _validateAndBuildIptvPayload();
+      credPayload = res.payload;
     } else {
       final dialect = kind == 'emby' ? MediaBrowserDialect.emby : MediaBrowserDialect.jellyfin;
       final existingPayload = Map<String, dynamic>.from(_loadedCredential?.payload ?? const {});
@@ -656,6 +680,43 @@ class _CloudSourceEditScreenState extends State<CloudSourceEditScreen> {
     );
   }
 
+  Future<({Map<String, dynamic> payload, String? resolvedEpgUrl})> _validateAndBuildIptvPayload() async {
+    final m3uUrl = _baseUrlCtrl.text.trim();
+    final epgUrl = _epgUrlCtrl.text.trim();
+    final ua = _userAgentCtrl.text.trim();
+    final referer = _refererCtrl.text.trim();
+    final parsed = await IptvProvider.fetchAndParsePlaylist(
+      m3uUrl,
+      userAgent: ua.isEmpty ? null : ua,
+      referer: referer.isEmpty ? null : referer,
+    );
+    final effectiveEpg = epgUrl.isNotEmpty ? epgUrl : (parsed.headerEpgUrl?.trim() ?? '');
+    return (
+      payload: <String, dynamic>{
+        'm3u_url': m3uUrl,
+        if (effectiveEpg.isNotEmpty) 'epg_url': effectiveEpg,
+        if (ua.isNotEmpty) 'user_agent': ua,
+        if (referer.isNotEmpty) 'referer': referer,
+      },
+      resolvedEpgUrl: effectiveEpg.isEmpty ? null : effectiveEpg,
+    );
+  }
+
+  Future<CloudSource> _createIptv() async {
+    final res = await _validateAndBuildIptvPayload();
+    final m3uUrl = _baseUrlCtrl.text.trim();
+    final host = Uri.tryParse(m3uUrl)?.host ?? '';
+    final name = _nameCtrl.text.trim().isNotEmpty
+        ? _nameCtrl.text.trim()
+        : (host.isNotEmpty ? host : 'IPTV 直播源');
+    return widget.repo.createSource(
+      kind: 'iptv',
+      name: name,
+      normalizedIdentity: 'iptv:${m3uUrl.toLowerCase()}',
+      credentialPayload: res.payload,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final kind = _kind;
@@ -776,6 +837,7 @@ class _CloudSourceEditScreenState extends State<CloudSourceEditScreen> {
           if (kind == 'webdav') ..._buildWebDavFields(),
           if (kind == 'smb') ..._buildSmbFields(),
           if (kind == 'emby' || kind == 'jellyfin') ..._buildMediaBrowserFields(kind),
+          if (kind == 'iptv') ..._buildIptvFields(),
           if (isScannable) ...[
             const SizedBox(height: _fieldGap),
             Card(
@@ -1093,6 +1155,54 @@ class _CloudSourceEditScreenState extends State<CloudSourceEditScreen> {
       decoration: InputDecoration(
         labelText: _editing ? '新密码（留空保持当前登录会话）' : '密码（无密码可留空）',
         border: const OutlineInputBorder(),
+      ),
+    ),
+  ];
+
+  List<Widget> _buildIptvFields() => [
+    TextFormField(
+      controller: _baseUrlCtrl,
+      enabled: !_saving,
+      decoration: const InputDecoration(
+        labelText: 'M3U / TXT 订阅地址 *',
+        hintText: '例如：http://192.168.1.10:3000/all.m3u',
+        border: OutlineInputBorder(),
+      ),
+      validator: (v) {
+        final raw = (v ?? '').trim();
+        final uri = Uri.tryParse(raw);
+        if (uri == null || !uri.hasScheme || uri.host.isEmpty || (uri.scheme != 'http' && uri.scheme != 'https')) {
+          return '请输入有效的 http:// 或 https:// 地址';
+        }
+        return null;
+      },
+    ),
+    const SizedBox(height: _fieldGap),
+    TextFormField(
+      controller: _epgUrlCtrl,
+      enabled: !_saving,
+      decoration: const InputDecoration(
+        labelText: 'EPG 节目单地址（可选）',
+        hintText: '留空自动读取 M3U 头部的 x-tvg-url',
+        border: OutlineInputBorder(),
+      ),
+    ),
+    const SizedBox(height: _fieldGap),
+    TextFormField(
+      controller: _userAgentCtrl,
+      enabled: !_saving,
+      decoration: const InputDecoration(
+        labelText: '默认 User-Agent（可选）',
+        border: OutlineInputBorder(),
+      ),
+    ),
+    const SizedBox(height: _fieldGap),
+    TextFormField(
+      controller: _refererCtrl,
+      enabled: !_saving,
+      decoration: const InputDecoration(
+        labelText: '默认 Referer（可选）',
+        border: OutlineInputBorder(),
       ),
     ),
   ];

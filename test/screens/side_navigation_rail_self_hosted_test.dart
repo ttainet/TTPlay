@@ -186,11 +186,16 @@ void main() {
       expect(find.text('Movies'), findsOneWidget);
       expect(find.text('TV Shows'), findsOneWidget);
       expect(find.text('NAS Server'), findsNothing);
+      expect(tester.getTopLeft(find.text('Movies')).dx, greaterThan(tester.getTopLeft(find.text('Libraries')).dx));
 
       // External Emby & Jellyfin servers render in separate server sections even
       // with _hasProfileScope == true and empty local ConnectionRegistry.
       expect(find.text('Emby Living Room'), findsOneWidget);
       expect(find.text('Emby Films'), findsOneWidget);
+      expect(
+        tester.getTopLeft(find.text('Emby Films')).dx,
+        greaterThan(tester.getTopLeft(find.text('Emby Living Room')).dx),
+      );
       expect(find.text('Jellyfin NAS'), findsOneWidget);
       expect(find.text('Jellyfin Series'), findsOneWidget);
     },
@@ -297,6 +302,10 @@ void main() {
 
       expect(find.text('Direct Emby'), findsOneWidget);
       expect(find.text('Direct Emby Movies'), findsOneWidget);
+      expect(
+        tester.getTopLeft(find.text('Direct Emby Movies')).dx,
+        greaterThan(tester.getTopLeft(find.text('Direct Emby')).dx),
+      );
       expect(find.text('Empty Emby'), findsOneWidget);
       expect(find.text('Unbound Emby'), findsNothing);
       expect(find.text('Unbound Emby Movies'), findsNothing);

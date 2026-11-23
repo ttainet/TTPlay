@@ -1,3 +1,4 @@
+import '../../media/live_tv_support.dart';
 import '../../models/livetv_channel.dart';
 
 /// Launch parameters for a live TV session — pure UX data. A
@@ -35,10 +36,14 @@ class LiveTvSessionArgs {
   /// the player always ask.
   final LiveTvStartPosition startPosition;
 
+  /// Optional custom session starter for sources outside [MultiServerProvider] (e.g. IPTV).
+  final Future<LiveTvPlaybackSession?> Function(LiveTvChannel channel)? startSession;
+
   const LiveTvSessionArgs({
     required this.channel,
     this.channels,
     this.currentChannelIndex,
     this.startPosition = LiveTvStartPosition.ask,
+    this.startSession,
   });
 }

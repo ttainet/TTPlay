@@ -1,4 +1,5 @@
 import '../connection/connection.dart';
+import '../iptv/iptv_models.dart';
 import '../media/media_browser_dialect.dart';
 import '../storage/drivers/quark_storage_driver.dart';
 import '../storage/mount_manager.dart';
@@ -11,10 +12,12 @@ class CloudMirrorResult {
   const CloudMirrorResult({
     required this.sources,
     required this.directExternalConnections,
+    this.iptvSources = const [],
   });
 
   final List<CloudSource> sources;
   final List<JellyfinConnection> directExternalConnections;
+  final List<IptvSource> iptvSources;
 }
 
 /// Mirrors cloud-registered media sources (`quark` / `webdav` / `smb`) into the
@@ -23,7 +26,8 @@ class CloudMirrorResult {
 /// directly stream files without any server-side media relay (C3).
 ///
 /// Also decrypts cloud `emby` / `jellyfin` sources into ephemeral
-/// [JellyfinConnection] descriptors for direct client connection.
+/// [JellyfinConnection] descriptors and `iptv` sources into [IptvSource] items
+/// for direct client playback.
 class CloudMountMirror {
   CloudMountMirror({
     required this.sourceRepository,
@@ -44,6 +48,8 @@ class CloudMountMirror {
 
   List<JellyfinConnection> _lastExternalConnections = const [];
   List<JellyfinConnection> get lastExternalConnections => _lastExternalConnections;
+  List<IptvSource> _lastIptvSources = const [];
+  List<IptvSource> get lastIptvSources => _lastIptvSources;
 
   /// Syncs cloud sources into local [MountRegistry], decrypting credentials
   /// locally with the unlocked E2EE master key. Local-only mounts (such as
@@ -57,6 +63,7 @@ class CloudMountMirror {
     final remoteSources = await sourceRepository.listSources();
     final activeCloudMountIds = <String>{};
     final externalConnections = <JellyfinConnection>[];
+    final iptvSources = <IptvSource>[];
 
     for (final src in remoteSources) {
       if (src.status != 'active') continue;
@@ -70,6 +77,19 @@ class CloudMountMirror {
           }
         } catch (e) {
           appLogger.w('CloudMountMirror: skipped external credential sync for ${src.id}: $e');
+        }
+        continue;
+      }
+
+      if (src.kind == 'iptv') {
+        try {
+          final cred = await sourceRepository.fetchCredential(src.id);
+          final iptv = _toIptvSource(src, cred.payload);
+          if (iptv != null) {
+            iptvSources.add(iptv);
+          }
+        } catch (e) {
+          appLogger.w('CloudMountMirror: skipped iptv credential sync for ${src.id}: $e');
         }
         continue;
       }
@@ -101,9 +121,11 @@ class CloudMountMirror {
     }
 
     _lastExternalConnections = List.unmodifiable(externalConnections);
+    _lastIptvSources = List.unmodifiable(iptvSources);
     return CloudMirrorResult(
       sources: remoteSources,
       directExternalConnections: _lastExternalConnections,
+      iptvSources: _lastIptvSources,
     );
   }
 
@@ -220,9 +242,9 @@ class CloudMountMirror {
     final deviceId = (cred['device_id'] as String? ?? '').trim().isNotEmpty
         ? (cred['device_id'] as String).trim()
         : 'plezy-cloud-${src.id}';
-    final serverName = (cred['server_name'] as String? ?? '').trim().isNotEmpty
-        ? (cred['server_name'] as String).trim()
-        : src.name;
+    final serverName = src.name.trim().isNotEmpty
+        ? src.name.trim()
+        : (cred['server_name'] as String? ?? '').trim();
     final rawUrls = cred['base_urls'];
     final baseUrls = rawUrls is List
         ? [for (final u in rawUrls) if (u is String && u.trim().isNotEmpty) u.trim()]
@@ -241,6 +263,26 @@ class CloudMountMirror {
       dialect: dialect,
       isAdministrator: cred['is_administrator'] == true,
       createdAt: DateTime.now(),
+    );
+  }
+
+  IptvSource? _toIptvSource(CloudSource src, Map<String, dynamic> cred) {
+    final m3uUrl = (cred['m3u_url'] as String? ?? cred['url'] as String? ?? '').trim();
+    if (m3uUrl.isEmpty) return null;
+    String? opt(String key) {
+      final raw = (cred[key] as String?)?.trim();
+      return (raw == null || raw.isEmpty) ? null : raw;
+    }
+
+    return IptvSource(
+      id: 'cloud:${src.id}',
+      name: src.name,
+      m3uUrl: m3uUrl,
+      epgUrl: opt('epg_url'),
+      userAgent: opt('user_agent'),
+      referer: opt('referer'),
+      isCloud: true,
+      cloudSourceId: src.id,
     );
   }
 }

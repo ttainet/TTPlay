@@ -122,6 +122,20 @@ abstract class LiveTvPlaybackSession {
   Future<LiveTvPlaybackSession?> recover({required bool directStream, required bool directStreamAudio});
 }
 
+/// Optional capability implemented by [LiveTvPlaybackSession]s that require
+/// custom HTTP request headers (for example per-channel IPTV headers).
+abstract interface class LiveTvCustomHeaderSession implements LiveTvPlaybackSession {
+  Map<String, String> get streamHeaders;
+}
+
+/// Default HTTP headers for opening any [LiveTvPlaybackSession] stream URL.
+Map<String, String> liveTvStreamHeadersFor(LiveTvPlaybackSession session) {
+  if (session is LiveTvCustomHeaderSession) {
+    return session.streamHeaders;
+  }
+  return const {'Accept-Language': 'en'};
+}
+
 enum LiveTvBackgroundPolicy {
   /// Keep the tuned session alive so its capture buffer can be resumed.
   retainSession,

@@ -95,6 +95,7 @@ import 'services/companion_remote/lan_pairing_service.dart';
 import 'session/app_session_controller.dart';
 import 'session/app_session_models.dart';
 import 'session/app_session_store.dart';
+import 'iptv/iptv_provider.dart';
 import 'ttplay/ttplay_session_binder.dart';
 import 'storage/http_range_reader.dart';
 import 'storage/mount_manager.dart';
@@ -1582,6 +1583,7 @@ class _MainAppState extends State<MainApp> with WidgetsBindingObserver {
   late final LanPairingService _lanPairingService;
   late final AppSessionController _appSessionController;
   late final TtplaySessionBinder _ttplaySessionBinder;
+  late final IptvProvider _iptvProvider;
   late final DownloadManagerService _downloadManager;
   late final OfflineWatchSyncService _offlineWatchSyncService;
   late final ConnectionRegistry _connections;
@@ -1702,12 +1704,15 @@ class _MainAppState extends State<MainApp> with WidgetsBindingObserver {
       initialMode: bootstrap?.loginMode,
       initialSelfHostedSession: bootstrap?.selfHostedSession,
     );
+    _iptvProvider = IptvProvider();
+    unawaited(_iptvProvider.loadLocalSources());
     _ttplaySessionBinder = TtplaySessionBinder(
       sessionController: _appSessionController,
       serverManager: _serverManager,
       localLibraryClient: _localLibraryClient,
       onLocalLibraryMutated: _libraryScanService.notifyLibraryChanged,
     );
+    _ttplaySessionBinder.attachIptvProvider(_iptvProvider);
     if (bootstrap?.loginMode != null) {
       unawaited(_appSessionController.initialize());
     }
@@ -1869,6 +1874,7 @@ class _MainAppState extends State<MainApp> with WidgetsBindingObserver {
     ]);
     _lanPairingService.dispose();
     _ttplaySessionBinder.dispose();
+    _iptvProvider.dispose();
     _appSessionController.dispose();
     await _appDatabase.close();
   }
@@ -1887,6 +1893,7 @@ class _MainAppState extends State<MainApp> with WidgetsBindingObserver {
     if (_shutdownFuture == null) {
       _lanPairingService.dispose();
       _ttplaySessionBinder.dispose();
+      _iptvProvider.dispose();
       _appSessionController.dispose();
       _libraryEventService.dispose();
       _downloadManager.dispose();
@@ -2134,6 +2141,7 @@ class _MainAppState extends State<MainApp> with WidgetsBindingObserver {
         ChangeNotifierProvider<LanPairingService>.value(value: _lanPairingService),
         ChangeNotifierProvider<AppSessionController>.value(value: _appSessionController),
         ChangeNotifierProvider<TtplaySessionBinder>.value(value: _ttplaySessionBinder),
+        ChangeNotifierProvider<IptvProvider>.value(value: _iptvProvider),
         Provider<ConnectionRegistry>.value(value: _connections),
         Provider<ProfileRegistry>(create: (_) => ProfileRegistry(_appDatabase)),
         Provider<ProfileConnectionRegistry>.value(value: _profileConnections),

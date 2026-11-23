@@ -23,7 +23,8 @@ const (
 	DefaultWatchedThreshold           = 0.9
 	DefaultAccentTheme                = "glacier"
 	DefaultRegistrationMode           = RegistrationModeOpen
-	DefaultSourceAddPolicyJSON        = `{"desktop":["quark","webdav","smb","emby","jellyfin"],"phone":["quark","webdav","smb","emby","jellyfin"],"tablet":["quark","webdav","smb","emby","jellyfin"],"tv":[],"web":[]}`
+	legacyDefaultSourceAddPolicyJSON  = `{"desktop":["quark","webdav","smb","emby","jellyfin"],"phone":["quark","webdav","smb","emby","jellyfin"],"tablet":["quark","webdav","smb","emby","jellyfin"],"tv":[],"web":[]}`
+	DefaultSourceAddPolicyJSON        = `{"desktop":["quark","webdav","smb","emby","jellyfin","iptv"],"phone":["quark","webdav","smb","emby","jellyfin","iptv"],"tablet":["quark","webdav","smb","emby","jellyfin","iptv"],"tv":[],"web":[]}`
 	DefaultFullScanAllowedDevicesJSON = `["desktop","phone","tablet"]`
 	DefaultMinProtocolVersion         = 1
 )
@@ -266,7 +267,7 @@ func (s *Store) buildServerSettings() ServerSettings {
 	}
 
 	sourcePolicy := strings.TrimSpace(s.GetSetting("source_add_policy_json", DefaultSourceAddPolicyJSON))
-	if sourcePolicy == "" || !json.Valid([]byte(sourcePolicy)) {
+	if sourcePolicy == "" || !json.Valid([]byte(sourcePolicy)) || sourcePolicy == legacyDefaultSourceAddPolicyJSON {
 		sourcePolicy = DefaultSourceAddPolicyJSON
 	}
 

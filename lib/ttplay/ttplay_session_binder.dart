@@ -5,6 +5,7 @@ import 'package:drift/drift.dart' show Variable;
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
+import '../iptv/iptv_provider.dart';
 import '../library/deterministic_keys.dart';
 import '../library/local_library_client.dart';
 import '../library/scrapers/server_metadata_provider.dart';
@@ -51,6 +52,7 @@ class TtplaySessionBinder extends ChangeNotifier {
   final VoidCallback? onLocalLibraryMutated;
 
   MultiServerProvider? _multiServerProvider;
+  IptvProvider? _iptvProvider;
   TtplayApiClient? _apiClient;
   TtplayAdminService? _adminService;
   CloudApiClient? _cloudApiClient;
@@ -100,6 +102,14 @@ class TtplaySessionBinder extends ChangeNotifier {
 
   void attachMultiServerProvider(MultiServerProvider provider) {
     _multiServerProvider = provider;
+  }
+
+  void attachIptvProvider(IptvProvider provider) {
+    _iptvProvider = provider;
+    final mirror = _cloudMountMirror;
+    if (mirror != null) {
+      provider.setCloudSources(mirror.lastIptvSources);
+    }
   }
 
   /// Synchronously binds the active self-hosted session before Frame 1 on cold start.
@@ -549,6 +559,7 @@ class TtplaySessionBinder extends ChangeNotifier {
   Future<void> _mountDirectCloudExternalServers() async {
     final mirror = _cloudMountMirror;
     if (mirror == null || _disposed || !isMediaLibraryV1Active) return;
+    _iptvProvider?.setCloudSources(mirror.lastIptvSources);
     final previousDirectIds = _directCloudExternalServerIds;
     final conns = mirror.lastExternalConnections;
     if (conns.isEmpty) {
@@ -721,6 +732,7 @@ class TtplaySessionBinder extends ChangeNotifier {
     _directCloudExternalServerIds = const {};
     _boundSessionKey = null;
     _lastExternalRefreshError = null;
+    _iptvProvider?.setCloudSources(const []);
     serverManager.clearSelfHostedServers();
     if (!primaryRegistered) {
       staleApi?.close();
@@ -753,6 +765,7 @@ class TtplaySessionBinder extends ChangeNotifier {
     if (_disposed) return;
     _disposed = true;
     _multiServerProvider = null;
+    _iptvProvider = null;
     _cancelCloudSyncTimers();
     _cloudProjectionEngine?.stopListeningEvents();
     _cloudScanRunner?.removeListener(_handleCloudRunnerChanged);

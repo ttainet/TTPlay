@@ -54,6 +54,7 @@ import 'general_settings_screen.dart';
 import 'keyboard_shortcuts_screen.dart';
 import '../../connection/connection_registry.dart';
 import '../../connection/connection.dart';
+import '../iptv/iptv_sources_screen.dart';
 import '../library_admin/cloud_unmatched_screen.dart';
 import '../sources/cloud_sources_screen.dart';
 import '../storage/lan_devices_screen.dart';
@@ -117,6 +118,7 @@ class _SettingsScreenState extends State<SettingsScreen> with FocusableTab, Moun
   static const _kAutoHidePerformanceOverlay = 'auto_hide_performance_overlay';
   static const _kViewLogs = 'view_logs';
   static const _kStorageMounts = 'storage_mounts';
+  static const _kIptvSources = 'iptv_sources';
   static const _kScraperSettings = 'scraper_settings';
 
   /// Whether any Plex/Jellyfin/Emby connection is stored. Their settings
@@ -426,6 +428,13 @@ class _SettingsScreenState extends State<SettingsScreen> with FocusableTab, Moun
           title: t.storage.title,
           subtitle: t.storage.description,
           destinationBuilder: (context) => const MountsScreen(),
+        ),
+        SettingNavigationTile(
+          focusNode: _focusTracker.get(_kIptvSources),
+          icon: Symbols.live_tv_rounded,
+          title: 'IPTV 直播源',
+          subtitle: '管理本地与云端 M3U / TXT 直播源和 EPG 节目单',
+          destinationBuilder: (_) => const IptvSourcesScreen(),
         ),
       ],
     );

@@ -25,6 +25,7 @@ const SOURCE_KIND_LABELS: Record<string, string> = {
   smb: 'SMB 共享',
   emby: 'Emby',
   jellyfin: 'Jellyfin',
+  iptv: 'IPTV',
   local: '本地目录',
 };
 
