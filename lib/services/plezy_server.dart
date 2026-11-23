@@ -1,4 +1,4 @@
-/// Base URL of the Plezy server: the tracker OAuth proxy (`/auth`), log
-/// uploads (`/logs`) and Discord posters (`/posters`). Watch Together rooms
-/// run on Open Watch Party relays, not here.
-const String plezyServerBaseUrl = 'https://ice.plezy.app';
+/// Base URL of the optional relay server: the tracker OAuth proxy (`/auth`), log
+/// uploads (`/logs`) and Discord posters (`/posters`). Configured at build time
+/// via `--dart-define=TTPLAY_RELAY_BASE_URL=...`.
+const String plezyServerBaseUrl = String.fromEnvironment('TTPLAY_RELAY_BASE_URL');

@@ -154,7 +154,7 @@ export const UserOverviewPage: React.FC = () => {
               {sources.length === 0 ? (
                 <div className="empty-state" style={{ padding: '28px 16px' }}>
                   <p className="muted-sm" style={{ margin: 0 }}>
-                    暂无媒体源，请在 Plezy 客户端中添加媒体源。
+                    暂无媒体源，请在 TTPlay 客户端中添加媒体源。
                   </p>
                 </div>
               ) : (

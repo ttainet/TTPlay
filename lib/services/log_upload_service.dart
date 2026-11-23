@@ -48,6 +48,9 @@ String constrainLogUploadPayload({required String header, required String logs, 
 /// [payload] must already be redacted and allowlisted by the caller; this
 /// function performs no sanitisation of its own.
 Future<String> uploadDiagnosticText(String payload, {MediaServerHttpClient? client}) async {
+  if (plezyServerBaseUrl.isEmpty) {
+    throw StateError('Diagnostic log upload relay is not configured');
+  }
   final response = await (client ?? httpClient).post(
     logUploadEndpoint,
     body: payload,

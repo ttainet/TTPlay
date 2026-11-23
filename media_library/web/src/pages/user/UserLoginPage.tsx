@@ -255,7 +255,7 @@ export const UserLoginPage: React.FC = () => {
             <div className="flex-row" style={{ gap: 8, flexWrap: 'nowrap' }}>
               <ShieldCheck size={16} style={{ color: 'var(--accent)', flexShrink: 0 }} />
               <span className="muted-sm" style={{ lineHeight: 1.45 }}>
-                使用 Plezy 客户端账号登录，管理个人媒体源、查看已登录设备及账号安全设置。
+                使用 TTPlay 客户端账号登录，管理个人媒体源、查看已登录设备及账号安全设置。
               </span>
             </div>
           </div>

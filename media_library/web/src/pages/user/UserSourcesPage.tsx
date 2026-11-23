@@ -245,7 +245,7 @@ export const UserSourcesPage: React.FC = () => {
           <div className="empty-state">
             <FolderOpen size={36} style={{ opacity: 0.45 }} />
             <p className="muted" style={{ margin: '10px 0 0' }}>
-              暂无已添加的媒体源，请在 Plezy 客户端中添加网盘、WebDAV、SMB 或 Emby/Jellyfin 源。
+              暂无已添加的媒体源，请在 TTPlay 客户端中添加网盘、WebDAV、SMB 或 Emby/Jellyfin 源。
             </p>
           </div>
         ) : (

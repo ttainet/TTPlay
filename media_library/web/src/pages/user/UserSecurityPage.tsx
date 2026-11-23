@@ -195,7 +195,7 @@ export const UserSecurityPage: React.FC = () => {
               <div className="flex-row" style={{ gap: 8, flexWrap: 'nowrap' }}>
                 <Info size={16} style={{ color: 'var(--accent)', flexShrink: 0 }} />
                 <span className="muted-sm" style={{ lineHeight: 1.5 }}>
-                  若你已在 Plezy 客户端开启端到端加密（E2EE）密钥包装，建议通过客户端修改密码，以便同步重封装家庭密钥。
+                  若你已在 TTPlay 客户端开启端到端加密（E2EE）密钥包装，建议通过客户端修改密码，以便同步重封装家庭密钥。
                 </span>
               </div>
             </div>

@@ -338,6 +338,7 @@ class DiscordRPCService {
   }
 
   Future<String?> _uploadThumbnail(MediaItem metadata, MediaServerClient client) async {
+    if (plezyServerBaseUrl.isEmpty) return null;
     try {
       final thumbPath = _presenceThumbPath(metadata);
       if (thumbPath == null || thumbPath.isEmpty) return null;

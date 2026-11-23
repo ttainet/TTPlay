@@ -1,0 +1,973 @@
+From a2f28124b40b7d1ea0af77e1fc46687b17b64306 Mon Sep 17 00:00:00 2001
+From: edde746 <86283021+edde746@users.noreply.github.com>
+Date: Fri, 18 Sep 2026 07:14:00 +0200
+Subject: [PATCH 3/4] windows: heal resize synchronization wedge
+ (flutter/flutter#159630)
+
+If the window is resized between surface creation and the first frame -
+which is what PowerToys FancyZones "Move newly created windows to their
+last known zone" does - the resize synchronization enters kResizeStarted
+and only presents frames matching the target size. If the framework never
+produces one (dropped metrics, no scheduled frame, or a failed surface
+recreate), every subsequent frame is rejected and the window stays blank
+until a real resize re-enters OnWindowSizeChanged. ForceRedraw is a no-op
+while a resize is pending, so nothing recovers it.
+
+- Re-drive a pending resize: resend the target metrics and schedule a
+  frame on resize timeout, on rejected frames, and from ForceRedraw.
+- Recreate a missing or invalid surface on the next generated frame
+  instead of dropping frames forever; drop the destroyed husk when a
+  resize-time recreate fails.
+- Force-complete the resize on the raster thread after 60 retries so the
+  view can never wedge permanently.
+
+diff --git a/engine/src/flutter/shell/platform/windows/flutter_windows_view.cc b/engine/src/flutter/shell/platform/windows/flutter_windows_view.cc
+index cc0505d6..64172dbf 100644
+--- a/engine/src/flutter/shell/platform/windows/flutter_windows_view.cc
++++ b/engine/src/flutter/shell/platform/windows/flutter_windows_view.cc
+@@ -28,6 +28,13 @@ static const int kMaxPenPressure = 1024;
+ // for a window resize operation to complete.
+ constexpr std::chrono::milliseconds kWindowResizeTimeout{100};
+ 
++// The maximum number of times a pending resize is re-driven before it is
++// force-completed on the raster thread. Retries are driven by frame
++// rejections, resize timeouts, stale ForceRedraw calls, and surface
++// recreation failures, so this bounds the wedge duration to roughly
++// |kMaxResizeRetries| re-drive events.
++constexpr int kMaxResizeRetries = 60;
++
+ /// Returns true if the surface will be updated as part of the resize process.
+ ///
+ /// This is called on window resize to determine if the platform thread needs
+@@ -129,8 +136,22 @@ FlutterWindowsView::FlutterWindowsView(
+   binding_handler_ = std::move(window_binding);
+   binding_handler_->SetView(this);
+ }
+-
+ FlutterWindowsView::~FlutterWindowsView() {
++  // Invalidate the token captured by pending resize retry tasks.
++  alive_token_->store(false);
++
++  // Drain raster-thread tasks already queued. They re-check the token
++  // under |resize_mutex_| and bail out, but a task that passed the check
++  // and has not taken the lock yet must not run after the mutex is
++  // destroyed. Raster tasks are FIFO, so everything queued before this
++  // drain task has completed once it signals.
++  if (engine_->running()) {
++    fml::AutoResetWaitableEvent latch;
++    if (engine_->PostRasterThreadTask([&latch]() { latch.Signal(); })) {
++      latch.Wait();
++    }
++  }
++
+   // The view owns the child window.
+   // Notify the engine the view's child window will no longer be visible.
+   engine_->OnWindowStateEvent(GetWindowHandle(), WindowStateEvent::kHide);
+@@ -144,7 +165,10 @@ bool FlutterWindowsView::OnEmptyFrameGenerated() {
+   // Called on the raster thread.
+   std::unique_lock<std::mutex> lock(resize_mutex_);
+ 
+-  if (surface_ == nullptr || !surface_->IsValid()) {
++  if (!EnsureRenderSurface()) {
++    if (resize_status_ == ResizeState::kResizeStarted) {
++      ScheduleResizeRetryLocked();
++    }
+     return false;
+   }
+ 
+@@ -153,6 +177,7 @@ bool FlutterWindowsView::OnEmptyFrameGenerated() {
+   }
+ 
+   if (!ResizeRenderSurface(resize_target_width_, resize_target_height_)) {
++    ScheduleResizeRetryLocked();
+     return false;
+   }
+ 
+@@ -167,6 +192,11 @@ bool FlutterWindowsView::OnFrameGenerated(size_t width, size_t height) {
+   std::unique_lock<std::mutex> lock(resize_mutex_);
+ 
+   if (IsSizedToContent()) {
++    // The surface may be missing after a failed recreate; resurrect it
++    // before dereferencing it below.
++    if (!EnsureRenderSurface()) {
++      return false;
++    }
+     if (!ResizeRenderSurface(width, height)) {
+       return false;
+     }
+@@ -175,7 +205,10 @@ bool FlutterWindowsView::OnFrameGenerated(size_t width, size_t height) {
+     return true;
+   }
+ 
+-  if (surface_ == nullptr || !surface_->IsValid()) {
++  if (!EnsureRenderSurface()) {
++    if (resize_status_ == ResizeState::kResizeStarted) {
++      ScheduleResizeRetryLocked();
++    }
+     return false;
+   }
+ 
+@@ -184,10 +217,17 @@ bool FlutterWindowsView::OnFrameGenerated(size_t width, size_t height) {
+   }
+ 
+   if (resize_target_width_ != width || resize_target_height_ != height) {
++    // The frame does not match the resize target. It is dropped, and the
++    // resize is re-driven so the framework produces a matching frame.
++    // Without this a resize can wedge permanently: nothing else schedules
++    // a new frame once the framework believes it has rendered the latest
++    // metrics (flutter/flutter#159630).
++    ScheduleResizeRetryLocked();
+     return false;
+   }
+ 
+   if (!ResizeRenderSurface(resize_target_width_, resize_target_height_)) {
++    ScheduleResizeRetryLocked();
+     return false;
+   }
+ 
+@@ -198,9 +238,27 @@ bool FlutterWindowsView::OnFrameGenerated(size_t width, size_t height) {
+ }
+ 
+ void FlutterWindowsView::ForceRedraw() {
++  // The raster thread holds |resize_mutex_| for the whole frame path
++  // including surface recreation, so a WM_PAINT can briefly block the UI
++  // thread here; that is the price of synchronizing this read.
++  std::unique_lock<std::mutex> lock(resize_mutex_);
+   if (resize_status_ == ResizeState::kDone) {
++    lock.unlock();
+     // Request new frame.
+     engine_->ScheduleFrame();
++    return;
++  }
++
++  // A resize is pending. ForceRedraw is a no-op in this state upstream,
++  // which is exactly why a wedged resize never heals: re-drive it instead
++  // so WM_PAINT and explicit redraw requests can recover the view. Only
++  // re-drive a stale resize, though: WM_PAINT arrives continuously during
++  // an interactive drag-resize and must not burn the retry budget on a
++  // healthy resize.
++  if (resize_status_ == ResizeState::kResizeStarted &&
++      std::chrono::steady_clock::now() >
++          resize_start_time_ + kWindowResizeTimeout) {
++    ScheduleResizeRetryLocked();
+   }
+ }
+ 
+@@ -219,40 +277,82 @@ bool FlutterWindowsView::OnWindowSizeChanged(size_t width, size_t height) {
+     return true;
+   }
+ 
+-  if (!surface_ || !surface_->IsValid()) {
++  bool surface_missing;
++  bool surface_will_update;
++  {
++    // |surface_| is replaced on the raster thread (resurrection and
++    // force-complete paths), so inspect it under |resize_mutex_|.
++    std::unique_lock<std::mutex> lock(resize_mutex_);
++    surface_missing = !surface_ || !surface_->IsValid();
++    surface_will_update =
++        !surface_missing &&
++        SurfaceWillUpdate(surface_->width(), surface_->height(), width, height);
++
++    if ((surface_missing && width > 0 && height > 0) || surface_will_update) {
++      // Track the latest requested size. With a missing surface there is
++      // nothing to synchronize against, but keeping the pending-resize
++      // state pointed at the newest target lets the frame path wait for a
++      // frame at the size the window actually wants. A zero-size target
++      // (e.g. WM_SIZE on minimize) is ignored, matching
++      // |SurfaceWillUpdate|.
++      resize_status_ = ResizeState::kResizeStarted;
++      resize_target_width_ = width;
++      resize_target_height_ = height;
++      resize_retries_ = 0;
++      resize_start_time_ = std::chrono::steady_clock::now();
++    }
++  }
++
++  if (surface_missing) {
+     SendWindowMetrics(width, height, binding_handler_->GetDpiScale());
++
++    // The surface is missing or invalid (e.g. a previous resize failed to
++    // recreate it). Try to resurrect it on the raster thread so the view
++    // is not stuck presenting nothing until the next frame happens to
++    // arrive.
++    if (engine_->running()) {
++      std::weak_ptr<std::atomic<bool>> alive = alive_token_;
++      engine_->PostRasterThreadTask([this, alive]() {
++        auto token = alive.lock();
++        if (!token || !token->load()) {
++          return;
++        }
++        std::unique_lock<std::mutex> lock(resize_mutex_);
++        // Re-check under the lock: the destructor may have run between the
++        // first check and acquiring |resize_mutex_|.
++        if (!token->load()) {
++          return;
++        }
++        EnsureRenderSurface();
++      });
++    }
+     return true;
+   }
+ 
+   // We're using OpenGL rendering. Resizing the surface must happen on the
+   // raster thread.
+-  bool surface_will_update =
+-      SurfaceWillUpdate(surface_->width(), surface_->height(), width, height);
+   if (!surface_will_update) {
+     SendWindowMetrics(width, height, binding_handler_->GetDpiScale());
+     return true;
+   }
+ 
+-  {
+-    std::unique_lock<std::mutex> lock(resize_mutex_);
+-    resize_status_ = ResizeState::kResizeStarted;
+-    resize_target_width_ = width;
+-    resize_target_height_ = height;
+-  }
+-
+   SendWindowMetrics(width, height, binding_handler_->GetDpiScale());
+ 
+   std::chrono::time_point<std::chrono::steady_clock> start_time =
+       std::chrono::steady_clock::now();
+ 
+   while (true) {
+-    if (std::chrono::steady_clock::now() > start_time + kWindowResizeTimeout) {
+-      return false;
+-    }
+     std::unique_lock<std::mutex> lock(resize_mutex_);
+     if (resize_status_ == ResizeState::kDone) {
+       break;
+     }
++    if (std::chrono::steady_clock::now() > start_time + kWindowResizeTimeout) {
++      // The resize did not complete within the timeout. Re-drive it so the
++      // view cannot wedge if the framework never produces a frame at the
++      // target size (flutter/flutter#159630).
++      ScheduleResizeRetryLocked();
++      return false;
++    }
+     lock.unlock();
+     engine_->task_runner()->PollOnce(kWindowResizeTimeout);
+   }
+@@ -814,8 +914,15 @@ void FlutterWindowsView::CreateRenderSurface() {
+ 
+     UpdateVsync(*engine_, surface_.get(), NeedsVsync());
+ 
+-    resize_target_width_ = bounds.width;
+-    resize_target_height_ = bounds.height;
++    // Surface creation is the authoritative reset for resize state: a
++    // resize requested before the surface existed is satisfied by
++    // creating it at the window's current bounds.
++    {
++      std::unique_lock<std::mutex> lock(resize_mutex_);
++      resize_status_ = ResizeState::kDone;
++      resize_target_width_ = bounds.width;
++      resize_target_height_ = bounds.height;
++    }
+   }
+ }
+ 
+@@ -842,6 +949,10 @@ bool FlutterWindowsView::ResizeRenderSurface(size_t width, size_t height) {
+                                                   height);
+   if (!resized_surface) {
+     FML_LOG(ERROR) << "View resize failed to create surface";
++    // The old surface was already destroyed above. Drop the husk so the
++    // view can recreate the surface on the next frame instead of wedging
++    // on a permanently invalid surface.
++    surface_.reset();
+     return false;
+   }
+ 
+@@ -857,6 +968,130 @@ bool FlutterWindowsView::ResizeRenderSurface(size_t width, size_t height) {
+   return true;
+ }
+ 
++bool FlutterWindowsView::EnsureRenderSurface() {
++  // Called on the raster thread with |resize_mutex_| held.
++  if (surface_ && surface_->IsValid()) {
++    return true;
++  }
++
++  // The surface is missing or was left invalid by a failed resize.
++  // Recreate it so the view can recover instead of dropping every frame
++  // forever.
++  surface_.reset();
++  if (!engine_->egl_manager()) {
++    return false;
++  }
++
++  // Create at the pending resize target when a resize is in flight: the
++  // frame-size check below must compare against the size the platform
++  // thread asked for, not whatever bounds the window happens to have now.
++  // Creating at the target also avoids a follow-up ResizeRenderSurface in
++  // the same call frame, which would destroy the surface that UpdateVsync
++  // may have captured in a posted task.
++  size_t width;
++  size_t height;
++  if (resize_status_ == ResizeState::kResizeStarted) {
++    width = resize_target_width_;
++    height = resize_target_height_;
++  } else {
++    PhysicalWindowBounds bounds = binding_handler_->GetPhysicalWindowBounds();
++    width = bounds.width;
++    height = bounds.height;
++  }
++
++  surface_ = engine_->egl_manager()->CreateWindowSurface(GetWindowHandle(),
++                                                         width, height);
++  if (!surface_) {
++    return false;
++  }
++
++  // Set the swap interval inline, like ResizeRenderSurface does: this runs
++  // on the raster thread already, and posting UpdateVsync would capture a
++  // raw surface pointer that a later resize can free before the task runs.
++  if (!surface_->MakeCurrent() || !surface_->SetVSyncEnabled(NeedsVsync())) {
++    // Surfaces block until the v-blank by default. Failing to update the
++    // vsync might result in unnecessary blocking. This regresses
++    // performance but not correctness.
++    FML_LOG(ERROR) << "Surface recreate failed to set vsync";
++  }
++
++  return surface_->IsValid();
++}
++
++void FlutterWindowsView::ScheduleResizeRetryLocked() {
++  // Callers must hold |resize_mutex_|.
++  std::weak_ptr<std::atomic<bool>> alive = alive_token_;
++  engine_->task_runner()->PostTask([this, alive]() {
++    auto token = alive.lock();
++    if (!token || !token->load()) {
++      return;
++    }
++    DriveResizeRetry();
++  });
++}
++
++void FlutterWindowsView::DriveResizeRetry() {
++  // Called on the platform thread.
++  size_t target_width = 0;
++  size_t target_height = 0;
++  bool force_complete = false;
++  {
++    std::unique_lock<std::mutex> lock(resize_mutex_);
++    if (resize_status_ != ResizeState::kResizeStarted) {
++      return;
++    }
++
++    if (++resize_retries_ > kMaxResizeRetries) {
++      // The framework never produced a frame at the resize target size.
++      // Force-complete the resize on the raster thread: presenting a
++      // wrong-size frame beats a permanently blank window.
++      FML_LOG(ERROR) << "Window resize did not complete after "
++                     << kMaxResizeRetries
++                     << " retries; force-completing the resize.";
++      resize_status_ = ResizeState::kDone;
++      force_complete = true;
++    } else {
++      target_width = resize_target_width_;
++      target_height = resize_target_height_;
++    }
++  }
++
++  if (force_complete) {
++    // Posted outside |resize_mutex_|: the task takes the lock itself.
++    std::weak_ptr<std::atomic<bool>> alive = alive_token_;
++    engine_->PostRasterThreadTask([this, alive]() {
++      auto token = alive.lock();
++      if (!token || !token->load()) {
++        return;
++      }
++      std::unique_lock<std::mutex> lock(resize_mutex_);
++      // Re-check under the lock: the destructor may have run between the
++      // first check and acquiring |resize_mutex_|.
++      if (!token->load()) {
++        return;
++      }
++      ForceCompleteResizeLocked();
++    });
++    return;
++  }
++
++  // Resend the resize target metrics: this is what makes the framework
++  // produce a frame at the target size (handleMetricsChanged forces a
++  // frame once the app has content). ScheduleFrame arms the vsync so the
++  // frame is actually pumped.
++  SendWindowMetrics(target_width, target_height,
++                    binding_handler_->GetDpiScale());
++  engine_->ScheduleFrame();
++}
++
++void FlutterWindowsView::ForceCompleteResizeLocked() {
++  // Called on the raster thread with |resize_mutex_| held.
++  if (!EnsureRenderSurface()) {
++    return;
++  }
++  ResizeRenderSurface(resize_target_width_, resize_target_height_);
++}
++
+ egl::WindowSurface* FlutterWindowsView::surface() const {
+   return surface_.get();
+ }
+diff --git a/engine/src/flutter/shell/platform/windows/flutter_windows_view.h b/engine/src/flutter/shell/platform/windows/flutter_windows_view.h
+index 4e5c47fb..1ecd9069 100644
+--- a/engine/src/flutter/shell/platform/windows/flutter_windows_view.h
++++ b/engine/src/flutter/shell/platform/windows/flutter_windows_view.h
+@@ -6,6 +6,7 @@
+ #define FLUTTER_SHELL_PLATFORM_WINDOWS_FLUTTER_WINDOWS_VIEW_H_
+ 
+ #include <atomic>
++#include <chrono>
+ #include <memory>
+ #include <mutex>
+ #include <string>
+@@ -504,6 +505,42 @@ class FlutterWindowsView : public WindowBindingHandlerDelegate {
+   // resize_mutex_.
+   size_t resize_target_height_ = 0;
+ 
++  // Number of resize retries driven for the current resize. Guarded by
++  // resize_mutex_.
++  int resize_retries_ = 0;
++
++  // When the current resize started. Guarded by resize_mutex_. Used to
++  // re-drive only stale resizes from ForceRedraw so WM_PAINT during a
++  // healthy interactive resize does not burn the retry budget.
++  std::chrono::steady_clock::time_point resize_start_time_;
++
++  // Set to false in the destructor. Resize retry tasks posted to the
++  // platform task runner capture this so they can bail out if the view is
++  // destroyed before they run.
++  std::shared_ptr<std::atomic<bool>> alive_token_ =
++      std::make_shared<std::atomic<bool>>(true);
++
++  // Re-drives a pending resize: resends the target window metrics and
++  // schedules a frame so the framework produces a frame at the resize
++  // target size. Called on the platform thread. After
++  // |kMaxResizeRetries| attempts the resize is force-completed on the
++  // raster thread so the view can never wedge permanently.
++  void DriveResizeRetry();
++
++  // Posts a platform-thread task that calls |DriveResizeRetry|. Callers
++  // must hold |resize_mutex_|.
++  void ScheduleResizeRetryLocked();
++
++  // Ensures |surface_| exists and is valid, recreating it if necessary.
++  // Called on the raster thread with |resize_mutex_| held.
++  bool EnsureRenderSurface();
++
++  // Force-completes a pending resize on the raster thread: resizes the
++  // surface to the resize target. Used as the last resort when the
++  // framework does not produce a matching frame. Callers must hold
++  // |resize_mutex_|.
++  void ForceCompleteResizeLocked();
++
+   // True when flutter's semantics tree is enabled.
+   bool semantics_enabled_ = false;
+ 
+diff --git a/engine/src/flutter/shell/platform/windows/flutter_windows_view_unittests.cc b/engine/src/flutter/shell/platform/windows/flutter_windows_view_unittests.cc
+index b66b4205..d359510b 100644
+--- a/engine/src/flutter/shell/platform/windows/flutter_windows_view_unittests.cc
++++ b/engine/src/flutter/shell/platform/windows/flutter_windows_view_unittests.cc
+@@ -332,10 +332,18 @@ TEST(FlutterWindowsViewTest, Shutdown) {
+   // The view must be removed before the surface can be destroyed.
+   {
+     auto view_id = view->view_id();
+-    FlutterWindowsViewController controller{std::move(engine), std::move(view)};
++    FlutterWindowsViewController controller{std::move(engine),
++                                            std::move(view)};
+ 
+     EXPECT_CALL(*engine_ptr, running).WillOnce(Return(true));
+     EXPECT_CALL(*engine_ptr, RemoveView(view_id)).Times(1);
++    // The destructor drains the raster queue before destroying the surface.
++    EXPECT_CALL(*engine_ptr, running).WillOnce(Return(true));
++    EXPECT_CALL(*engine_ptr, PostRasterThreadTask)
++        .WillOnce([](fml::closure callback) {
++          callback();
++          return true;
++        });
+     EXPECT_CALL(*engine_ptr, running).WillOnce(Return(true));
+     EXPECT_CALL(*engine_ptr, PostRasterThreadTask)
+         .WillOnce([](fml::closure callback) {
+@@ -1124,8 +1132,8 @@ TEST(FlutterWindowsViewTest, WindowResizeRace) {
+   view->OnFramePresented();
+ }
+ 
+-// Window resize should succeed even if the render surface could not be created
+-// even though EGL initialized successfully.
++// A window resize with an invalid render surface should attempt to
++// recreate the surface so the view can recover.
+ TEST(FlutterWindowsViewTest, WindowResizeInvalidSurface) {
+   std::unique_ptr<FlutterWindowsEngine> engine = GetTestEngine();
+ 
+@@ -1140,9 +1148,11 @@ TEST(FlutterWindowsViewTest, WindowResizeInvalidSurface) {
+   auto egl_manager = std::make_unique<egl::MockManager>();
+   auto surface = std::make_unique<egl::MockWindowSurface>();
+ 
+-  EXPECT_CALL(*egl_manager.get(), CreateWindowSurface).Times(0);
++  // The view attempts to resurrect the invalid surface; recreation fails.
++  EXPECT_CALL(*egl_manager.get(), CreateWindowSurface)
++      .WillOnce(Return(
++          ::testing::ByMove(std::unique_ptr<flutter::egl::WindowSurface>())));
+   EXPECT_CALL(*surface.get(), IsValid).WillRepeatedly(Return(false));
+-  EXPECT_CALL(*surface.get(), Destroy).WillOnce(Return(false));
+ 
+   std::unique_ptr<FlutterWindowsView> view =
+       engine->CreateView(std::make_unique<NiceMock<MockWindowBindingHandler>>(),
+@@ -1163,6 +1173,424 @@ TEST(FlutterWindowsViewTest, WindowResizeInvalidSurface) {
+   view->OnWindowSizeChanged(500, 500);
+ }
+ 
++// A resize that does not complete within the timeout re-drives the resize:
++// the target metrics are resent and a frame is scheduled so the framework
++// produces a frame at the resize target size. Regression test for the
++// FancyZones white window: https://github.com/flutter/flutter/issues/159630
++TEST(FlutterWindowsViewTest, WindowResizeWedgeRetries) {
++  auto windows_proc_table = std::make_shared<NiceMock<MockWindowsProcTable>>();
++  std::unique_ptr<FlutterWindowsEngine> engine =
++      GetTestEngine(windows_proc_table);
++
++  EngineModifier engine_modifier{engine.get()};
++  engine_modifier.embedder_api().PostRenderThreadTask = MOCK_ENGINE_PROC(
++      PostRenderThreadTask,
++      ([](auto engine, VoidCallback callback, void* user_data) {
++        callback(user_data);
++        return kSuccess;
++      }));
++
++  auto egl_manager = std::make_unique<egl::MockManager>();
++  auto surface = std::make_unique<egl::MockWindowSurface>();
++  auto resized_surface = std::make_unique<egl::MockWindowSurface>();
++  auto resized_surface_ptr = resized_surface.get();
++
++  EXPECT_CALL(*surface.get(), IsValid).WillRepeatedly(Return(true));
++  EXPECT_CALL(*surface.get(), Destroy).WillOnce(Return(true));
++  EXPECT_CALL(*egl_manager.get(),
++              CreateWindowSurface(_, /*width=*/500, /*height=*/500))
++      .WillOnce(Return(std::move(resized_surface)));
++  EXPECT_CALL(*resized_surface_ptr, IsValid).WillRepeatedly(Return(true));
++  EXPECT_CALL(*resized_surface_ptr, MakeCurrent).WillOnce(Return(true));
++  EXPECT_CALL(*resized_surface_ptr, SetVSyncEnabled).WillOnce(Return(true));
++  EXPECT_CALL(*resized_surface_ptr, Destroy).WillOnce(Return(true));
++  EXPECT_CALL(*windows_proc_table.get(), DwmFlush).WillOnce(Return(S_OK));
++
++  std::unique_ptr<FlutterWindowsView> view =
++      engine->CreateView(std::make_unique<NiceMock<MockWindowBindingHandler>>(),
++                         /*is_sized_to_content=*/false, BoxConstraints());
++
++  ViewModifier view_modifier{view.get()};
++  engine_modifier.SetEGLManager(std::move(egl_manager));
++  view_modifier.SetSurface(std::move(surface));
++
++  int metrics_sent = 0;
++  size_t last_metrics_width = 0;
++  size_t last_metrics_height = 0;
++  engine_modifier.embedder_api().SendWindowMetricsEvent = MOCK_ENGINE_PROC(
++      SendWindowMetricsEvent,
++      ([&](auto engine, const FlutterWindowMetricsEvent* event) {
++        ++metrics_sent;
++        last_metrics_width = event->width;
++        last_metrics_height = event->height;
++        return kSuccess;
++      }));
++
++  bool schedule_frame_called = false;
++  engine_modifier.embedder_api().ScheduleFrame =
++      MOCK_ENGINE_PROC(ScheduleFrame, ([&schedule_frame_called](auto engine) {
++                         schedule_frame_called = true;
++                         return kSuccess;
++                       }));
++
++  // The resize times out because no frame arrives. This posts a resize
++  // retry task to the platform task runner.
++  EXPECT_FALSE(view->OnWindowSizeChanged(500, 500));
++  int metrics_after_resize = metrics_sent;
++
++  // The retry task resends the target metrics and schedules a frame so the
++  // framework produces a frame at the resize target size.
++  engine->task_runner()->ProcessTasks();
++  EXPECT_GT(metrics_sent, metrics_after_resize);
++  EXPECT_EQ(last_metrics_width, 500);
++  EXPECT_EQ(last_metrics_height, 500);
++  EXPECT_TRUE(schedule_frame_called);
++
++  // The framework produces a frame at the target size, which completes
++  // the resize.
++  EXPECT_TRUE(view->OnFrameGenerated(500, 500));
++  view->OnFramePresented();
++
++  // The resize is done: subsequent frames are accepted without a resize.
++  EXPECT_TRUE(view->OnFrameGenerated(500, 500));
++}
++
++// A failed surface recreation leaves the view without a valid surface.
++// The next generated frame recreates it instead of wedging the view.
++TEST(FlutterWindowsViewTest, WindowResizeRecreatesInvalidSurface) {
++  auto windows_proc_table = std::make_shared<NiceMock<MockWindowsProcTable>>();
++  std::unique_ptr<FlutterWindowsEngine> engine =
++      GetTestEngine(windows_proc_table);
++
++  EngineModifier engine_modifier{engine.get()};
++  engine_modifier.embedder_api().PostRenderThreadTask = MOCK_ENGINE_PROC(
++      PostRenderThreadTask,
++      ([](auto engine, VoidCallback callback, void* user_data) {
++        callback(user_data);
++        return kSuccess;
++      }));
++
++  auto egl_manager = std::make_unique<egl::MockManager>();
++  auto surface = std::make_unique<egl::MockWindowSurface>();
++  auto resurrected_surface = std::make_unique<egl::MockWindowSurface>();
++  auto resurrected_surface_ptr = resurrected_surface.get();
++
++  EXPECT_CALL(*surface.get(), IsValid).WillRepeatedly(Return(false));
++
++  // Resurrection creates a new surface at the window's current bounds and
++  // sets the swap interval inline on the raster thread.
++  EXPECT_CALL(*egl_manager.get(), CreateWindowSurface)
++      .WillOnce(Return(std::move(resurrected_surface)));
++  EXPECT_CALL(*resurrected_surface_ptr, IsValid).WillRepeatedly(Return(true));
++  EXPECT_CALL(*resurrected_surface_ptr, MakeCurrent).WillOnce(Return(true));
++  EXPECT_CALL(*resurrected_surface_ptr, SetVSyncEnabled).WillOnce(Return(true));
++  EXPECT_CALL(*resurrected_surface_ptr, Destroy).WillOnce(Return(true));
++  EXPECT_CALL(*windows_proc_table.get(), DwmIsCompositionEnabled)
++      .WillRepeatedly(Return(FALSE));
++
++  auto window = std::make_unique<NiceMock<MockWindowBindingHandler>>();
++  EXPECT_CALL(*window.get(), GetPhysicalWindowBounds)
++      .WillRepeatedly(Return(PhysicalWindowBounds{500, 500}));
++
++  std::unique_ptr<FlutterWindowsView> view =
++      engine->CreateView(std::move(window),
++                         /*is_sized_to_content=*/false, BoxConstraints());
++
++  ViewModifier view_modifier{view.get()};
++  engine_modifier.SetEGLManager(std::move(egl_manager));
++  view_modifier.SetSurface(std::move(surface));
++
++  // The dead surface is resurrected and the frame is accepted.
++  EXPECT_TRUE(view->OnFrameGenerated(500, 500));
++}
++
++// When a resize is pending and the surface is missing, resurrection
++// creates the surface at the resize target - not the window's current
++// bounds - so the frame-size contract still holds.
++TEST(FlutterWindowsViewTest, WindowResizeResurrectsAtResizeTarget) {
++  auto windows_proc_table = std::make_shared<NiceMock<MockWindowsProcTable>>();
++  std::unique_ptr<FlutterWindowsEngine> engine =
++      GetTestEngine(windows_proc_table);
++
++  EngineModifier engine_modifier{engine.get()};
++  engine_modifier.embedder_api().PostRenderThreadTask = MOCK_ENGINE_PROC(
++      PostRenderThreadTask,
++      ([](auto engine, VoidCallback callback, void* user_data) {
++        callback(user_data);
++        return kSuccess;
++      }));
++
++  auto egl_manager = std::make_unique<egl::MockManager>();
++  auto surface = std::make_unique<egl::MockWindowSurface>();
++  auto resurrected_surface = std::make_unique<egl::MockWindowSurface>();
++  auto resurrected_surface_ptr = resurrected_surface.get();
++  auto resized_surface = std::make_unique<egl::MockWindowSurface>();
++  auto resized_surface_ptr = resized_surface.get();
++
++  EXPECT_CALL(*surface.get(), IsValid).WillRepeatedly(Return(false));
++
++  // The surface is resurrected at the pending resize target (500x500),
++  // not the window's current bounds (100x100). Mock surfaces report 0x0,
++  // so the matching frame then resizes once more to the same target.
++  EXPECT_CALL(*egl_manager.get(),
++              CreateWindowSurface(_, /*width=*/500, /*height=*/500))
++      .WillOnce(Return(std::move(resurrected_surface)))
++      .WillOnce(Return(std::move(resized_surface)));
++  EXPECT_CALL(*resurrected_surface_ptr, IsValid).WillRepeatedly(Return(true));
++  EXPECT_CALL(*resurrected_surface_ptr, MakeCurrent).WillOnce(Return(true));
++  EXPECT_CALL(*resurrected_surface_ptr, SetVSyncEnabled).WillOnce(Return(true));
++  EXPECT_CALL(*resurrected_surface_ptr, Destroy).WillOnce(Return(true));
++  EXPECT_CALL(*resized_surface_ptr, IsValid).WillRepeatedly(Return(true));
++  EXPECT_CALL(*resized_surface_ptr, MakeCurrent).WillOnce(Return(true));
++  EXPECT_CALL(*resized_surface_ptr, SetVSyncEnabled).WillOnce(Return(true));
++  EXPECT_CALL(*resized_surface_ptr, Destroy).WillOnce(Return(true));
++  EXPECT_CALL(*windows_proc_table.get(), DwmIsCompositionEnabled)
++      .WillRepeatedly(Return(FALSE));
++  EXPECT_CALL(*windows_proc_table.get(), DwmFlush).WillOnce(Return(S_OK));
++
++  auto window = std::make_unique<NiceMock<MockWindowBindingHandler>>();
++  EXPECT_CALL(*window.get(), GetPhysicalWindowBounds)
++      .WillRepeatedly(Return(PhysicalWindowBounds{100, 100}));
++
++  std::unique_ptr<FlutterWindowsView> view =
++      engine->CreateView(std::move(window),
++                         /*is_sized_to_content=*/false, BoxConstraints());
++
++  ViewModifier view_modifier{view.get()};
++  engine_modifier.SetEGLManager(std::move(egl_manager));
++  view_modifier.SetSurface(std::move(surface));
++
++  engine_modifier.embedder_api().SendWindowMetricsEvent = MOCK_ENGINE_PROC(
++      SendWindowMetricsEvent,
++      ([](auto engine, const FlutterWindowMetricsEvent* event) {
++        return kSuccess;
++      }));
++  engine_modifier.embedder_api().ScheduleFrame =
++      MOCK_ENGINE_PROC(ScheduleFrame, ([](auto engine) { return kSuccess; }));
++
++  // A resize to 500x500 starts while the surface is missing. The platform
++  // thread does not block: there is nothing to synchronize against.
++  EXPECT_TRUE(view->OnWindowSizeChanged(500, 500));
++
++  // A frame at the wrong size is still rejected: the resize target was
++  // not clobbered by the window's current bounds.
++  EXPECT_FALSE(view->OnFrameGenerated(100, 100));
++
++  // A frame at the target size resurrects the surface at 500x500 and
++  // completes the resize.
++  EXPECT_TRUE(view->OnFrameGenerated(500, 500));
++  view->OnFramePresented();
++}
++
++// If the framework never produces a frame at the resize target size, the
++// resize is force-completed after the retry budget is exhausted so the
++// view cannot wedge permanently.
++TEST(FlutterWindowsViewTest, WindowResizeForceComplete) {
++  auto windows_proc_table = std::make_shared<NiceMock<MockWindowsProcTable>>();
++  std::unique_ptr<FlutterWindowsEngine> engine =
++      GetTestEngine(windows_proc_table);
++
++  EngineModifier engine_modifier{engine.get()};
++  engine_modifier.embedder_api().PostRenderThreadTask = MOCK_ENGINE_PROC(
++      PostRenderThreadTask,
++      ([](auto engine, VoidCallback callback, void* user_data) {
++        callback(user_data);
++        return kSuccess;
++      }));
++
++  auto egl_manager = std::make_unique<egl::MockManager>();
++  auto surface = std::make_unique<egl::MockWindowSurface>();
++  auto resized_surface = std::make_unique<egl::MockWindowSurface>();
++  auto resized_surface_ptr = resized_surface.get();
++
++  EXPECT_CALL(*surface.get(), IsValid).WillRepeatedly(Return(true));
++  EXPECT_CALL(*surface.get(), Destroy).WillOnce(Return(true));
++  EXPECT_CALL(*egl_manager.get(),
++              CreateWindowSurface(_, /*width=*/500, /*height=*/500))
++      .WillOnce(Return(std::move(resized_surface)));
++  EXPECT_CALL(*resized_surface_ptr, IsValid).WillRepeatedly(Return(true));
++  EXPECT_CALL(*resized_surface_ptr, MakeCurrent).WillOnce(Return(true));
++  EXPECT_CALL(*resized_surface_ptr, SetVSyncEnabled).WillOnce(Return(true));
++  EXPECT_CALL(*resized_surface_ptr, Destroy).WillOnce(Return(true));
++
++  std::unique_ptr<FlutterWindowsView> view =
++      engine->CreateView(std::make_unique<NiceMock<MockWindowBindingHandler>>(),
++                         /*is_sized_to_content=*/false, BoxConstraints());
++
++  ViewModifier view_modifier{view.get()};
++  engine_modifier.SetEGLManager(std::move(egl_manager));
++  view_modifier.SetSurface(std::move(surface));
++
++  engine_modifier.embedder_api().SendWindowMetricsEvent = MOCK_ENGINE_PROC(
++      SendWindowMetricsEvent,
++      ([](auto engine, const FlutterWindowMetricsEvent* event) {
++        return kSuccess;
++      }));
++  engine_modifier.embedder_api().ScheduleFrame =
++      MOCK_ENGINE_PROC(ScheduleFrame, ([](auto engine) { return kSuccess; }));
++
++  // The resize times out because no frame arrives.
++  EXPECT_FALSE(view->OnWindowSizeChanged(500, 500));
++
++  // Frames at the wrong size are rejected while the resize is pending.
++  EXPECT_FALSE(view->OnFrameGenerated(100, 100));
++
++  // Each rejected frame re-drives the resize. After the retry budget is
++  // exhausted the resize is force-completed on the raster thread.
++  for (int i = 0; i < 70; ++i) {
++    view->OnFrameGenerated(100, 100);
++    engine->task_runner()->ProcessTasks();
++  }
++
++  // The surface was force-resized to the target and the resize is done:
++  // any frame is accepted now.
++  EXPECT_TRUE(view->OnFrameGenerated(100, 100));
++}
++
++// A stale pending resize is re-driven by ForceRedraw (WM_PAINT): the
++// target metrics are resent and a frame is scheduled. This is the heal
++// path for the FancyZones wedge where the framework never produces a
++// frame at the target size.
++TEST(FlutterWindowsViewTest, WindowResizeForceRedrawRedrives) {
++  auto windows_proc_table = std::make_shared<NiceMock<MockWindowsProcTable>>();
++  std::unique_ptr<FlutterWindowsEngine> engine =
++      GetTestEngine(windows_proc_table);
++
++  EngineModifier engine_modifier{engine.get()};
++  engine_modifier.embedder_api().PostRenderThreadTask = MOCK_ENGINE_PROC(
++      PostRenderThreadTask,
++      ([](auto engine, VoidCallback callback, void* user_data) {
++        callback(user_data);
++        return kSuccess;
++      }));
++
++  auto egl_manager = std::make_unique<egl::MockManager>();
++  auto surface = std::make_unique<egl::MockWindowSurface>();
++  auto resized_surface = std::make_unique<egl::MockWindowSurface>();
++  auto resized_surface_ptr = resized_surface.get();
++
++  EXPECT_CALL(*surface.get(), IsValid).WillRepeatedly(Return(true));
++  EXPECT_CALL(*surface.get(), Destroy).WillOnce(Return(true));
++  EXPECT_CALL(*egl_manager.get(),
++              CreateWindowSurface(_, /*width=*/500, /*height=*/500))
++      .WillOnce(Return(std::move(resized_surface)));
++  EXPECT_CALL(*resized_surface_ptr, IsValid).WillRepeatedly(Return(true));
++  EXPECT_CALL(*resized_surface_ptr, MakeCurrent).WillOnce(Return(true));
++  EXPECT_CALL(*resized_surface_ptr, SetVSyncEnabled).WillOnce(Return(true));
++  EXPECT_CALL(*resized_surface_ptr, Destroy).WillOnce(Return(true));
++  EXPECT_CALL(*windows_proc_table.get(), DwmFlush).WillOnce(Return(S_OK));
++
++  std::unique_ptr<FlutterWindowsView> view =
++      engine->CreateView(std::make_unique<NiceMock<MockWindowBindingHandler>>(),
++                         /*is_sized_to_content=*/false, BoxConstraints());
++
++  ViewModifier view_modifier{view.get()};
++  engine_modifier.SetEGLManager(std::move(egl_manager));
++  view_modifier.SetSurface(std::move(surface));
++
++  int metrics_sent = 0;
++  engine_modifier.embedder_api().SendWindowMetricsEvent = MOCK_ENGINE_PROC(
++      SendWindowMetricsEvent,
++      ([&metrics_sent](auto engine, const FlutterWindowMetricsEvent* event) {
++        ++metrics_sent;
++        return kSuccess;
++      }));
++  int schedule_frame_calls = 0;
++  engine_modifier.embedder_api().ScheduleFrame =
++      MOCK_ENGINE_PROC(ScheduleFrame, ([&schedule_frame_calls](auto engine) {
++                         ++schedule_frame_calls;
++                         return kSuccess;
++                       }));
++
++  // The resize times out because no frame arrives, leaving a stale
++  // pending resize.
++  EXPECT_FALSE(view->OnWindowSizeChanged(500, 500));
++  int metrics_after_resize = metrics_sent;
++  int frames_after_resize = schedule_frame_calls;
++
++  // WM_PAINT on the stale resize re-drives it.
++  view->ForceRedraw();
++  engine->task_runner()->ProcessTasks();
++  EXPECT_GT(metrics_sent, metrics_after_resize);
++  EXPECT_GT(schedule_frame_calls, frames_after_resize);
++
++  // The framework produces a frame at the target size, which completes
++  // the resize.
++  EXPECT_TRUE(view->OnFrameGenerated(500, 500));
++  view->OnFramePresented();
++}
++
++// When surface recreation keeps failing while a resize is pending, each
++// failed frame re-drives the resize so the retry budget eventually
++// force-completes it instead of wedging.
++TEST(FlutterWindowsViewTest, WindowResizeRetriesOnSurfaceFailure) {
++  auto windows_proc_table = std::make_shared<NiceMock<MockWindowsProcTable>>();
++  std::unique_ptr<FlutterWindowsEngine> engine =
++      GetTestEngine(windows_proc_table);
++
++  EngineModifier engine_modifier{engine.get()};
++  engine_modifier.embedder_api().PostRenderThreadTask = MOCK_ENGINE_PROC(
++      PostRenderThreadTask,
++      ([](auto engine, VoidCallback callback, void* user_data) {
++        callback(user_data);
++        return kSuccess;
++      }));
++
++  auto egl_manager = std::make_unique<egl::MockManager>();
++  auto surface = std::make_unique<egl::MockWindowSurface>();
++
++  EXPECT_CALL(*surface.get(), IsValid).WillRepeatedly(Return(false));
++
++  // Surface creation keeps failing.
++  EXPECT_CALL(*egl_manager.get(), CreateWindowSurface)
++      .WillRepeatedly([](HWND, size_t, size_t) {
++        return std::unique_ptr<flutter::egl::WindowSurface>();
++      });
++
++  std::unique_ptr<FlutterWindowsView> view =
++      engine->CreateView(std::make_unique<NiceMock<MockWindowBindingHandler>>(),
++                         /*is_sized_to_content=*/false, BoxConstraints());
++
++  ViewModifier view_modifier{view.get()};
++  engine_modifier.SetEGLManager(std::move(egl_manager));
++  view_modifier.SetSurface(std::move(surface));
++
++  int metrics_sent = 0;
++  engine_modifier.embedder_api().SendWindowMetricsEvent = MOCK_ENGINE_PROC(
++      SendWindowMetricsEvent,
++      ([&metrics_sent](auto engine, const FlutterWindowMetricsEvent* event) {
++        ++metrics_sent;
++        return kSuccess;
++      }));
++  int schedule_frame_calls = 0;
++  engine_modifier.embedder_api().ScheduleFrame =
++      MOCK_ENGINE_PROC(ScheduleFrame, ([&schedule_frame_calls](auto engine) {
++                         ++schedule_frame_calls;
++                         return kSuccess;
++                       }));
++
++  // The resize starts while the surface is missing.
++  EXPECT_TRUE(view->OnWindowSizeChanged(500, 500));
++
++  // A frame arrives but the surface cannot be recreated: the resize is
++  // re-driven rather than dropped.
++  EXPECT_FALSE(view->OnFrameGenerated(500, 500));
++  engine->task_runner()->ProcessTasks();
++  EXPECT_GT(metrics_sent, 1);
++  EXPECT_GT(schedule_frame_calls, 0);
++
++  // The retry budget eventually force-completes the resize: the frame
++  // path stops re-driving once the resize is done.
++  for (int i = 0; i < 70; ++i) {
++    view->OnFrameGenerated(500, 500);
++    engine->task_runner()->ProcessTasks();
++  }
++  int metrics_after_budget = metrics_sent;
++  view->OnFrameGenerated(500, 500);
++  engine->task_runner()->ProcessTasks();
++  EXPECT_EQ(metrics_sent, metrics_after_budget);
++}
++
+ // Window resize should succeed even if EGL initialized successfully
+ // but the EGL surface could not be created.
+ TEST(FlutterWindowsViewTest, WindowResizeWithoutSurface) {
+@@ -1648,6 +2076,12 @@ TEST(FlutterWindowsViewTest, DisablesVSyncAfterStartup) {
+   EXPECT_CALL(*surface_ptr, MakeCurrent).WillOnce(Return(true));
+   EXPECT_CALL(*surface_ptr, SetVSyncEnabled(false)).WillOnce(Return(true));
+   EXPECT_CALL(render_context, ClearCurrent).WillOnce(Return(true));
++  // The destructor drains the raster queue before destroying the surface.
++  EXPECT_CALL(*engine.get(), PostRasterThreadTask)
++      .WillOnce([](fml::closure callback) {
++        callback();
++        return true;
++      });
+   EXPECT_CALL(*engine.get(), PostRasterThreadTask)
+       .WillOnce([](fml::closure callback) {
+         callback();
+@@ -1695,13 +2129,18 @@ TEST(FlutterWindowsViewTest, EnablesVSyncAfterStartup) {
+   EXPECT_CALL(*surface_ptr, SetVSyncEnabled(true)).WillOnce(Return(true));
+   EXPECT_CALL(render_context, ClearCurrent).WillOnce(Return(true));
+ 
++  // The destructor drains the raster queue before destroying the surface.
++  EXPECT_CALL(*engine.get(), PostRasterThreadTask)
++      .WillOnce([](fml::closure callback) {
++        callback();
++        return true;
++      });
+   EXPECT_CALL(*engine.get(), PostRasterThreadTask)
+       .WillOnce([](fml::closure callback) {
+         callback();
+         return true;
+       });
+   EXPECT_CALL(*surface_ptr, Destroy).Times(1);
+-
+   EngineModifier modifier{engine.get()};
+   modifier.SetEGLManager(std::move(egl_manager));
+ 

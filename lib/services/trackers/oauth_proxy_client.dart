@@ -31,6 +31,9 @@ class OAuthProxyClient {
   /// POST /auth/start — register a new session. Returns a handle including the
   /// URL to display as a QR code for the phone scan.
   Future<OAuthProxyStart> start(String service) async {
+    if (baseUrl.isEmpty) {
+      throw const OAuthProxyException('OAuth proxy relay is not configured');
+    }
     final res = await sendAbortableHttpRequest(
       _http,
       'POST',

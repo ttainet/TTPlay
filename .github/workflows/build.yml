@@ -33,7 +33,7 @@ env:
   # Only place this workflow names the SDK; .github/actions/setup-flutter-git pins the same release.
   FLUTTER_VERSION: "3.47.1"
   # Shared by every release build command; SENTRY_DIST stays per-platform.
-  RELEASE_DART_DEFINES: --dart-define=ENABLE_UPDATE_CHECK=true ${{ github.repository == 'edde746/plezy' && '--dart-define=ENABLE_SENTRY=true' || '' }} --dart-define=GIT_COMMIT=${{ github.sha }} --dart-define=SENTRY_ENVIRONMENT=github --dart-define=ENABLE_DONATIONS=true
+  RELEASE_DART_DEFINES: --dart-define=ENABLE_UPDATE_CHECK=true --dart-define=GIT_COMMIT=${{ github.sha }}
   TRUSTED_BUILD_CACHE_VERSION: trusted-build-v1
   LINUX_APT_PACKAGES: >
     clang cmake meson ninja-build pkg-config nasm libgtk-3-dev libevdev-dev liblzma-dev
@@ -118,13 +118,6 @@ jobs:
       - name: Build APKs
         run: flutter build apk --release --split-per-abi ${{ env.RELEASE_DART_DEFINES }} --dart-define=SENTRY_DIST=github-android-apk --obfuscate --split-debug-info=debug-info/android-apk --extra-gen-snapshot-options=--save-obfuscation-map=debug-info/android-apk/obfuscation.map.json
 
-      - name: Upload symbols to bugs.plezy.app
-        if: github.repository == 'edde746/plezy'
-        env:
-          BUGS_ADMIN_TOKEN: ${{ secrets.BUGS_ADMIN_TOKEN }}
-          SENTRY_DIST: github-android-apk
-        run: ./scripts/upload-symbols.sh android-apk
-
       - name: Clean up keystore
         if: always()
         run: rm -f android/app/upload-keystore.jks android/key.properties
@@ -196,13 +189,6 @@ jobs:
       - name: Build iOS (no codesign)
         run: flutter build ios --release --no-codesign ${{ env.RELEASE_DART_DEFINES }} --dart-define=SENTRY_DIST=github-ios --split-debug-info=debug-info/ios
 
-      - name: Upload symbols to bugs.plezy.app
-        if: github.repository == 'edde746/plezy'
-        env:
-          BUGS_ADMIN_TOKEN: ${{ secrets.BUGS_ADMIN_TOKEN }}
-          SENTRY_DIST: github-ios
-        run: ./scripts/upload-symbols.sh ios
-
       - name: Create IPA
         run: |
           mkdir -p Payload
@@ -264,13 +250,6 @@ jobs:
       - name: Build macOS
         run: flutter build macos --release ${{ env.RELEASE_DART_DEFINES }} --dart-define=SENTRY_DIST=github-macos --dart-define=SUPPORTER_MODE=unlocked --split-debug-info=debug-info/macos
 
-      - name: Upload symbols to bugs.plezy.app
-        if: github.repository == 'edde746/plezy'
-        env:
-          BUGS_ADMIN_TOKEN: ${{ secrets.BUGS_ADMIN_TOKEN }}
-          SENTRY_DIST: github-macos
-        run: ./scripts/upload-symbols.sh macos
-
       - name: Import Code Signing Certificate
         env:
           MACOS_CERTIFICATE_BASE64: ${{ secrets.MACOS_CERTIFICATE_BASE64 }}
@@ -298,7 +277,7 @@ jobs:
           IDENTITY=$(security find-identity -v -p codesigning | grep "Developer ID Application" | head -1 | grep -o '".*"' | tr -d '"')
           echo "Signing with identity: $IDENTITY"
 
-          APP_PATH="build/macos/Build/Products/Release/Plezy.app"
+          APP_PATH="build/macos/Build/Products/Release/TTPlay.app"
 
           # Deep sign everything inside-out: executables, dylibs, XPC services, app bundles, frameworks
           find "$APP_PATH/Contents/Frameworks" \( -name "*.xpc" -o -name "*.app" -o -name "*.framework" -o -name "*.dylib" \) -print0 \
@@ -320,7 +299,7 @@ jobs:
 
       - name: Verify Signature
         run: |
-          APP_PATH="build/macos/Build/Products/Release/Plezy.app"
+          APP_PATH="build/macos/Build/Products/Release/TTPlay.app"
           echo "Verifying signature..."
           codesign -dvvv "$APP_PATH"
           echo "Verifying signed entitlements..."
@@ -336,7 +315,7 @@ jobs:
           APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: |
-          APP_PATH="build/macos/Build/Products/Release/Plezy.app"
+          APP_PATH="build/macos/Build/Products/Release/TTPlay.app"
 
           # Create a temporary ZIP for notarization submission
           echo "Creating ZIP for notarization..."
@@ -361,9 +340,9 @@ jobs:
       - name: Create DMG
         run: |
           mkdir -p dmg-staging
-          cp -R build/macos/Build/Products/Release/Plezy.app dmg-staging/
+          cp -R build/macos/Build/Products/Release/TTPlay.app dmg-staging/
           ln -s /Applications dmg-staging/Applications
-          hdiutil create -format ULMO -srcfolder dmg-staging -volname "Plezy" plezy-macos.dmg
+          hdiutil create -format ULMO -srcfolder dmg-staging -volname "TTPlay" plezy-macos.dmg
 
       - name: Sign DMG for Sparkle (EdDSA)
         if: env.SPARKLE_PRIVATE_KEY != ''
@@ -531,14 +510,6 @@ jobs:
           if ($bundleErrors.Count -gt 0) {
             throw "Windows bundle verification failed: $($bundleErrors -join '; ')"
           }
-
-      - name: Upload symbols to bugs.plezy.app
-        if: github.repository == 'edde746/plezy'
-        shell: pwsh
-        env:
-          BUGS_ADMIN_TOKEN: ${{ secrets.BUGS_ADMIN_TOKEN }}
-          SENTRY_DIST: github-windows-${{ matrix.arch }}
-        run: .\scripts\upload-symbols.ps1 windows-${{ matrix.arch }}
 
       - name: Upload ${{ matrix.arch }} build
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
@@ -760,14 +731,6 @@ jobs:
         run: flutter build linux --release ${{ env.RELEASE_DART_DEFINES }} --dart-define=SENTRY_DIST=github-linux-${{ matrix.arch }} --dart-define=SUPPORTER_MODE=unlocked --split-debug-info=debug-info/linux-${{ matrix.arch }}
         env:
           PKG_CONFIG_PATH: ${{ github.workspace }}/libmpv-prefix/lib/pkgconfig:${{ github.workspace }}/libmpv-prefix/lib/${{ matrix.pkg_config_arch }}/pkgconfig
-
-      - name: Upload symbols to bugs.plezy.app
-        if: github.repository == 'edde746/plezy'
-        shell: bash
-        env:
-          BUGS_ADMIN_TOKEN: ${{ secrets.BUGS_ADMIN_TOKEN }}
-          SENTRY_DIST: github-linux-${{ matrix.arch }}
-        run: ./scripts/upload-symbols.sh linux-${{ matrix.arch }}
 
       - name: Resolve bundle directory
         shell: bash
