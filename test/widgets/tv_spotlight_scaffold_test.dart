@@ -1,9 +1,9 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:plezy/media/media_backend.dart';
-import 'package:plezy/media/media_hub.dart';
-import 'package:plezy/media/media_item.dart';
-import 'package:plezy/media/media_kind.dart';
-import 'package:plezy/widgets/tv_spotlight_scaffold.dart';
+import 'package:ttplay/media/media_backend.dart';
+import 'package:ttplay/media/media_hub.dart';
+import 'package:ttplay/media/media_item.dart';
+import 'package:ttplay/media/media_kind.dart';
+import 'package:ttplay/widgets/tv_spotlight_scaffold.dart';
 import '../test_helpers/media_items.dart';
 
 MediaItem _item(String id) => testMediaItem(id: id, backend: MediaBackend.plex, kind: MediaKind.movie, title: id);

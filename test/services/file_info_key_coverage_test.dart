@@ -1,7 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:plezy/media/media_file_info.dart';
-import 'package:plezy/services/jellyfin_client.dart';
-import 'package:plezy/services/plex_playback_mapper.dart';
+import 'package:ttplay/media/media_file_info.dart';
+import 'package:ttplay/services/jellyfin_client.dart';
+import 'package:ttplay/services/plex_playback_mapper.dart';
 
 /// Guards the file-info sheet's promise that nothing the server reports is
 /// silently dropped.

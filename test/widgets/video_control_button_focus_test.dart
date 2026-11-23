@@ -3,8 +3,8 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:material_symbols_icons/symbols.dart';
 
-import 'package:plezy/focus/input_mode_tracker.dart';
-import 'package:plezy/widgets/video_controls/video_control_button.dart';
+import 'package:ttplay/focus/input_mode_tracker.dart';
+import 'package:ttplay/widgets/video_controls/video_control_button.dart';
 
 import '../test_helpers/theme.dart';
 

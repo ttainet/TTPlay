@@ -2,7 +2,7 @@
 // Synthetic chapter lists with the reference implementation's probabilities and picks for
 // assets/chapter_marker_model.bin: 9395 titled items from 321 shows; 339 trees, 20679 nodes, 164321 bytes.
 
-import 'package:plezy/media/chapter_marker_classifier.dart';
+import 'package:ttplay/media/chapter_marker_classifier.dart';
 
 typedef ChapterMarkerModelCase = ({
   List<ChapterSpan> spans,

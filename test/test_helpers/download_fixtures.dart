@@ -1,10 +1,10 @@
 import 'package:drift/drift.dart';
 import 'package:flutter/foundation.dart';
-import 'package:plezy/database/app_database.dart';
-import 'package:plezy/media/ids.dart';
-import 'package:plezy/media/media_server_client.dart';
-import 'package:plezy/providers/download_provider.dart';
-import 'package:plezy/utils/global_key_utils.dart';
+import 'package:ttplay/database/app_database.dart';
+import 'package:ttplay/media/ids.dart';
+import 'package:ttplay/media/media_server_client.dart';
+import 'package:ttplay/providers/download_provider.dart';
+import 'package:ttplay/utils/global_key_utils.dart';
 
 /// Seeds `downloaded_media` rows at an arbitrary [status] so tests can start
 /// from completed, downloading, or paused state.

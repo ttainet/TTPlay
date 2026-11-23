@@ -7,7 +7,7 @@ import 'package:background_downloader/background_downloader.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/foundation.dart' show listEquals, visibleForTesting;
 import 'package:path/path.dart' as path;
-import 'package:plezy/utils/media_server_http_client.dart';
+import 'package:ttplay/utils/media_server_http_client.dart';
 import '../exceptions/media_server_exceptions.dart';
 import '../database/app_database.dart';
 import '../database/download_operations.dart';

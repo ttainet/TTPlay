@@ -1,16 +1,16 @@
 import 'package:drift/drift.dart' show Value;
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:plezy/database/app_database.dart';
-import 'package:plezy/library/library_repository.dart';
-import 'package:plezy/library/library_scanner.dart';
-import 'package:plezy/library/library_scraper.dart';
-import 'package:plezy/library/scrapers/bangumi_provider.dart';
-import 'package:plezy/library/scrapers/nfo_reader.dart';
-import 'package:plezy/library/scrapers/scraped_metadata.dart';
-import 'package:plezy/storage/storage_driver.dart';
-import 'package:plezy/storage/storage_mount.dart';
-import 'package:plezy/storage/storage_path.dart';
+import 'package:ttplay/database/app_database.dart';
+import 'package:ttplay/library/library_repository.dart';
+import 'package:ttplay/library/library_scanner.dart';
+import 'package:ttplay/library/library_scraper.dart';
+import 'package:ttplay/library/scrapers/bangumi_provider.dart';
+import 'package:ttplay/library/scrapers/nfo_reader.dart';
+import 'package:ttplay/library/scrapers/scraped_metadata.dart';
+import 'package:ttplay/storage/storage_driver.dart';
+import 'package:ttplay/storage/storage_mount.dart';
+import 'package:ttplay/storage/storage_path.dart';
 
 class _TreeDriver implements StorageDriver {
   final Set<String> files = {};

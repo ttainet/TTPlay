@@ -1,6 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:plezy/models/trackers/anime_lists_mapping.dart';
-import 'package:plezy/services/trackers/anime_lists_index.dart';
+import 'package:ttplay/models/trackers/anime_lists_mapping.dart';
+import 'package:ttplay/services/trackers/anime_lists_index.dart';
 
 AnimeListEpisodeMapping _tvdbRange({required int start, required int end, int offset = 0}) => AnimeListEpisodeMapping(
   anidbSeason: 1,

@@ -1,12 +1,12 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:plezy/media/ids.dart';
-import 'package:plezy/media/media_backend.dart';
-import 'package:plezy/media/media_browser_dialect.dart';
-import 'package:plezy/media/media_kind.dart';
-import 'package:plezy/media/media_item.dart';
-import 'package:plezy/media/media_stream.dart';
-import 'package:plezy/services/jellyfin_mappers.dart';
-import 'package:plezy/services/settings_service.dart' show EpisodePosterMode;
+import 'package:ttplay/media/ids.dart';
+import 'package:ttplay/media/media_backend.dart';
+import 'package:ttplay/media/media_browser_dialect.dart';
+import 'package:ttplay/media/media_kind.dart';
+import 'package:ttplay/media/media_item.dart';
+import 'package:ttplay/media/media_stream.dart';
+import 'package:ttplay/services/jellyfin_mappers.dart';
+import 'package:ttplay/services/settings_service.dart' show EpisodePosterMode;
 
 const _serverId = 'jf-machine-1';
 

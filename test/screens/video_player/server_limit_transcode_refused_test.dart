@@ -1,6 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:plezy/i18n/strings.g.dart';
-import 'package:plezy/models/transcode_quality_preset.dart';
+import 'package:ttplay/i18n/strings.g.dart';
+import 'package:ttplay/models/transcode_quality_preset.dart';
 
 import '../../test_helpers/pump.dart';
 import '../../test_helpers/server_limit_harness.dart';

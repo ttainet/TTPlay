@@ -2,7 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:plezy/storage/drivers/quark_qr_login.dart';
+import 'package:ttplay/storage/drivers/quark_qr_login.dart';
 
 void main() {
   late HttpServer server;

@@ -1,7 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:plezy/connection/connection.dart';
-import 'package:plezy/media/media_backend.dart';
-import 'package:plezy/media/media_browser_dialect.dart';
+import 'package:ttplay/connection/connection.dart';
+import 'package:ttplay/media/media_backend.dart';
+import 'package:ttplay/media/media_browser_dialect.dart';
 
 /// Backend-agnostic [Connection] model tests pin config round-trips and derived
 /// kind/backend mappings; registry persistence is covered separately.

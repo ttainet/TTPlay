@@ -2,8 +2,8 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:plezy/storage/drivers/webdav_storage_driver.dart';
-import 'package:plezy/storage/storage_driver.dart';
+import 'package:ttplay/storage/drivers/webdav_storage_driver.dart';
+import 'package:ttplay/storage/storage_driver.dart';
 
 const _listing = '''<?xml version="1.0" encoding="utf-8"?>
 <D:multistatus xmlns:D="DAV:">

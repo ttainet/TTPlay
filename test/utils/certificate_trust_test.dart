@@ -4,8 +4,8 @@ import 'dart:io';
 
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:plezy/utils/certificate_trust.dart';
-import 'package:plezy/utils/happy_eyeballs.dart';
+import 'package:ttplay/utils/certificate_trust.dart';
+import 'package:ttplay/utils/happy_eyeballs.dart';
 
 // Self-signed CA, valid until 2126; mirrors android/.../UserCertificateChannelTest.kt.
 const _privateAuthorityPem = '''

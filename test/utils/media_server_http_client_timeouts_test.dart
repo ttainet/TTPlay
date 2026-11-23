@@ -5,8 +5,8 @@ import 'package:fake_async/fake_async.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
-import 'package:plezy/exceptions/media_server_exceptions.dart';
-import 'package:plezy/utils/media_server_http_client.dart';
+import 'package:ttplay/exceptions/media_server_exceptions.dart';
+import 'package:ttplay/utils/media_server_http_client.dart';
 
 /// `Client.send` resolves when the response headers arrive, so how long the
 /// client waits for them decides whether a slow-but-alive server's answer is

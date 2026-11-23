@@ -3,9 +3,9 @@ import 'dart:io';
 import 'package:drift/drift.dart' hide isNull, isNotNull;
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:plezy/database/app_database.dart';
-import 'package:plezy/library/library_repository.dart';
-import 'package:plezy/media/work_identity.dart';
+import 'package:ttplay/database/app_database.dart';
+import 'package:ttplay/library/library_repository.dart';
+import 'package:ttplay/media/work_identity.dart';
 
 void main() {
   late Directory directory;

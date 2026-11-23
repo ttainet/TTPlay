@@ -2,10 +2,10 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:plezy/storage/drivers/quark_storage_driver.dart';
-import 'package:plezy/storage/storage_driver.dart';
-import 'package:plezy/storage/stream_proxy.dart';
-import 'package:plezy/storage/stream_variant.dart';
+import 'package:ttplay/storage/drivers/quark_storage_driver.dart';
+import 'package:ttplay/storage/storage_driver.dart';
+import 'package:ttplay/storage/stream_proxy.dart';
+import 'package:ttplay/storage/stream_variant.dart';
 
 const _order = ['4k', '2k', 'super', 'high', 'normal', 'low'];
 

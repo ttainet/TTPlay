@@ -6,8 +6,8 @@ import 'package:fake_async/fake_async.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:logger/logger.dart';
-import 'package:plezy/services/connectivity_probe.dart';
-import 'package:plezy/utils/app_logger.dart';
+import 'package:ttplay/services/connectivity_probe.dart';
+import 'package:ttplay/utils/app_logger.dart';
 import 'package:plugin_platform_interface/plugin_platform_interface.dart';
 
 const _unknown = [ConnectivityResult.other];

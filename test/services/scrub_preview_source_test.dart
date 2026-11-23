@@ -1,9 +1,9 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:plezy/media/media_part.dart';
-import 'package:plezy/media/media_part_timeline.dart';
-import 'package:plezy/media/media_source_info.dart';
-import 'package:plezy/services/jellyfin_media_info_mapper.dart';
-import 'package:plezy/services/scrub_preview_source.dart';
+import 'package:ttplay/media/media_part.dart';
+import 'package:ttplay/media/media_part_timeline.dart';
+import 'package:ttplay/media/media_source_info.dart';
+import 'package:ttplay/services/jellyfin_media_info_mapper.dart';
+import 'package:ttplay/services/scrub_preview_source.dart';
 
 MediaSourceInfo _jellyfinSource(String id) => jellyfinMediaSourceToMediaSourceInfo(
   {'Id': id, 'MediaStreams': const []},

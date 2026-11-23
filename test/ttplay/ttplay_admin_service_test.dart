@@ -2,8 +2,8 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:plezy/ttplay/ttplay_admin_service.dart';
-import 'package:plezy/ttplay/ttplay_api_client.dart';
+import 'package:ttplay/ttplay/ttplay_admin_service.dart';
+import 'package:ttplay/ttplay/ttplay_api_client.dart';
 
 class _AdminRequest {
   _AdminRequest({required this.method, required this.path, required this.query, required this.body});

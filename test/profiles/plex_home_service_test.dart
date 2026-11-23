@@ -2,14 +2,14 @@ import 'dart:async';
 
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:plezy/connection/connection.dart';
-import 'package:plezy/connection/connection_registry.dart';
-import 'package:plezy/database/app_database.dart';
-import 'package:plezy/models/plex/plex_home_user.dart';
-import 'package:plezy/profiles/plex_home_cache_codec.dart';
-import 'package:plezy/profiles/plex_home_service.dart';
-import 'package:plezy/profiles/profile_connection_registry.dart';
-import 'package:plezy/services/storage_service.dart';
+import 'package:ttplay/connection/connection.dart';
+import 'package:ttplay/connection/connection_registry.dart';
+import 'package:ttplay/database/app_database.dart';
+import 'package:ttplay/models/plex/plex_home_user.dart';
+import 'package:ttplay/profiles/plex_home_cache_codec.dart';
+import 'package:ttplay/profiles/plex_home_service.dart';
+import 'package:ttplay/profiles/profile_connection_registry.dart';
+import 'package:ttplay/services/storage_service.dart';
 import 'package:shared_preferences_platform_interface/shared_preferences_async_platform_interface.dart';
 import 'package:shared_preferences_platform_interface/types.dart';
 

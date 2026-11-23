@@ -2,8 +2,8 @@ import 'dart:io';
 
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:plezy/models/external_player_models.dart';
-import 'package:plezy/services/external_player_service.dart';
+import 'package:ttplay/models/external_player_models.dart';
+import 'package:ttplay/services/external_player_service.dart';
 
 /// The POSIX one-liner `_posixCommandExists` hands to `sh`.
 const _commandProbe = r'command -v "$1" >/dev/null 2>&1';

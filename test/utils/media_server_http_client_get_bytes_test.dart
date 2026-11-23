@@ -3,8 +3,8 @@ import 'dart:async';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
-import 'package:plezy/exceptions/media_server_exceptions.dart';
-import 'package:plezy/utils/media_server_http_client.dart';
+import 'package:ttplay/exceptions/media_server_exceptions.dart';
+import 'package:ttplay/utils/media_server_http_client.dart';
 
 /// `getBytes` fills a buffer sized from Content-Length instead of growing one,
 /// so a header that disagrees with the body must not lose or corrupt bytes.

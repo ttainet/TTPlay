@@ -1,7 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:plezy/media/media_backend.dart';
-import 'package:plezy/media/media_item.dart';
-import 'package:plezy/media/primary_trailer.dart';
+import 'package:ttplay/media/media_backend.dart';
+import 'package:ttplay/media/media_item.dart';
+import 'package:ttplay/media/primary_trailer.dart';
 
 import '../test_helpers/media_items.dart';
 

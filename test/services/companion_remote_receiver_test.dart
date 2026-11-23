@@ -3,11 +3,11 @@ import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:plezy/focus/input_mode_tracker.dart';
-import 'package:plezy/models/companion_remote/remote_command.dart';
-import 'package:plezy/services/companion_remote/companion_remote_receiver.dart';
-import 'package:plezy/widgets/video_controls/player_chrome_controller.dart';
-import 'package:plezy/widgets/video_controls/video_controls.dart';
+import 'package:ttplay/focus/input_mode_tracker.dart';
+import 'package:ttplay/models/companion_remote/remote_command.dart';
+import 'package:ttplay/services/companion_remote/companion_remote_receiver.dart';
+import 'package:ttplay/widgets/video_controls/player_chrome_controller.dart';
+import 'package:ttplay/widgets/video_controls/video_controls.dart';
 
 void main() {
   testWidgets('Back command dispatches semantic gamepad B events', (tester) async {

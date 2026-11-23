@@ -3,12 +3,12 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:plezy/focus/dpad_navigator.dart';
-import 'package:plezy/i18n/strings.g.dart';
-import 'package:plezy/models/hotkey_model.dart';
-import 'package:plezy/screens/settings/hotkey_recorder_widget.dart';
-import 'package:plezy/widgets/dialog_action_button.dart';
-import 'package:plezy/widgets/hotkey_recorder.dart';
+import 'package:ttplay/focus/dpad_navigator.dart';
+import 'package:ttplay/i18n/strings.g.dart';
+import 'package:ttplay/models/hotkey_model.dart';
+import 'package:ttplay/screens/settings/hotkey_recorder_widget.dart';
+import 'package:ttplay/widgets/dialog_action_button.dart';
+import 'package:ttplay/widgets/hotkey_recorder.dart';
 
 void main() {
   tearDown(SelectKeyUpSuppressor.clearSuppression);

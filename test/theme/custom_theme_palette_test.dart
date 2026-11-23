@@ -2,11 +2,11 @@ import 'dart:convert';
 
 import 'package:flutter/painting.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:plezy/services/base_shared_preferences_service.dart';
-import 'package:plezy/services/settings_export_service.dart';
-import 'package:plezy/services/settings_service.dart';
-import 'package:plezy/theme/mono_theme.dart';
-import 'package:plezy/theme/palette_contrast.dart';
+import 'package:ttplay/services/base_shared_preferences_service.dart';
+import 'package:ttplay/services/settings_export_service.dart';
+import 'package:ttplay/services/settings_service.dart';
+import 'package:ttplay/theme/mono_theme.dart';
+import 'package:ttplay/theme/palette_contrast.dart';
 
 import '../test_helpers/prefs.dart';
 

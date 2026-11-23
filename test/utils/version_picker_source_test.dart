@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:plezy/media/media_version.dart';
-import 'package:plezy/utils/download_version_utils.dart';
+import 'package:ttplay/media/media_version.dart';
+import 'package:ttplay/utils/download_version_utils.dart';
 
 void main() {
   testWidgets('the version picker shows where each copy lives', (tester) async {

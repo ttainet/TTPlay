@@ -4,8 +4,8 @@ import 'package:clock/clock.dart';
 import 'package:drift/drift.dart' hide isNull, isNotNull;
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:plezy/database/app_database.dart';
-import 'package:plezy/library/library_repository.dart';
+import 'package:ttplay/database/app_database.dart';
+import 'package:ttplay/library/library_repository.dart';
 
 void main() {
   late AppDatabase db;

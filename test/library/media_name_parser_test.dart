@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:plezy/library/media_name_parser.dart';
+import 'package:ttplay/library/media_name_parser.dart';
 
 /// Expected fields for one file name. Only the keys given are checked, plus
 /// the numbering keys, which must be absent when not listed — a stray season

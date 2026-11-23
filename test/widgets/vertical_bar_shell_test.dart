@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:plezy/i18n/strings.g.dart';
-import 'package:plezy/navigation/navigation_tabs.dart';
-import 'package:plezy/utils/iphone_duo.dart';
-import 'package:plezy/utils/platform_detector.dart';
-import 'package:plezy/widgets/mobile_navigation_rail.dart';
-import 'package:plezy/widgets/vertical_bar_shell.dart';
+import 'package:ttplay/i18n/strings.g.dart';
+import 'package:ttplay/navigation/navigation_tabs.dart';
+import 'package:ttplay/utils/iphone_duo.dart';
+import 'package:ttplay/utils/platform_detector.dart';
+import 'package:ttplay/widgets/mobile_navigation_rail.dart';
+import 'package:ttplay/widgets/vertical_bar_shell.dart';
 
 // Geometry measured on the iPhone Duo simulator (iOS 27.1).
 const _closedSize = Size(466, 678);

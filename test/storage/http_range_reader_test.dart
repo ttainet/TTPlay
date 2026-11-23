@@ -2,8 +2,8 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:plezy/storage/http_range_reader.dart';
-import 'package:plezy/storage/storage_driver.dart';
+import 'package:ttplay/storage/http_range_reader.dart';
+import 'package:ttplay/storage/storage_driver.dart';
 
 /// A local origin serving [content] with Range support, and knobs for the
 /// misbehaviour cloud CDNs show.

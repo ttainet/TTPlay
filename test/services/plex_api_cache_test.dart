@@ -1,15 +1,15 @@
 import 'dart:convert';
-import 'package:plezy/media/ids.dart';
+import 'package:ttplay/media/ids.dart';
 
 import 'package:drift/drift.dart' show Value;
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:plezy/database/app_database.dart';
-import 'package:plezy/media/media_backend.dart';
-import 'package:plezy/services/api_cache.dart';
-import 'package:plezy/services/jellyfin_api_cache.dart';
-import 'package:plezy/services/plex_api_cache.dart';
-import 'package:plezy/utils/active_client_scope.dart';
+import 'package:ttplay/database/app_database.dart';
+import 'package:ttplay/media/media_backend.dart';
+import 'package:ttplay/services/api_cache.dart';
+import 'package:ttplay/services/jellyfin_api_cache.dart';
+import 'package:ttplay/services/plex_api_cache.dart';
+import 'package:ttplay/utils/active_client_scope.dart';
 import '../test_helpers/media_items.dart';
 
 void main() {

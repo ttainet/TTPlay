@@ -3,15 +3,15 @@ import 'dart:convert';
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
-import 'package:plezy/database/app_database.dart';
-import 'package:plezy/media/ids.dart';
-import 'package:plezy/media/media_backend.dart';
+import 'package:ttplay/database/app_database.dart';
+import 'package:ttplay/media/ids.dart';
+import 'package:ttplay/media/media_backend.dart';
 
-import 'package:plezy/media/media_kind.dart';
-import 'package:plezy/models/transcode_quality_preset.dart';
-import 'package:plezy/services/playback_initialization_types.dart';
-import 'package:plezy/services/plex_api_cache.dart';
-import 'package:plezy/services/plex_client.dart';
+import 'package:ttplay/media/media_kind.dart';
+import 'package:ttplay/models/transcode_quality_preset.dart';
+import 'package:ttplay/services/playback_initialization_types.dart';
+import 'package:ttplay/services/plex_api_cache.dart';
+import 'package:ttplay/services/plex_client.dart';
 
 import '../test_helpers/backend_client_fixtures.dart';
 import '../test_helpers/media_items.dart';

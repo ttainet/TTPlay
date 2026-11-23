@@ -3,10 +3,10 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:plezy/storage/drivers/quark_storage_driver.dart';
-import 'package:plezy/storage/http_range_reader.dart';
-import 'package:plezy/storage/storage_driver.dart';
-import 'package:plezy/storage/stream_proxy.dart';
+import 'package:ttplay/storage/drivers/quark_storage_driver.dart';
+import 'package:ttplay/storage/http_range_reader.dart';
+import 'package:ttplay/storage/storage_driver.dart';
+import 'package:ttplay/storage/stream_proxy.dart';
 
 /// A stand-in for the Quark API and its download host on one loopback server.
 class _FakeQuark {

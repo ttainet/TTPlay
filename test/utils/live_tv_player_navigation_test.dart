@@ -1,15 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:plezy/i18n/strings.g.dart';
-import 'package:plezy/models/livetv_channel.dart';
-import 'package:plezy/media/ids.dart';
-import 'package:plezy/media/media_backend.dart';
-import 'package:plezy/media/media_server_client.dart';
-import 'package:plezy/media/server_capabilities.dart';
-import 'package:plezy/providers/multi_server_provider.dart';
-import 'package:plezy/screens/video_player_screen.dart';
-import 'package:plezy/services/multi_server_manager.dart';
-import 'package:plezy/utils/live_tv_player_navigation.dart';
+import 'package:ttplay/i18n/strings.g.dart';
+import 'package:ttplay/models/livetv_channel.dart';
+import 'package:ttplay/media/ids.dart';
+import 'package:ttplay/media/media_backend.dart';
+import 'package:ttplay/media/media_server_client.dart';
+import 'package:ttplay/media/server_capabilities.dart';
+import 'package:ttplay/providers/multi_server_provider.dart';
+import 'package:ttplay/screens/video_player_screen.dart';
+import 'package:ttplay/services/multi_server_manager.dart';
+import 'package:ttplay/utils/live_tv_player_navigation.dart';
 
 import '../test_helpers/multi_server_fixtures.dart';
 

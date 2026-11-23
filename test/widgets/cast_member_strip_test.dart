@@ -1,12 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:plezy/services/settings_service.dart';
-import 'package:plezy/theme/mono_theme.dart';
-import 'package:plezy/utils/media_image_helper.dart';
-import 'package:plezy/utils/platform_detector.dart';
-import 'package:plezy/widgets/cast_member_strip.dart';
-import 'package:plezy/widgets/optimized_media_image.dart';
+import 'package:ttplay/services/settings_service.dart';
+import 'package:ttplay/theme/mono_theme.dart';
+import 'package:ttplay/utils/media_image_helper.dart';
+import 'package:ttplay/utils/platform_detector.dart';
+import 'package:ttplay/widgets/cast_member_strip.dart';
+import 'package:ttplay/widgets/optimized_media_image.dart';
 
 import '../test_helpers/prefs.dart';
 

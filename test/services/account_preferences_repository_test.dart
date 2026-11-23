@@ -1,12 +1,12 @@
 import 'dart:async';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:plezy/media/account_preferences.dart';
-import 'package:plezy/media/account_preferences_source.dart';
-import 'package:plezy/media/account_ref.dart';
-import 'package:plezy/media/media_backend.dart';
-import 'package:plezy/models/jellyfin/jellyfin_account_preferences.dart';
-import 'package:plezy/services/account_preferences_repository.dart';
+import 'package:ttplay/media/account_preferences.dart';
+import 'package:ttplay/media/account_preferences_source.dart';
+import 'package:ttplay/media/account_ref.dart';
+import 'package:ttplay/media/media_backend.dart';
+import 'package:ttplay/models/jellyfin/jellyfin_account_preferences.dart';
+import 'package:ttplay/services/account_preferences_repository.dart';
 
 void main() {
   const ref = AccountRef.plex(accountConnectionId: 'parent', homeUserUuid: 'home');

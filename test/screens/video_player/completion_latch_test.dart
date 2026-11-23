@@ -1,7 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:plezy/providers/playback_state_provider.dart';
-import 'package:plezy/screens/video_player/completion_latch.dart';
-import 'package:plezy/services/playback_initialization_types.dart';
+import 'package:ttplay/providers/playback_state_provider.dart';
+import 'package:ttplay/screens/video_player/completion_latch.dart';
+import 'package:ttplay/services/playback_initialization_types.dart';
 
 void main() {
   CompletionLatch latch() => CompletionLatch(rearmWindowMs: 2000);

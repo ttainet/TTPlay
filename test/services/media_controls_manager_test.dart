@@ -4,10 +4,10 @@ import 'package:drift/native.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:plezy/database/app_database.dart';
-import 'package:plezy/services/media_controls_manager.dart';
-import 'package:plezy/services/plex_api_cache.dart';
-import 'package:plezy/services/plex_client.dart';
+import 'package:ttplay/database/app_database.dart';
+import 'package:ttplay/services/media_controls_manager.dart';
+import 'package:ttplay/services/plex_api_cache.dart';
+import 'package:ttplay/services/plex_client.dart';
 
 import '../test_helpers/backend_client_fixtures.dart';
 import '../test_helpers/media_items.dart';

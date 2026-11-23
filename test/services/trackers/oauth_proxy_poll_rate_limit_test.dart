@@ -4,8 +4,8 @@ import 'package:fake_async/fake_async.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
-import 'package:plezy/services/trackers/oauth_proxy_client.dart';
-import 'package:plezy/services/trackers/tracker_constants.dart';
+import 'package:ttplay/services/trackers/oauth_proxy_client.dart';
+import 'package:ttplay/services/trackers/tracker_constants.dart';
 
 /// Contract: a 429 from /auth/result is rate limiting, not a terminal failure.
 /// The poller must keep the session alive by retrying — honoring Retry-After

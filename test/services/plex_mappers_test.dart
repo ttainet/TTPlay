@@ -2,17 +2,17 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:plezy/media/ids.dart';
-import 'package:plezy/media/media_backend.dart';
-import 'package:plezy/media/media_display_criteria.dart';
-import 'package:plezy/media/media_hub.dart';
-import 'package:plezy/media/media_item.dart';
-import 'package:plezy/media/media_kind.dart';
-import 'package:plezy/media/media_library.dart';
-import 'package:plezy/media/media_playlist.dart';
-import 'package:plezy/media/media_stream.dart';
-import 'package:plezy/services/plex_mappers.dart';
-import 'package:plezy/services/settings_service.dart';
+import 'package:ttplay/media/ids.dart';
+import 'package:ttplay/media/media_backend.dart';
+import 'package:ttplay/media/media_display_criteria.dart';
+import 'package:ttplay/media/media_hub.dart';
+import 'package:ttplay/media/media_item.dart';
+import 'package:ttplay/media/media_kind.dart';
+import 'package:ttplay/media/media_library.dart';
+import 'package:ttplay/media/media_playlist.dart';
+import 'package:ttplay/media/media_stream.dart';
+import 'package:ttplay/services/plex_mappers.dart';
+import 'package:ttplay/services/settings_service.dart';
 import 'package:sentry_flutter/sentry_flutter.dart';
 
 const _serverId = 'plex-machine-1';

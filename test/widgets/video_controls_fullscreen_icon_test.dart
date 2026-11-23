@@ -6,17 +6,17 @@ import 'package:intl/date_symbol_data_local.dart';
 import 'package:material_symbols_icons/symbols.dart';
 import 'package:provider/provider.dart';
 
-import 'package:plezy/database/app_database.dart';
-import 'package:plezy/i18n/strings.g.dart';
-import 'package:plezy/mpv/mpv.dart';
-import 'package:plezy/providers/playback_state_provider.dart';
-import 'package:plezy/services/fullscreen_state_manager.dart';
-import 'package:plezy/services/settings_service.dart';
-import 'package:plezy/services/video_volume_controller.dart';
-import 'package:plezy/utils/platform_detector.dart';
-import 'package:plezy/widgets/video_controls/player_chrome_controller.dart';
-import 'package:plezy/widgets/video_controls/video_controls.dart';
-import 'package:plezy/widgets/video_controls/widgets/player_toast_indicator.dart';
+import 'package:ttplay/database/app_database.dart';
+import 'package:ttplay/i18n/strings.g.dart';
+import 'package:ttplay/mpv/mpv.dart';
+import 'package:ttplay/providers/playback_state_provider.dart';
+import 'package:ttplay/services/fullscreen_state_manager.dart';
+import 'package:ttplay/services/settings_service.dart';
+import 'package:ttplay/services/video_volume_controller.dart';
+import 'package:ttplay/utils/platform_detector.dart';
+import 'package:ttplay/widgets/video_controls/player_chrome_controller.dart';
+import 'package:ttplay/widgets/video_controls/video_controls.dart';
+import 'package:ttplay/widgets/video_controls/widgets/player_toast_indicator.dart';
 
 import '../test_helpers/media_items.dart';
 import '../test_helpers/player_streams.dart';

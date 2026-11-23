@@ -3,14 +3,14 @@ import 'dart:math' as math;
 import 'package:cached_network_image_ce/cached_network_image.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:plezy/media/media_item.dart';
-import 'package:plezy/media/media_kind.dart';
-import 'package:plezy/media/media_server_client.dart';
-import 'package:plezy/services/device_performance.dart';
-import 'package:plezy/services/settings_service.dart';
-import 'package:plezy/utils/media_image_helper.dart';
-import 'package:plezy/utils/platform_detector.dart';
-import 'package:plezy/utils/tone_mapped_logo_image.dart';
+import 'package:ttplay/media/media_item.dart';
+import 'package:ttplay/media/media_kind.dart';
+import 'package:ttplay/media/media_server_client.dart';
+import 'package:ttplay/services/device_performance.dart';
+import 'package:ttplay/services/settings_service.dart';
+import 'package:ttplay/utils/media_image_helper.dart';
+import 'package:ttplay/utils/platform_detector.dart';
+import 'package:ttplay/utils/tone_mapped_logo_image.dart';
 
 import '../test_helpers/media_items.dart';
 

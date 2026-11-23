@@ -1,13 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:plezy/i18n/strings.g.dart';
-import 'package:plezy/models/audio_channel_limit.dart';
-import 'package:plezy/models/audio_quality_preset.dart';
-import 'package:plezy/screens/settings/playback_settings_screen.dart';
-import 'package:plezy/services/settings_service.dart';
-import 'package:plezy/theme/mono_theme.dart';
-import 'package:plezy/models/player_setting_scope.dart';
-import 'package:plezy/utils/platform_detector.dart';
+import 'package:ttplay/i18n/strings.g.dart';
+import 'package:ttplay/models/audio_channel_limit.dart';
+import 'package:ttplay/models/audio_quality_preset.dart';
+import 'package:ttplay/screens/settings/playback_settings_screen.dart';
+import 'package:ttplay/services/settings_service.dart';
+import 'package:ttplay/theme/mono_theme.dart';
+import 'package:ttplay/models/player_setting_scope.dart';
+import 'package:ttplay/utils/platform_detector.dart';
 
 import '../../test_helpers/prefs.dart';
 

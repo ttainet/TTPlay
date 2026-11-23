@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:plezy/i18n/strings.g.dart';
-import 'package:plezy/main.dart' as app;
-import 'package:plezy/services/settings_service.dart';
-import 'package:plezy/utils/platform_detector.dart';
-import 'package:plezy/utils/snackbar_helper.dart';
-import 'package:plezy/widgets/focusable_list_tile.dart';
+import 'package:ttplay/i18n/strings.g.dart';
+import 'package:ttplay/main.dart' as app;
+import 'package:ttplay/services/settings_service.dart';
+import 'package:ttplay/utils/platform_detector.dart';
+import 'package:ttplay/utils/snackbar_helper.dart';
+import 'package:ttplay/widgets/focusable_list_tile.dart';
 
 import '../test_helpers/prefs.dart';
 import '../test_helpers/theme.dart';

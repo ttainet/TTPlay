@@ -1,7 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:plezy/media/downloads_filter.dart';
-import 'package:plezy/media/library_query.dart';
-import 'package:plezy/media/media_kind.dart';
+import 'package:ttplay/media/downloads_filter.dart';
+import 'package:ttplay/media/library_query.dart';
+import 'package:ttplay/media/media_kind.dart';
 import '../test_helpers/media_items.dart';
 
 /// The downloads screen's local filter predicate (#927). The contract under

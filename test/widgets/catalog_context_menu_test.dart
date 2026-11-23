@@ -3,13 +3,13 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:plezy/i18n/strings.g.dart';
-import 'package:plezy/media/media_kind.dart';
-import 'package:plezy/models/catalog/catalog_item.dart';
-import 'package:plezy/models/catalog/catalog_metadata.dart';
-import 'package:plezy/theme/mono_theme.dart';
-import 'package:plezy/utils/external_url.dart';
-import 'package:plezy/widgets/catalog_context_menu.dart';
+import 'package:ttplay/i18n/strings.g.dart';
+import 'package:ttplay/media/media_kind.dart';
+import 'package:ttplay/models/catalog/catalog_item.dart';
+import 'package:ttplay/models/catalog/catalog_metadata.dart';
+import 'package:ttplay/theme/mono_theme.dart';
+import 'package:ttplay/utils/external_url.dart';
+import 'package:ttplay/widgets/catalog_context_menu.dart';
 
 const _item = CatalogItem(
   source: CatalogSourceId.trakt,

@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:plezy/widgets/hero_carousel_backdrop.dart';
+import 'package:ttplay/widgets/hero_carousel_backdrop.dart';
 
 const _phone = Size(390, 560);
 const _desktop = Size(1600, 600);

@@ -2,12 +2,12 @@ import 'dart:async';
 
 import 'package:clock/clock.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:plezy/media/media_kind.dart';
-import 'package:plezy/media/media_rating.dart';
-import 'package:plezy/models/catalog/catalog_item.dart';
-import 'package:plezy/services/catalog/catalog_source.dart';
-import 'package:plezy/services/catalog/community_ratings.dart';
-import 'package:plezy/utils/external_ids.dart';
+import 'package:ttplay/media/media_kind.dart';
+import 'package:ttplay/media/media_rating.dart';
+import 'package:ttplay/models/catalog/catalog_item.dart';
+import 'package:ttplay/services/catalog/catalog_source.dart';
+import 'package:ttplay/services/catalog/community_ratings.dart';
+import 'package:ttplay/utils/external_ids.dart';
 
 MediaRatingSource _r(String source, double value, {int? votes}) =>
     MediaRatingSource(source: source, value: value, votes: votes);

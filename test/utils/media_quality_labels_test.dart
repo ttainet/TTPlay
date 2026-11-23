@@ -1,14 +1,14 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:plezy/media/ids.dart';
-import 'package:plezy/media/media_backend.dart';
-import 'package:plezy/media/media_item.dart';
-import 'package:plezy/media/media_kind.dart';
-import 'package:plezy/media/media_part.dart';
-import 'package:plezy/media/media_stream.dart';
-import 'package:plezy/media/media_version.dart';
-import 'package:plezy/services/jellyfin_mappers.dart';
-import 'package:plezy/services/plex_mappers.dart';
-import 'package:plezy/utils/media_quality_labels.dart';
+import 'package:ttplay/media/ids.dart';
+import 'package:ttplay/media/media_backend.dart';
+import 'package:ttplay/media/media_item.dart';
+import 'package:ttplay/media/media_kind.dart';
+import 'package:ttplay/media/media_part.dart';
+import 'package:ttplay/media/media_stream.dart';
+import 'package:ttplay/media/media_version.dart';
+import 'package:ttplay/services/jellyfin_mappers.dart';
+import 'package:ttplay/services/plex_mappers.dart';
+import 'package:ttplay/utils/media_quality_labels.dart';
 import '../test_helpers/media_items.dart';
 
 void main() {

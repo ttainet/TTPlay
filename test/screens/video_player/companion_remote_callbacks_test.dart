@@ -2,12 +2,12 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:plezy/models/companion_remote/remote_command.dart';
-import 'package:plezy/mpv/mpv.dart';
-import 'package:plezy/providers/playback_state_provider.dart';
-import 'package:plezy/screens/video_player_screen.dart';
-import 'package:plezy/services/companion_remote/companion_remote_receiver.dart';
-import 'package:plezy/services/settings_service.dart';
+import 'package:ttplay/models/companion_remote/remote_command.dart';
+import 'package:ttplay/mpv/mpv.dart';
+import 'package:ttplay/providers/playback_state_provider.dart';
+import 'package:ttplay/screens/video_player_screen.dart';
+import 'package:ttplay/services/companion_remote/companion_remote_receiver.dart';
+import 'package:ttplay/services/settings_service.dart';
 import 'package:provider/provider.dart';
 
 import '../../test_helpers/media_items.dart';

@@ -1,8 +1,8 @@
 import 'dart:async';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:plezy/services/jellyfin_client.dart';
-import 'package:plezy/services/live_session_tracker.dart';
+import 'package:ttplay/services/jellyfin_client.dart';
+import 'package:ttplay/services/live_session_tracker.dart';
 
 import '../test_helpers/playback_report_fakes.dart';
 

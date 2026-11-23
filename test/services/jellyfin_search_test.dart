@@ -5,11 +5,11 @@ import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
-import 'package:plezy/database/app_database.dart';
-import 'package:plezy/exceptions/media_server_exceptions.dart';
-import 'package:plezy/services/jellyfin_api_cache.dart';
-import 'package:plezy/services/jellyfin_client.dart';
-import 'package:plezy/utils/media_server_http_client.dart';
+import 'package:ttplay/database/app_database.dart';
+import 'package:ttplay/exceptions/media_server_exceptions.dart';
+import 'package:ttplay/services/jellyfin_api_cache.dart';
+import 'package:ttplay/services/jellyfin_client.dart';
+import 'package:ttplay/utils/media_server_http_client.dart';
 
 import '../test_helpers/backend_client_fixtures.dart';
 import '../test_helpers/http_fixtures.dart';

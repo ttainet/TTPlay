@@ -4,11 +4,11 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:in_app_purchase_android/billing_client_wrappers.dart';
 import 'package:in_app_purchase_platform_interface/in_app_purchase_platform_interface.dart';
-import 'package:plezy/services/base_shared_preferences_service.dart';
-import 'package:plezy/services/settings_service.dart';
-import 'package:plezy/services/supporter/supporter_mode.dart';
-import 'package:plezy/services/supporter/supporter_service.dart';
-import 'package:plezy/services/supporter/supporter_store.dart';
+import 'package:ttplay/services/base_shared_preferences_service.dart';
+import 'package:ttplay/services/settings_service.dart';
+import 'package:ttplay/services/supporter/supporter_mode.dart';
+import 'package:ttplay/services/supporter/supporter_service.dart';
+import 'package:ttplay/services/supporter/supporter_store.dart';
 
 import '../../test_helpers/prefs.dart';
 import '../../test_helpers/supporter_store_fakes.dart';

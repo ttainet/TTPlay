@@ -1,6 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:plezy/models/trackers/fribb_mapping_row.dart';
-import 'package:plezy/services/trackers/fribb_index.dart';
+import 'package:ttplay/models/trackers/fribb_mapping_row.dart';
+import 'package:ttplay/services/trackers/fribb_index.dart';
 
 void main() {
   group('FribbIndex.fromRows', () {

@@ -3,15 +3,15 @@ import 'dart:async';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
-import 'package:plezy/media/media_kind.dart';
-import 'package:plezy/models/catalog/catalog_item.dart';
-import 'package:plezy/models/catalog/catalog_metadata.dart';
-import 'package:plezy/models/seerr/seerr_session.dart';
-import 'package:plezy/services/catalog/catalog_source.dart';
-import 'package:plezy/services/catalog/seerr_catalog_source.dart';
-import 'package:plezy/services/seerr/seerr_client.dart';
-import 'package:plezy/services/seerr/seerr_constants.dart';
-import 'package:plezy/utils/external_ids.dart';
+import 'package:ttplay/media/media_kind.dart';
+import 'package:ttplay/models/catalog/catalog_item.dart';
+import 'package:ttplay/models/catalog/catalog_metadata.dart';
+import 'package:ttplay/models/seerr/seerr_session.dart';
+import 'package:ttplay/services/catalog/catalog_source.dart';
+import 'package:ttplay/services/catalog/seerr_catalog_source.dart';
+import 'package:ttplay/services/seerr/seerr_client.dart';
+import 'package:ttplay/services/seerr/seerr_constants.dart';
+import 'package:ttplay/utils/external_ids.dart';
 
 import '../../test_helpers/http_fixtures.dart';
 

@@ -1,8 +1,8 @@
 import 'dart:async';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:plezy/mpv/mpv.dart';
-import 'package:plezy/services/playback_coordinator.dart';
+import 'package:ttplay/mpv/mpv.dart';
+import 'package:ttplay/services/playback_coordinator.dart';
 
 void main() {
   test('stale video release preserves the active owner and waits for its stop', () async {

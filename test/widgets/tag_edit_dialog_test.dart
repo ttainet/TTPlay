@@ -5,14 +5,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:plezy/focus/input_mode_tracker.dart';
-import 'package:plezy/i18n/strings.g.dart';
-import 'package:plezy/theme/mono_theme.dart';
-import 'package:plezy/utils/dialogs.dart';
-import 'package:plezy/widgets/dialog_action_button.dart';
-import 'package:plezy/widgets/focusable_filter_chip.dart';
-import 'package:plezy/widgets/focusable_list_tile.dart';
-import 'package:plezy/widgets/tag_edit_dialog.dart';
+import 'package:ttplay/focus/input_mode_tracker.dart';
+import 'package:ttplay/i18n/strings.g.dart';
+import 'package:ttplay/theme/mono_theme.dart';
+import 'package:ttplay/utils/dialogs.dart';
+import 'package:ttplay/widgets/dialog_action_button.dart';
+import 'package:ttplay/widgets/focusable_filter_chip.dart';
+import 'package:ttplay/widgets/focusable_list_tile.dart';
+import 'package:ttplay/widgets/tag_edit_dialog.dart';
 
 import '../test_helpers/prefs.dart';
 

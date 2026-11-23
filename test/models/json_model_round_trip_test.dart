@@ -1,7 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:plezy/models/companion_remote/remote_command.dart';
-import 'package:plezy/models/mpv_config_models.dart';
-import 'package:plezy/models/trakt/trakt_ids.dart';
+import 'package:ttplay/models/companion_remote/remote_command.dart';
+import 'package:ttplay/models/mpv_config_models.dart';
+import 'package:ttplay/models/trakt/trakt_ids.dart';
 
 void main() {
   group('JSON model round trips', () {

@@ -4,10 +4,10 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:plezy/i18n/strings.g.dart';
-import 'package:plezy/screens/settings/settings_utils.dart';
-import 'package:plezy/utils/platform_detector.dart';
-import 'package:plezy/widgets/dialog_action_button.dart';
+import 'package:ttplay/i18n/strings.g.dart';
+import 'package:ttplay/screens/settings/settings_utils.dart';
+import 'package:ttplay/utils/platform_detector.dart';
+import 'package:ttplay/widgets/dialog_action_button.dart';
 
 void main() {
   tearDown(() {

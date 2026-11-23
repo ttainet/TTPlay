@@ -1,11 +1,11 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:plezy/media/ids.dart';
-import 'package:plezy/media/media_backend.dart';
-import 'package:plezy/media/media_item.dart';
-import 'package:plezy/media/media_kind.dart';
-import 'package:plezy/media/media_person.dart';
-import 'package:plezy/media/search_hit.dart';
-import 'package:plezy/utils/search_relevance.dart';
+import 'package:ttplay/media/ids.dart';
+import 'package:ttplay/media/media_backend.dart';
+import 'package:ttplay/media/media_item.dart';
+import 'package:ttplay/media/media_kind.dart';
+import 'package:ttplay/media/media_person.dart';
+import 'package:ttplay/media/search_hit.dart';
+import 'package:ttplay/utils/search_relevance.dart';
 
 import '../test_helpers/media_items.dart';
 

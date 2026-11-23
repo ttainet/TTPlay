@@ -1,11 +1,11 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:plezy/media/ids.dart';
-import 'package:plezy/media/media_kind.dart';
-import 'package:plezy/models/livetv_channel.dart';
-import 'package:plezy/profiles/profile.dart';
-import 'package:plezy/screens/video_player/live_tv_session_args.dart';
-import 'package:plezy/services/deep_links/deep_link.dart';
-import 'package:plezy/utils/external_ids.dart';
+import 'package:ttplay/media/ids.dart';
+import 'package:ttplay/media/media_kind.dart';
+import 'package:ttplay/models/livetv_channel.dart';
+import 'package:ttplay/profiles/profile.dart';
+import 'package:ttplay/screens/video_player/live_tv_session_args.dart';
+import 'package:ttplay/services/deep_links/deep_link.dart';
+import 'package:ttplay/utils/external_ids.dart';
 
 LiveTvChannel _channel(String key, {String? identifier, String? number, String? callSign}) =>
     LiveTvChannel(key: key, identifier: identifier, number: number, callSign: callSign, hd: false);

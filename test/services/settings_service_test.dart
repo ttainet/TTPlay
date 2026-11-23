@@ -1,15 +1,15 @@
 import 'dart:async';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:plezy/i18n/strings.g.dart';
-import 'package:plezy/models/audio_channel_limit.dart';
-import 'package:plezy/models/audio_quality_preset.dart';
-import 'package:plezy/models/transcode_quality_preset.dart';
-import 'package:plezy/services/base_shared_preferences_service.dart';
-import 'package:plezy/services/settings_service.dart';
-import 'package:plezy/services/trackers/tracker_constants.dart';
-import 'package:plezy/storage/http_range_reader.dart';
-import 'package:plezy/utils/platform_detector.dart';
+import 'package:ttplay/i18n/strings.g.dart';
+import 'package:ttplay/models/audio_channel_limit.dart';
+import 'package:ttplay/models/audio_quality_preset.dart';
+import 'package:ttplay/models/transcode_quality_preset.dart';
+import 'package:ttplay/services/base_shared_preferences_service.dart';
+import 'package:ttplay/services/settings_service.dart';
+import 'package:ttplay/services/trackers/tracker_constants.dart';
+import 'package:ttplay/storage/http_range_reader.dart';
+import 'package:ttplay/utils/platform_detector.dart';
 
 import '../test_helpers/prefs.dart';
 

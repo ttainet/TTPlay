@@ -1,6 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
-import 'package:plezy/services/jellyfin_client.dart';
+import 'package:ttplay/services/jellyfin_client.dart';
 
 import '../test_helpers/backend_client_fixtures.dart';
 import '../test_helpers/http_fixtures.dart';

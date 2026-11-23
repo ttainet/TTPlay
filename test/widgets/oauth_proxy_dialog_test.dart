@@ -2,9 +2,9 @@ import 'dart:ui' show SemanticsAction, Tristate;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:plezy/i18n/strings.g.dart';
-import 'package:plezy/services/trackers/oauth_proxy_client.dart';
-import 'package:plezy/widgets/oauth_proxy_dialog.dart';
+import 'package:ttplay/i18n/strings.g.dart';
+import 'package:ttplay/services/trackers/oauth_proxy_client.dart';
+import 'package:ttplay/widgets/oauth_proxy_dialog.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 
 void main() {

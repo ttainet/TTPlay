@@ -1,28 +1,28 @@
 import 'dart:convert';
-import 'package:plezy/media/ids.dart';
+import 'package:ttplay/media/ids.dart';
 import 'dart:io';
 
 import 'package:drift/drift.dart';
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:path_provider_platform_interface/path_provider_platform_interface.dart';
-import 'package:plezy/database/app_database.dart';
-import 'package:plezy/database/download_operations.dart';
-import 'package:plezy/media/chapter_marker_classifier.dart';
-import 'package:plezy/media/media_backend.dart';
+import 'package:ttplay/database/app_database.dart';
+import 'package:ttplay/database/download_operations.dart';
+import 'package:ttplay/media/chapter_marker_classifier.dart';
+import 'package:ttplay/media/media_backend.dart';
 
-import 'package:plezy/media/media_kind.dart';
-import 'package:plezy/media/media_server_client.dart';
-import 'package:plezy/models/download_models.dart';
-import 'package:plezy/services/cached_playback_metadata_service.dart';
-import 'package:plezy/services/download_storage_service.dart';
-import 'package:plezy/services/jellyfin_api_cache.dart';
-import 'package:plezy/services/jellyfin_media_info_mapper.dart';
-import 'package:plezy/services/playback_initialization_service.dart';
-import 'package:plezy/services/plex_api_cache.dart';
-import 'package:plezy/services/plex_mappers.dart';
-import 'package:plezy/services/saf_storage_service.dart';
-import 'package:plezy/services/settings_service.dart';
+import 'package:ttplay/media/media_kind.dart';
+import 'package:ttplay/media/media_server_client.dart';
+import 'package:ttplay/models/download_models.dart';
+import 'package:ttplay/services/cached_playback_metadata_service.dart';
+import 'package:ttplay/services/download_storage_service.dart';
+import 'package:ttplay/services/jellyfin_api_cache.dart';
+import 'package:ttplay/services/jellyfin_media_info_mapper.dart';
+import 'package:ttplay/services/playback_initialization_service.dart';
+import 'package:ttplay/services/plex_api_cache.dart';
+import 'package:ttplay/services/plex_mappers.dart';
+import 'package:ttplay/services/saf_storage_service.dart';
+import 'package:ttplay/services/settings_service.dart';
 
 import '../test_helpers/io_fakes.dart';
 import '../test_helpers/prefs.dart';

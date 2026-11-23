@@ -1,11 +1,11 @@
 import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:plezy/media/media_kind.dart';
-import 'package:plezy/media/media_rating.dart';
-import 'package:plezy/models/catalog/catalog_item.dart';
-import 'package:plezy/models/catalog/catalog_metadata.dart';
-import 'package:plezy/utils/external_ids.dart';
+import 'package:ttplay/media/media_kind.dart';
+import 'package:ttplay/media/media_rating.dart';
+import 'package:ttplay/models/catalog/catalog_item.dart';
+import 'package:ttplay/models/catalog/catalog_metadata.dart';
+import 'package:ttplay/utils/external_ids.dart';
 
 void main() {
   group('CatalogItemIds', () {

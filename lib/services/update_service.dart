@@ -3,9 +3,9 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:auto_updater/auto_updater.dart';
 import 'package:package_info_plus/package_info_plus.dart';
-import 'package:plezy/utils/app_logger.dart';
-import 'package:plezy/utils/media_server_http_client.dart';
-import 'package:plezy/utils/platform_detector.dart';
+import 'package:ttplay/utils/app_logger.dart';
+import 'package:ttplay/utils/media_server_http_client.dart';
+import 'package:ttplay/utils/platform_detector.dart';
 import 'base_shared_preferences_service.dart';
 
 /// Service to check for new versions on GitHub

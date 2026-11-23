@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:plezy/screens/video_player/first_frame_gate.dart';
+import 'package:ttplay/screens/video_player/first_frame_gate.dart';
 
 void main() {
   group('FirstFrameGate', () {

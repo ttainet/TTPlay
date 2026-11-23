@@ -2,8 +2,8 @@ import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:plezy/models/trackers/anime_lists_mapping.dart';
-import 'package:plezy/services/trackers/anime_mappings_decoder.dart';
+import 'package:ttplay/models/trackers/anime_lists_mapping.dart';
+import 'package:ttplay/services/trackers/anime_mappings_decoder.dart';
 
 /// `anime-mappings.bin.gz` written by edde746/anime-mappings' own `build.py`
 /// (`write_tables` + `gzip_bytes`, and `check` read it back equal) from:

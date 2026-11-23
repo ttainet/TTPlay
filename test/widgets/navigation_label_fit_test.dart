@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:plezy/navigation/navigation_tabs.dart';
-import 'package:plezy/utils/text_measure_cache.dart';
-import 'package:plezy/widgets/app_icon.dart';
-import 'package:plezy/widgets/navigation_label_fit.dart';
+import 'package:ttplay/navigation/navigation_tabs.dart';
+import 'package:ttplay/utils/text_measure_cache.dart';
+import 'package:ttplay/widgets/app_icon.dart';
+import 'package:ttplay/widgets/navigation_label_fit.dart';
 
 void main() {
   const style = TextStyle(fontSize: 11);

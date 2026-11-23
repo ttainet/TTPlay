@@ -1,11 +1,11 @@
 import 'package:fake_async/fake_async.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:plezy/media/live_tv_support.dart';
-import 'package:plezy/media/media_source_info.dart';
-import 'package:plezy/models/livetv_capture_buffer.dart';
-import 'package:plezy/mpv/player/player_streams.dart';
-import 'package:plezy/screens/video_player/live_tv_session_state.dart';
-import 'package:plezy/services/live_seek_accumulator.dart';
+import 'package:ttplay/media/live_tv_support.dart';
+import 'package:ttplay/media/media_source_info.dart';
+import 'package:ttplay/models/livetv_capture_buffer.dart';
+import 'package:ttplay/mpv/player/player_streams.dart';
+import 'package:ttplay/screens/video_player/live_tv_session_state.dart';
+import 'package:ttplay/services/live_seek_accumulator.dart';
 
 MediaSubtitleTrack _track({required int id, int? index, String? languageCode}) =>
     MediaSubtitleTrack(id: id, index: index, languageCode: languageCode, selected: false, forced: false);

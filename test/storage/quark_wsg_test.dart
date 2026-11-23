@@ -1,7 +1,7 @@
 import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:plezy/storage/drivers/quark_wsg.dart';
+import 'package:ttplay/storage/drivers/quark_wsg.dart';
 
 void main() {
   final wsg = QuarkWsg();

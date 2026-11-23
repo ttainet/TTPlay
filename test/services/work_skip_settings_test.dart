@@ -2,15 +2,15 @@ import 'dart:io';
 import 'package:drift/drift.dart' hide isNull, isNotNull;
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:plezy/database/app_database.dart';
-import 'package:plezy/library/library_repository.dart';
-import 'package:plezy/media/media_backend.dart';
-import 'package:plezy/media/media_item.dart';
-import 'package:plezy/media/media_kind.dart';
-import 'package:plezy/media/media_server_client.dart';
-import 'package:plezy/media/work_skip_settings.dart';
-import 'package:plezy/services/work_skip_settings_store.dart';
-import 'package:plezy/utils/external_ids.dart';
+import 'package:ttplay/database/app_database.dart';
+import 'package:ttplay/library/library_repository.dart';
+import 'package:ttplay/media/media_backend.dart';
+import 'package:ttplay/media/media_item.dart';
+import 'package:ttplay/media/media_kind.dart';
+import 'package:ttplay/media/media_server_client.dart';
+import 'package:ttplay/media/work_skip_settings.dart';
+import 'package:ttplay/services/work_skip_settings_store.dart';
+import 'package:ttplay/utils/external_ids.dart';
 import '../test_helpers/media_items.dart';
 
 class FakeSkipClient implements MediaServerClient {

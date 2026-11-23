@@ -1,12 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:plezy/i18n/strings.g.dart';
-import 'package:plezy/media/media_backend.dart';
-import 'package:plezy/theme/mono_theme.dart';
+import 'package:ttplay/i18n/strings.g.dart';
+import 'package:ttplay/media/media_backend.dart';
+import 'package:ttplay/theme/mono_theme.dart';
 
-import 'package:plezy/media/media_kind.dart';
-import 'package:plezy/screens/libraries/folder_tree_item.dart';
+import 'package:ttplay/media/media_kind.dart';
+import 'package:ttplay/screens/libraries/folder_tree_item.dart';
 import '../test_helpers/media_items.dart';
 
 void main() {

@@ -3,12 +3,12 @@ import 'dart:convert';
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
-import 'package:plezy/database/app_database.dart';
-import 'package:plezy/media/media_item.dart';
-import 'package:plezy/media/media_backend.dart';
-import 'package:plezy/media/media_kind.dart';
-import 'package:plezy/metadata_edit/plex_metadata_edit_adapter.dart';
-import 'package:plezy/services/plex_api_cache.dart';
+import 'package:ttplay/database/app_database.dart';
+import 'package:ttplay/media/media_item.dart';
+import 'package:ttplay/media/media_backend.dart';
+import 'package:ttplay/media/media_kind.dart';
+import 'package:ttplay/metadata_edit/plex_metadata_edit_adapter.dart';
+import 'package:ttplay/services/plex_api_cache.dart';
 
 import '../test_helpers/backend_client_fixtures.dart';
 import '../test_helpers/media_items.dart';

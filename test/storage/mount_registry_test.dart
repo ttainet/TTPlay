@@ -1,10 +1,10 @@
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:plezy/database/app_database.dart';
-import 'package:plezy/services/credential_vault.dart';
-import 'package:plezy/storage/mount_manager.dart';
-import 'package:plezy/storage/mount_registry.dart';
-import 'package:plezy/storage/storage_mount.dart';
+import 'package:ttplay/database/app_database.dart';
+import 'package:ttplay/services/credential_vault.dart';
+import 'package:ttplay/storage/mount_manager.dart';
+import 'package:ttplay/storage/mount_registry.dart';
+import 'package:ttplay/storage/storage_mount.dart';
 
 import '../test_helpers/prefs.dart';
 

@@ -2,9 +2,9 @@ import 'dart:async';
 
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:plezy/profiles/profile.dart';
-import 'package:plezy/services/deep_links/deep_link.dart';
-import 'package:plezy/services/deep_links/deep_link_service.dart';
+import 'package:ttplay/profiles/profile.dart';
+import 'package:ttplay/services/deep_links/deep_link.dart';
+import 'package:ttplay/services/deep_links/deep_link_service.dart';
 
 Profile _local(String id, String name) => Profile.local(id: id, displayName: name, createdAt: DateTime(2026));
 

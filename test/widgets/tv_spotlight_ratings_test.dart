@@ -1,13 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:plezy/i18n/strings.g.dart';
-import 'package:plezy/media/media_item.dart';
-import 'package:plezy/media/media_kind.dart';
-import 'package:plezy/media/media_rating.dart';
-import 'package:plezy/services/settings_service.dart';
-import 'package:plezy/utils/platform_detector.dart';
-import 'package:plezy/widgets/tv_spotlight_background.dart';
+import 'package:ttplay/i18n/strings.g.dart';
+import 'package:ttplay/media/media_item.dart';
+import 'package:ttplay/media/media_kind.dart';
+import 'package:ttplay/media/media_rating.dart';
+import 'package:ttplay/services/settings_service.dart';
+import 'package:ttplay/utils/platform_detector.dart';
+import 'package:ttplay/widgets/tv_spotlight_background.dart';
 
 import '../test_helpers/prefs.dart';
 

@@ -2,19 +2,19 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:plezy/focus/input_mode_tracker.dart';
-import 'package:plezy/i18n/strings.g.dart';
-import 'package:plezy/media/account_preferences.dart';
-import 'package:plezy/media/account_preferences_source.dart';
-import 'package:plezy/media/account_preferences_target.dart';
-import 'package:plezy/media/account_ref.dart';
-import 'package:plezy/media/media_backend.dart';
-import 'package:plezy/media/media_server_user_profile.dart';
-import 'package:plezy/screens/settings/account_preferences_detail_screen.dart';
-import 'package:plezy/screens/settings/account_preferences_screen.dart';
-import 'package:plezy/services/account_preferences_repository.dart';
-import 'package:plezy/theme/mono_theme.dart';
-import 'package:plezy/widgets/backend_badge.dart';
+import 'package:ttplay/focus/input_mode_tracker.dart';
+import 'package:ttplay/i18n/strings.g.dart';
+import 'package:ttplay/media/account_preferences.dart';
+import 'package:ttplay/media/account_preferences_source.dart';
+import 'package:ttplay/media/account_preferences_target.dart';
+import 'package:ttplay/media/account_ref.dart';
+import 'package:ttplay/media/media_backend.dart';
+import 'package:ttplay/media/media_server_user_profile.dart';
+import 'package:ttplay/screens/settings/account_preferences_detail_screen.dart';
+import 'package:ttplay/screens/settings/account_preferences_screen.dart';
+import 'package:ttplay/services/account_preferences_repository.dart';
+import 'package:ttplay/theme/mono_theme.dart';
+import 'package:ttplay/widgets/backend_badge.dart';
 import 'package:provider/provider.dart';
 
 /// The Account preferences section edits values that live on a media server, so

@@ -1,14 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:plezy/i18n/strings.g.dart';
-import 'package:plezy/providers/theme_provider.dart';
-import 'package:plezy/screens/settings/appearance_settings_screen.dart';
-import 'package:plezy/screens/settings/theme_settings_screen.dart';
-import 'package:plezy/services/settings_service.dart' hide ThemeMode;
-import 'package:plezy/services/settings_service.dart' as settings show ThemeMode;
-import 'package:plezy/services/supporter/supporter_mode.dart';
-import 'package:plezy/services/supporter/supporter_service.dart';
-import 'package:plezy/theme/mono_theme.dart';
+import 'package:ttplay/i18n/strings.g.dart';
+import 'package:ttplay/providers/theme_provider.dart';
+import 'package:ttplay/screens/settings/appearance_settings_screen.dart';
+import 'package:ttplay/screens/settings/theme_settings_screen.dart';
+import 'package:ttplay/services/settings_service.dart' hide ThemeMode;
+import 'package:ttplay/services/settings_service.dart' as settings show ThemeMode;
+import 'package:ttplay/services/supporter/supporter_mode.dart';
+import 'package:ttplay/services/supporter/supporter_service.dart';
+import 'package:ttplay/theme/mono_theme.dart';
 import 'package:provider/provider.dart';
 
 import '../../test_helpers/prefs.dart';

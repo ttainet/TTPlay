@@ -1,16 +1,16 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:plezy/i18n/strings.g.dart';
-import 'package:plezy/focus/focusable_wrapper.dart';
-import 'package:plezy/focus/input_mode_tracker.dart';
-import 'package:plezy/media/media_backend.dart';
-import 'package:plezy/media/media_browser_dialect.dart';
-import 'package:plezy/profiles/profile.dart';
-import 'package:plezy/screens/settings/add_connection_screen.dart';
-import 'package:plezy/screens/settings/add_jellyfin_screen.dart';
-import 'package:plezy/theme/mono_theme.dart';
-import 'package:plezy/widgets/backend_badge.dart';
+import 'package:ttplay/i18n/strings.g.dart';
+import 'package:ttplay/focus/focusable_wrapper.dart';
+import 'package:ttplay/focus/input_mode_tracker.dart';
+import 'package:ttplay/media/media_backend.dart';
+import 'package:ttplay/media/media_browser_dialect.dart';
+import 'package:ttplay/profiles/profile.dart';
+import 'package:ttplay/screens/settings/add_connection_screen.dart';
+import 'package:ttplay/screens/settings/add_jellyfin_screen.dart';
+import 'package:ttplay/theme/mono_theme.dart';
+import 'package:ttplay/widgets/backend_badge.dart';
 
 /// The "Add connection" picker is the only route to a new server, so a backend
 /// missing from this list is unreachable no matter how complete its client is.

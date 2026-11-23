@@ -1,6 +1,6 @@
 import 'dart:async';
 
-import 'package:plezy/mpv/mpv.dart';
+import 'package:ttplay/mpv/mpv.dart';
 
 /// Rich fake [Player] for player and Watch Together tests.
 ///

@@ -1,16 +1,16 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:plezy/main.dart';
-import 'package:plezy/profiles/profile.dart';
-import 'package:plezy/services/base_shared_preferences_service.dart';
-import 'package:plezy/services/credential_vault.dart';
-import 'package:plezy/services/prefs_recovery.dart';
-import 'package:plezy/services/seerr/seerr_session_store.dart';
-import 'package:plezy/services/sensitive_prefs.dart';
-import 'package:plezy/services/startup_diagnostics.dart';
-import 'package:plezy/services/settings_service.dart';
-import 'package:plezy/services/storage_service.dart';
-import 'package:plezy/services/trackers/tracker_account_store.dart';
-import 'package:plezy/services/trackers/tracker_constants.dart';
+import 'package:ttplay/main.dart';
+import 'package:ttplay/profiles/profile.dart';
+import 'package:ttplay/services/base_shared_preferences_service.dart';
+import 'package:ttplay/services/credential_vault.dart';
+import 'package:ttplay/services/prefs_recovery.dart';
+import 'package:ttplay/services/seerr/seerr_session_store.dart';
+import 'package:ttplay/services/sensitive_prefs.dart';
+import 'package:ttplay/services/startup_diagnostics.dart';
+import 'package:ttplay/services/settings_service.dart';
+import 'package:ttplay/services/storage_service.dart';
+import 'package:ttplay/services/trackers/tracker_account_store.dart';
+import 'package:ttplay/services/trackers/tracker_constants.dart';
 
 import '../test_helpers/prefs.dart';
 

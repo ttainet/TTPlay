@@ -2,13 +2,13 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:plezy/focus/focusable_button.dart';
-import 'package:plezy/i18n/strings.g.dart';
-import 'package:plezy/models/external_player_models.dart';
-import 'package:plezy/screens/settings/external_player_screen.dart';
-import 'package:plezy/services/settings_service.dart';
-import 'package:plezy/theme/mono_theme.dart';
-import 'package:plezy/widgets/focusable_list_tile.dart';
+import 'package:ttplay/focus/focusable_button.dart';
+import 'package:ttplay/i18n/strings.g.dart';
+import 'package:ttplay/models/external_player_models.dart';
+import 'package:ttplay/screens/settings/external_player_screen.dart';
+import 'package:ttplay/services/settings_service.dart';
+import 'package:ttplay/theme/mono_theme.dart';
+import 'package:ttplay/widgets/focusable_list_tile.dart';
 
 import '../../test_helpers/prefs.dart';
 

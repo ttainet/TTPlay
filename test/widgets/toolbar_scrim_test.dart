@@ -4,8 +4,8 @@ import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:plezy/theme/mono_theme.dart';
-import 'package:plezy/widgets/toolbar_scrim.dart';
+import 'package:ttplay/theme/mono_theme.dart';
+import 'package:ttplay/widgets/toolbar_scrim.dart';
 
 void main() {
   testWidgets('light scrim only lightens the content beneath it', (tester) async {

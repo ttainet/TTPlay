@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:intl/date_symbol_data_local.dart';
-import 'package:plezy/i18n/strings.g.dart';
-import 'package:plezy/media/ids.dart';
-import 'package:plezy/media/media_item.dart';
-import 'package:plezy/services/jellyfin_mappers.dart';
-import 'package:plezy/widgets/video_controls/widgets/video_controls_header.dart';
+import 'package:ttplay/i18n/strings.g.dart';
+import 'package:ttplay/media/ids.dart';
+import 'package:ttplay/media/media_item.dart';
+import 'package:ttplay/services/jellyfin_mappers.dart';
+import 'package:ttplay/widgets/video_controls/widgets/video_controls_header.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();

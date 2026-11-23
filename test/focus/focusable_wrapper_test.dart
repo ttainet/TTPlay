@@ -5,11 +5,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter/semantics.dart' show SemanticsNode;
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:plezy/focus/card_focus_scope.dart';
-import 'package:plezy/focus/focus_theme.dart';
-import 'package:plezy/focus/focusable_wrapper.dart';
-import 'package:plezy/focus/input_mode_tracker.dart';
-import 'package:plezy/theme/mono_theme.dart';
+import 'package:ttplay/focus/card_focus_scope.dart';
+import 'package:ttplay/focus/focus_theme.dart';
+import 'package:ttplay/focus/focusable_wrapper.dart';
+import 'package:ttplay/focus/input_mode_tracker.dart';
+import 'package:ttplay/theme/mono_theme.dart';
 
 void main() {
   Finder chromeIn(Type type) => find.descendant(of: find.byType(FocusableWrapper), matching: find.byType(type));

@@ -3,10 +3,10 @@ import 'dart:io';
 import 'package:fake_async/fake_async.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:path/path.dart' as p;
-import 'package:plezy/storage/drivers/local_storage_driver.dart';
-import 'package:plezy/storage/request_throttle.dart';
-import 'package:plezy/storage/storage_driver.dart';
-import 'package:plezy/storage/storage_path.dart';
+import 'package:ttplay/storage/drivers/local_storage_driver.dart';
+import 'package:ttplay/storage/request_throttle.dart';
+import 'package:ttplay/storage/storage_driver.dart';
+import 'package:ttplay/storage/storage_path.dart';
 
 void main() {
   group('StoragePath', () {

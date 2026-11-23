@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:plezy/i18n/strings.g.dart';
-import 'package:plezy/media/media_backend.dart';
-import 'package:plezy/providers/multi_server_provider.dart';
-import 'package:plezy/screens/actor_media_screen.dart';
-import 'package:plezy/theme/mono_theme.dart';
+import 'package:ttplay/i18n/strings.g.dart';
+import 'package:ttplay/media/media_backend.dart';
+import 'package:ttplay/providers/multi_server_provider.dart';
+import 'package:ttplay/screens/actor_media_screen.dart';
+import 'package:ttplay/theme/mono_theme.dart';
 import 'package:provider/provider.dart';
 
 import '../test_helpers/multi_server_fixtures.dart';

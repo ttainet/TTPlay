@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:intl/date_symbol_data_local.dart';
-import 'package:plezy/i18n/strings.g.dart';
-import 'package:plezy/mpv/mpv.dart';
-import 'package:plezy/mpv/player/player_stream_controllers.dart';
-import 'package:plezy/utils/formatters.dart';
-import 'package:plezy/widgets/video_controls/widgets/finish_time_builder.dart';
+import 'package:ttplay/i18n/strings.g.dart';
+import 'package:ttplay/mpv/mpv.dart';
+import 'package:ttplay/mpv/player/player_stream_controllers.dart';
+import 'package:ttplay/utils/formatters.dart';
+import 'package:ttplay/widgets/video_controls/widgets/finish_time_builder.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();

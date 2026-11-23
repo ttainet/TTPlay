@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:plezy/utils/platform_detector.dart';
-import 'package:plezy/widgets/focused_scroll_scaffold.dart';
+import 'package:ttplay/utils/platform_detector.dart';
+import 'package:ttplay/widgets/focused_scroll_scaffold.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();

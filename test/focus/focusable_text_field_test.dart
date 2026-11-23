@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:plezy/focus/focusable_text_field.dart';
-import 'package:plezy/focus/input_mode_tracker.dart';
-import 'package:plezy/focus/key_event_utils.dart';
+import 'package:ttplay/focus/focusable_text_field.dart';
+import 'package:ttplay/focus/input_mode_tracker.dart';
+import 'package:ttplay/focus/key_event_utils.dart';
 
 void main() {
   testWidgets('unwired single-line fields traverse with arrow keys', (tester) async {

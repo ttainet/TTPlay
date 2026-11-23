@@ -3,10 +3,10 @@ import 'dart:math' as math;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:plezy/providers/theme_provider.dart';
-import 'package:plezy/services/settings_service.dart' as settings;
-import 'package:plezy/theme/mono_theme.dart';
-import 'package:plezy/theme/mono_tokens.dart';
+import 'package:ttplay/providers/theme_provider.dart';
+import 'package:ttplay/services/settings_service.dart' as settings;
+import 'package:ttplay/theme/mono_theme.dart';
+import 'package:ttplay/theme/mono_tokens.dart';
 
 double _contrast(Color a, Color b) {
   final la = a.computeLuminance();

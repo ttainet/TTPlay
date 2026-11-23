@@ -1,6 +1,6 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:plezy/utils/stream_buffer_sizing.dart';
+import 'package:ttplay/utils/stream_buffer_sizing.dart';
 
 void main() {
   group('nextPowerOfTwo', () {

@@ -1,21 +1,21 @@
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:plezy/database/app_database.dart';
-import 'package:plezy/database/download_collection_operations.dart';
-import 'package:plezy/media/download_resolution.dart';
-import 'package:plezy/media/ids.dart';
-import 'package:plezy/media/media_backend.dart';
-import 'package:plezy/media/media_item.dart';
-import 'package:plezy/media/media_kind.dart';
-import 'package:plezy/media/media_server_client.dart';
-import 'package:plezy/models/download_models.dart';
-import 'package:plezy/providers/download_provider.dart';
-import 'package:plezy/services/download_manager_service.dart';
-import 'package:plezy/services/download_storage_service.dart';
-import 'package:plezy/services/jellyfin_api_cache.dart';
-import 'package:plezy/services/multi_server_manager.dart';
-import 'package:plezy/services/plex_api_cache.dart';
-import 'package:plezy/utils/media_server_http_client.dart';
+import 'package:ttplay/database/app_database.dart';
+import 'package:ttplay/database/download_collection_operations.dart';
+import 'package:ttplay/media/download_resolution.dart';
+import 'package:ttplay/media/ids.dart';
+import 'package:ttplay/media/media_backend.dart';
+import 'package:ttplay/media/media_item.dart';
+import 'package:ttplay/media/media_kind.dart';
+import 'package:ttplay/media/media_server_client.dart';
+import 'package:ttplay/models/download_models.dart';
+import 'package:ttplay/providers/download_provider.dart';
+import 'package:ttplay/services/download_manager_service.dart';
+import 'package:ttplay/services/download_storage_service.dart';
+import 'package:ttplay/services/jellyfin_api_cache.dart';
+import 'package:ttplay/services/multi_server_manager.dart';
+import 'package:ttplay/services/plex_api_cache.dart';
+import 'package:ttplay/utils/media_server_http_client.dart';
 
 import '../test_helpers/media_items.dart';
 

@@ -1,7 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:plezy/media/chapter_marker_classifier.dart';
-import 'package:plezy/media/media_display_criteria.dart';
-import 'package:plezy/services/jellyfin_media_info_mapper.dart';
+import 'package:ttplay/media/chapter_marker_classifier.dart';
+import 'package:ttplay/media/media_display_criteria.dart';
+import 'package:ttplay/services/jellyfin_media_info_mapper.dart';
 
 /// Field-mapping pin for the Jellyfin → Plex `MediaInfo` translator. The
 /// player's track picker and auto-track-selection both consume the

@@ -1,12 +1,12 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:plezy/media/library_query.dart';
-import 'package:plezy/media/media_filter.dart';
-import 'package:plezy/media/media_sort.dart';
-import 'package:plezy/screens/libraries/filters_bottom_sheet.dart';
-import 'package:plezy/widgets/anchored_option_menus.dart';
-import 'package:plezy/widgets/overlay_sheet.dart';
+import 'package:ttplay/media/library_query.dart';
+import 'package:ttplay/media/media_filter.dart';
+import 'package:ttplay/media/media_sort.dart';
+import 'package:ttplay/screens/libraries/filters_bottom_sheet.dart';
+import 'package:ttplay/widgets/anchored_option_menus.dart';
+import 'package:ttplay/widgets/overlay_sheet.dart';
 
 import '../test_helpers/theme.dart';
 

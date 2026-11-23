@@ -1,16 +1,16 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:plezy/i18n/strings.g.dart';
-import 'package:plezy/media/account_preferences.dart';
-import 'package:plezy/media/media_item.dart';
-import 'package:plezy/media/media_kind.dart';
-import 'package:plezy/media/media_server_user_profile.dart';
-import 'package:plezy/media/media_source_info.dart';
-import 'package:plezy/services/jellyfin_media_info_mapper.dart';
-import 'package:plezy/services/playback_track_preview.dart';
-import 'package:plezy/services/plex_mappers.dart';
-import 'package:plezy/services/plex_playback_mapper.dart';
-import 'package:plezy/services/track_selection_service.dart';
-import 'package:plezy/mpv/mpv.dart';
+import 'package:ttplay/i18n/strings.g.dart';
+import 'package:ttplay/media/account_preferences.dart';
+import 'package:ttplay/media/media_item.dart';
+import 'package:ttplay/media/media_kind.dart';
+import 'package:ttplay/media/media_server_user_profile.dart';
+import 'package:ttplay/media/media_source_info.dart';
+import 'package:ttplay/services/jellyfin_media_info_mapper.dart';
+import 'package:ttplay/services/playback_track_preview.dart';
+import 'package:ttplay/services/plex_mappers.dart';
+import 'package:ttplay/services/plex_playback_mapper.dart';
+import 'package:ttplay/services/track_selection_service.dart';
+import 'package:ttplay/mpv/mpv.dart';
 
 class _JapaneseAudioProfile implements MediaServerUserProfile {
   @override

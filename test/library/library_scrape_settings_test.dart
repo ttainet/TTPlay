@@ -5,17 +5,17 @@ import 'dart:io';
 import 'package:drift/drift.dart' show Value, driftRuntimeOptions;
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:plezy/database/app_database.dart';
-import 'package:plezy/library/library_repository.dart';
-import 'package:plezy/library/library_scan_service.dart';
-import 'package:plezy/library/library_scanner.dart';
-import 'package:plezy/library/library_scrape_runner.dart';
-import 'package:plezy/library/library_settings.dart';
-import 'package:plezy/library/scrapers/server_metadata_provider.dart';
-import 'package:plezy/library/scrapers/tmdb_provider.dart';
-import 'package:plezy/services/credential_vault.dart';
-import 'package:plezy/storage/mount_manager.dart';
-import 'package:plezy/storage/mount_registry.dart';
+import 'package:ttplay/database/app_database.dart';
+import 'package:ttplay/library/library_repository.dart';
+import 'package:ttplay/library/library_scan_service.dart';
+import 'package:ttplay/library/library_scanner.dart';
+import 'package:ttplay/library/library_scrape_runner.dart';
+import 'package:ttplay/library/library_settings.dart';
+import 'package:ttplay/library/scrapers/server_metadata_provider.dart';
+import 'package:ttplay/library/scrapers/tmdb_provider.dart';
+import 'package:ttplay/services/credential_vault.dart';
+import 'package:ttplay/storage/mount_manager.dart';
+import 'package:ttplay/storage/mount_registry.dart';
 
 import '../test_helpers/prefs.dart';
 

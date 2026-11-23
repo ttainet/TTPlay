@@ -1,12 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:plezy/i18n/strings.g.dart';
-import 'package:plezy/models/companion_remote/remote_command.dart';
-import 'package:plezy/models/companion_remote/remote_playback_models.dart';
-import 'package:plezy/models/companion_remote/remote_session.dart';
-import 'package:plezy/providers/companion_remote_provider.dart';
-import 'package:plezy/screens/companion_remote/mobile_remote_screen.dart';
-import 'package:plezy/theme/mono_theme.dart';
+import 'package:ttplay/i18n/strings.g.dart';
+import 'package:ttplay/models/companion_remote/remote_command.dart';
+import 'package:ttplay/models/companion_remote/remote_playback_models.dart';
+import 'package:ttplay/models/companion_remote/remote_session.dart';
+import 'package:ttplay/providers/companion_remote_provider.dart';
+import 'package:ttplay/screens/companion_remote/mobile_remote_screen.dart';
+import 'package:ttplay/theme/mono_theme.dart';
 import 'package:provider/provider.dart';
 
 /// Drives the screen through session states without a peer connection.

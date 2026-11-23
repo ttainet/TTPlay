@@ -1,11 +1,11 @@
 import 'dart:async';
 import 'dart:convert';
-import 'package:plezy/media/ids.dart';
-import 'package:plezy/media/library_query.dart';
+import 'package:ttplay/media/ids.dart';
+import 'package:ttplay/media/library_query.dart';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:plezy/services/base_shared_preferences_service.dart';
-import 'package:plezy/services/storage_service.dart';
+import 'package:ttplay/services/base_shared_preferences_service.dart';
+import 'package:ttplay/services/storage_service.dart';
 
 import '../test_helpers/prefs.dart';
 

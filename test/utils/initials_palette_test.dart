@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:plezy/utils/initials_palette.dart';
+import 'package:ttplay/utils/initials_palette.dart';
 
 void main() {
   group('initialOf', () {

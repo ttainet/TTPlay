@@ -1,8 +1,8 @@
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:plezy/services/settings_service.dart';
-import 'package:plezy/services/video_decode_capabilities.dart';
-import 'package:plezy/utils/device_channel.dart';
+import 'package:ttplay/services/settings_service.dart';
+import 'package:ttplay/services/video_decode_capabilities.dart';
+import 'package:ttplay/utils/device_channel.dart';
 
 import '../test_helpers/prefs.dart';
 

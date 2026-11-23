@@ -4,10 +4,10 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
-import 'package:plezy/iptv/iptv_models.dart';
-import 'package:plezy/iptv/iptv_provider.dart';
-import 'package:plezy/iptv/m3u_parser.dart';
-import 'package:plezy/iptv/xmltv_parser.dart';
+import 'package:ttplay/iptv/iptv_models.dart';
+import 'package:ttplay/iptv/iptv_provider.dart';
+import 'package:ttplay/iptv/m3u_parser.dart';
+import 'package:ttplay/iptv/xmltv_parser.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {

@@ -2,8 +2,8 @@ import 'dart:typed_data';
 
 import 'package:dart_smb2/dart_smb2.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:plezy/storage/drivers/smb_storage_driver.dart';
-import 'package:plezy/storage/storage_driver.dart';
+import 'package:ttplay/storage/drivers/smb_storage_driver.dart';
+import 'package:ttplay/storage/storage_driver.dart';
 
 class _FakeSession implements SmbSession {
   final Map<String, List<({String name, bool isDirectory, int size, DateTime? modifiedAt})>> directories = {};

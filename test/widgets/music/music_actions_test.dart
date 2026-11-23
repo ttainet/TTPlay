@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:material_symbols_icons/symbols.dart';
-import 'package:plezy/focus/focusable_action_bar.dart';
-import 'package:plezy/i18n/strings.g.dart';
-import 'package:plezy/theme/mono_theme.dart';
-import 'package:plezy/widgets/music/music_actions.dart';
+import 'package:ttplay/focus/focusable_action_bar.dart';
+import 'package:ttplay/i18n/strings.g.dart';
+import 'package:ttplay/theme/mono_theme.dart';
+import 'package:ttplay/widgets/music/music_actions.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();

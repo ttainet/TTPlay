@@ -2,9 +2,9 @@ import 'dart:ui' show SemanticsAction;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:plezy/i18n/strings.g.dart';
-import 'package:plezy/media/library_first_character.dart';
-import 'package:plezy/screens/libraries/alpha_scroll_handle.dart';
+import 'package:ttplay/i18n/strings.g.dart';
+import 'package:ttplay/media/library_first_character.dart';
+import 'package:ttplay/screens/libraries/alpha_scroll_handle.dart';
 
 void main() {
   const characters = [

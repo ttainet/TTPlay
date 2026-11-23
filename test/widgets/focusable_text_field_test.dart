@@ -4,12 +4,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:material_symbols_icons/symbols.dart';
-import 'package:plezy/focus/dpad_navigator.dart';
-import 'package:plezy/focus/focusable_text_field.dart';
-import 'package:plezy/focus/input_mode_tracker.dart';
-import 'package:plezy/focus/key_event_utils.dart';
-import 'package:plezy/services/gamepad_service.dart';
-import 'package:plezy/utils/platform_detector.dart';
+import 'package:ttplay/focus/dpad_navigator.dart';
+import 'package:ttplay/focus/focusable_text_field.dart';
+import 'package:ttplay/focus/input_mode_tracker.dart';
+import 'package:ttplay/focus/key_event_utils.dart';
+import 'package:ttplay/services/gamepad_service.dart';
+import 'package:ttplay/utils/platform_detector.dart';
 
 void main() {
   tearDown(() {

@@ -3,12 +3,12 @@ import 'dart:async';
 import 'package:dart_discord_presence/dart_discord_presence.dart';
 import 'package:fake_async/fake_async.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:plezy/media/ids.dart';
-import 'package:plezy/media/media_backend.dart';
-import 'package:plezy/media/media_kind.dart';
-import 'package:plezy/media/media_server_client.dart';
-import 'package:plezy/media/server_capabilities.dart';
-import 'package:plezy/services/discord_rpc_service.dart';
+import 'package:ttplay/media/ids.dart';
+import 'package:ttplay/media/media_backend.dart';
+import 'package:ttplay/media/media_kind.dart';
+import 'package:ttplay/media/media_server_client.dart';
+import 'package:ttplay/media/server_capabilities.dart';
+import 'package:ttplay/services/discord_rpc_service.dart';
 
 import '../test_helpers/discord_rpc_fakes.dart';
 import '../test_helpers/media_items.dart';

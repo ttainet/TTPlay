@@ -1,13 +1,13 @@
 import 'dart:convert';
-import 'package:plezy/media/ids.dart';
+import 'package:ttplay/media/ids.dart';
 import 'dart:io';
 
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
-import 'package:plezy/database/app_database.dart';
-import 'package:plezy/services/plex_api_cache.dart';
-import 'package:plezy/services/plex_client.dart';
+import 'package:ttplay/database/app_database.dart';
+import 'package:ttplay/services/plex_api_cache.dart';
+import 'package:ttplay/services/plex_client.dart';
 
 import '../test_helpers/backend_client_fixtures.dart';
 

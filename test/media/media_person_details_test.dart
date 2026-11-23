@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:plezy/media/media_person.dart';
+import 'package:ttplay/media/media_person.dart';
 
 void main() {
   group('MediaPersonDetails.ageOn', () {

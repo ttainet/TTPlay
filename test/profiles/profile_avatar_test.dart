@@ -1,9 +1,9 @@
 import 'package:cached_network_image_ce/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:plezy/profiles/profile.dart';
-import 'package:plezy/profiles/profile_avatar.dart';
-import 'package:plezy/utils/initials_palette.dart';
+import 'package:ttplay/profiles/profile.dart';
+import 'package:ttplay/profiles/profile_avatar.dart';
+import 'package:ttplay/utils/initials_palette.dart';
 
 void main() {
   Future<void> pumpAvatar(

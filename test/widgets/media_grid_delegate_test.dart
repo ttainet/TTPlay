@@ -1,13 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:plezy/media/media_backend.dart';
-import 'package:plezy/media/media_item.dart';
-import 'package:plezy/media/media_kind.dart';
-import 'package:plezy/services/settings_service.dart';
-import 'package:plezy/theme/mono_theme.dart';
-import 'package:plezy/utils/platform_detector.dart';
-import 'package:plezy/widgets/media_card.dart';
-import 'package:plezy/widgets/media_card_sliver_layout.dart';
+import 'package:ttplay/media/media_backend.dart';
+import 'package:ttplay/media/media_item.dart';
+import 'package:ttplay/media/media_kind.dart';
+import 'package:ttplay/services/settings_service.dart';
+import 'package:ttplay/theme/mono_theme.dart';
+import 'package:ttplay/utils/platform_detector.dart';
+import 'package:ttplay/widgets/media_card.dart';
+import 'package:ttplay/widgets/media_card_sliver_layout.dart';
 
 import '../test_helpers/media_items.dart';
 import '../test_helpers/prefs.dart';

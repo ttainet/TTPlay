@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:plezy/main.dart' as app;
-import 'package:plezy/theme/mono_theme.dart';
+import 'package:ttplay/main.dart' as app;
+import 'package:ttplay/theme/mono_theme.dart';
 
 /// A style no screen sends, so each expectation reads the style this tree sent.
 const _sentinel = SystemUiOverlayStyle(statusBarColor: Color(0xFFFF00FF));

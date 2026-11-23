@@ -1,7 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:plezy/models/trackers/tracker_context.dart';
-import 'package:plezy/services/trackers/tracker_history_body.dart';
-import 'package:plezy/utils/external_ids.dart';
+import 'package:ttplay/models/trackers/tracker_context.dart';
+import 'package:ttplay/services/trackers/tracker_history_body.dart';
+import 'package:ttplay/utils/external_ids.dart';
 
 TrackerContext _episode(int tvdb, int season, int number) => TrackerContext.episode(
   external: ExternalIds(tvdb: tvdb),

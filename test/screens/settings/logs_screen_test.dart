@@ -10,16 +10,16 @@ import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:logger/logger.dart';
 import 'package:package_info_plus/package_info_plus.dart';
-import 'package:plezy/focus/focusable_action_bar.dart';
-import 'package:plezy/focus/input_mode_tracker.dart';
-import 'package:plezy/i18n/strings.g.dart';
-import 'package:plezy/screens/settings/logs_screen.dart';
-import 'package:plezy/services/log_upload_service.dart';
-import 'package:plezy/services/startup_diagnostics.dart';
-import 'package:plezy/utils/app_logger.dart';
-import 'package:plezy/utils/media_server_http_client.dart';
-import 'package:plezy/utils/platform_detector.dart';
-import 'package:plezy/widgets/app_bar_back_button.dart';
+import 'package:ttplay/focus/focusable_action_bar.dart';
+import 'package:ttplay/focus/input_mode_tracker.dart';
+import 'package:ttplay/i18n/strings.g.dart';
+import 'package:ttplay/screens/settings/logs_screen.dart';
+import 'package:ttplay/services/log_upload_service.dart';
+import 'package:ttplay/services/startup_diagnostics.dart';
+import 'package:ttplay/utils/app_logger.dart';
+import 'package:ttplay/utils/media_server_http_client.dart';
+import 'package:ttplay/utils/platform_detector.dart';
+import 'package:ttplay/widgets/app_bar_back_button.dart';
 
 void main() {
   setUpAll(() {

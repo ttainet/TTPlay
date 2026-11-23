@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:plezy/services/plex_lyrics_parser.dart';
+import 'package:ttplay/services/plex_lyrics_parser.dart';
 
 void main() {
   test('parses timed Plex XML and joins inline spans', () {

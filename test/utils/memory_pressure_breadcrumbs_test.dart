@@ -4,9 +4,9 @@ import 'package:clock/clock.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:plezy/mpv/mpv.dart';
-import 'package:plezy/services/playback_coordinator.dart';
-import 'package:plezy/utils/memory_pressure_breadcrumbs.dart';
+import 'package:ttplay/mpv/mpv.dart';
+import 'package:ttplay/services/playback_coordinator.dart';
+import 'package:ttplay/utils/memory_pressure_breadcrumbs.dart';
 import 'package:sentry_flutter/sentry_flutter.dart';
 
 /// The production binding's memory-pressure hook over the standard test
