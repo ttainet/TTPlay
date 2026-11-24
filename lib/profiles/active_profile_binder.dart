@@ -91,6 +91,7 @@ class ActiveProfileBinder {
     required this.multiServerProvider,
     PlexHomePinPrompt? pinPrompt,
     this.shouldDeferInitialBind,
+    this.suppressProfileConnections,
     this._plexAuth,
   }) : pinPrompt = pinPrompt ?? _noopPinPrompt {
     serverManager.plexServerListRefresher = _refreshPlexServerList;
@@ -105,6 +106,7 @@ class ActiveProfileBinder {
   final MultiServerProvider multiServerProvider;
   final PlexHomePinPrompt pinPrompt;
   final ShouldDeferInitialBind? shouldDeferInitialBind;
+  final bool Function()? suppressProfileConnections;
 
   PlexAuthService? _plexAuth;
 
@@ -363,8 +365,13 @@ class ActiveProfileBinder {
       // One snapshot of the join rows + connections per pass — every
       // downstream helper reads from these instead of re-querying (each
       // registry read pays per-row CredentialVault reveals).
-      final joinRows = await profileConnections.listForProfile(profile.id);
-      final connectionsById = {for (final c in await connections.list()) c.id: c};
+      final suppressConnections = suppressProfileConnections?.call() ?? false;
+      final joinRows = suppressConnections
+          ? const <ProfileConnection>[]
+          : await profileConnections.listForProfile(profile.id);
+      final connectionsById = suppressConnections
+          ? const <String, Connection>{}
+          : {for (final c in await connections.list()) c.id: c};
       if (!_isCurrentBind(profile.id, generation)) return false;
 
       // PIN prompts may only surface from a user-initiated bind or the
@@ -386,7 +393,7 @@ class ActiveProfileBinder {
       // parallel. A slow/offline Plex parent should not add its timeout budget
       // on top of an otherwise reachable MediaBrowser or borrowed-server bind.
       final results = await Future.wait([
-        if (profile.isPlexHome)
+        if (!suppressConnections && profile.isPlexHome)
           _bindPlexHome(
             profile,
             joinRows: joinRows,
@@ -468,7 +475,7 @@ class ActiveProfileBinder {
       }
       multiServerProvider.setExpectedVisibleServerIds(expectedServerIds);
       multiServerProvider.setVisibleServerIds(visibleServerIds);
-      success = (profile.isLocal && !localProfileHasJoinRows) || visibleServerIds.isNotEmpty;
+      success = suppressConnections || (profile.isLocal && !localProfileHasJoinRows) || visibleServerIds.isNotEmpty;
       if (!success) {
         // A failed pass that expected servers, reached none (`!success`
         // implies `visibleServerIds.isEmpty` here), and saw no refusal is

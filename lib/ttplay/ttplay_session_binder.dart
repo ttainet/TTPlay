@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:crypto/crypto.dart' as crypto;
 import 'package:drift/drift.dart' show Variable;
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
@@ -103,8 +104,19 @@ class TtplaySessionBinder extends ChangeNotifier {
     _multiServerProvider = provider;
   }
 
+  static String _iptvScopeKey(SelfHostedSession session) => crypto.sha256
+      .convert(utf8.encode('${session.serverUrl}|${session.username}'))
+      .toString()
+      .substring(0, 16);
+
   void attachIptvProvider(IptvProvider provider) {
     _iptvProvider = provider;
+    final session = sessionController.selfHostedSession;
+    if (sessionController.isSelfHosted && session != null) {
+      unawaited(provider.setSessionScope(isSelfHosted: true, accountScopeKey: _iptvScopeKey(session)));
+    } else {
+      unawaited(provider.setSessionScope(isSelfHosted: false));
+    }
     final mirror = _cloudMountMirror;
     if (mirror != null) {
       provider.setCloudSources(mirror.lastIptvSources);
@@ -118,6 +130,7 @@ class TtplaySessionBinder extends ChangeNotifier {
   void seedSelfHostedSynchronously(SelfHostedSession session) {
     if (_disposed) return;
     _syncGeneration++;
+    unawaited(_iptvProvider?.setSessionScope(isSelfHosted: true, accountScopeKey: _iptvScopeKey(session)));
     if (_isMediaLibraryV1(session)) {
       final removedDirect = _directCloudExternalServerIds;
       _apiClient = null;
@@ -172,6 +185,7 @@ class TtplaySessionBinder extends ChangeNotifier {
 
     if (sessionController.isSelfHosted && sessionController.selfHostedSession != null) {
       final session = sessionController.selfHostedSession!;
+      unawaited(_iptvProvider?.setSessionScope(isSelfHosted: true, accountScopeKey: _iptvScopeKey(session)));
       final sessionKey = _sessionKeyFor(session);
       if (_isMediaLibraryV1(session)) {
         final needsRebind = _cloudProjectionEngine == null || _boundSessionKey != sessionKey || _primaryClient != null;
@@ -728,7 +742,7 @@ class TtplaySessionBinder extends ChangeNotifier {
     localLibraryClient.cloudUserDataBridge = null;
     localLibraryClient.metadataServerUrl = ServerMetadataProvider.defaultOfficialMetadataUrl;
     localLibraryClient.metadataAccessToken = null;
-    if (hadCloud) {
+    if (hadCloud && !sessionController.isOffline) {
       unawaited(clearCloudProjectionData().catchError((Object e) {
         appLogger.d('Ignoring cloud projection cleanup error: $e');
       }));
@@ -750,6 +764,7 @@ class TtplaySessionBinder extends ChangeNotifier {
     _boundSessionKey = null;
     _lastExternalRefreshError = null;
     _iptvProvider?.setCloudSources(const []);
+    unawaited(_iptvProvider?.setSessionScope(isSelfHosted: false));
     serverManager.clearSelfHostedServers();
     if (!primaryRegistered) {
       staleApi?.close();

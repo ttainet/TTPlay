@@ -87,7 +87,6 @@ import 'library/local_library_client.dart';
 import 'library/library_scan_service.dart';
 import 'library/library_scanner.dart';
 import 'library/scrapers/tmdb_provider.dart';
-import 'library/scrapers/server_metadata_provider.dart';
 import 'library/local_workspace_archive.dart';
 import 'services/companion_remote/lan_identity_store.dart';
 import 'services/companion_remote/lan_pairing_service.dart';
@@ -1660,7 +1659,7 @@ class _MainAppState extends State<MainApp> with WidgetsBindingObserver {
         if (_appSessionController.isSelfHosted && session != null && session.serverUrl.trim().isNotEmpty) {
           return (serverUrl: session.serverUrl, accessToken: session.accessToken, isOfficial: false);
         }
-        return (serverUrl: ServerMetadataProvider.defaultOfficialMetadataUrl, accessToken: null, isOfficial: true);
+        return null;
       },
       onImageBaseUpdated: (imageBase) {
         final trimmed = imageBase.trim();
@@ -1686,6 +1685,7 @@ class _MainAppState extends State<MainApp> with WidgetsBindingObserver {
       scanner: LibraryScanner(_appDatabase, _libraryRepository),
       mounts: _mountManager,
       scrape: _libraryScrapeRunner.scrapePending,
+      isLocalLibraryWritable: () => !_appSessionController.isSelfHosted,
     );
     _mountManager.onReachabilityChanged = _libraryScanService.notifyLibraryChanged;
 
@@ -1764,7 +1764,9 @@ class _MainAppState extends State<MainApp> with WidgetsBindingObserver {
       if (widget.enableBackgroundSyncServices) {
         _mountManager.startReachabilityMonitor();
         unawaited(_mountManager.proxy.start());
-        unawaited(_libraryScrapeRunner.checkMetadataServerConnection().then<void>((_) {}, onError: (_) {}));
+        if (_appSessionController.isSelfHosted) {
+          unawaited(_libraryScrapeRunner.checkMetadataServerConnection().then<void>((_) {}, onError: (_) {}));
+        }
         unawaited(_appSessionController.initialize());
         unawaited(_lanPairingService.start());
       }
@@ -1795,7 +1797,7 @@ class _MainAppState extends State<MainApp> with WidgetsBindingObserver {
             }().catchError((Object e) => appLogger.w('Preparing the local library failed: $e')),
           );
         }
-        if (bootstrap.shouldGuideToMounts) {
+        if (bootstrap.shouldGuideToMounts && bootstrap.loginMode != AppLoginMode.selfHosted) {
           final navigator = rootNavigatorKey.currentState;
           if (navigator != null) {
             unawaited(navigator.push(MaterialPageRoute<void>(builder: (_) => const MountsScreen())));
@@ -2213,6 +2215,7 @@ class _MainAppState extends State<MainApp> with WidgetsBindingObserver {
               profileConnections: context.read<ProfileConnectionRegistry>(),
               serverManager: _serverManager,
               multiServerProvider: context.read<MultiServerProvider>(),
+              suppressProfileConnections: () => _appSessionController.isSelfHosted,
               shouldDeferInitialBind: (profile) async {
                 // A launch link that names another profile replaces this bind.
                 final linkProfileId = DeepLinkService.instance.startupProfileId;
@@ -2224,7 +2227,7 @@ class _MainAppState extends State<MainApp> with WidgetsBindingObserver {
             final bootstrap = widget.sessionBootstrap;
             if (bootstrap != null &&
                 bootstrap.isReadyForHome &&
-                bootstrap.initialConnections.isEmpty &&
+                (bootstrap.loginMode == AppLoginMode.selfHosted || bootstrap.initialConnections.isEmpty) &&
                 !bootstrap.requiresProfilePrompt) {
               binder.primeLocalOnlyStartup(notify: false);
             }

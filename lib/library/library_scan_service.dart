@@ -103,10 +103,14 @@ class LibraryScanService extends ChangeNotifier {
     this.onLibraryChanged,
     this.onCatalogChanged,
     this.onScopedCatalogChanged,
+    this.isLocalLibraryWritable,
   }) : _libraryScanner = scanner,
        _mountManager = mounts;
 
   final LibraryScrapeFunction? scrape;
+  final bool Function()? isLocalLibraryWritable;
+
+  bool get _canWriteLocalLibrary => isLocalLibraryWritable?.call() ?? true;
 
   /// Called when a scan or scrape changed what the library holds.
   void Function()? onLibraryChanged;
@@ -205,7 +209,12 @@ class LibraryScanService extends ChangeNotifier {
     bool force = false,
     Set<String>? allowedMountIds,
   }) async {
-    if (_disposed || _checkingAutomatic || _update != null || _running.isNotEmpty || !canRun()) {
+    if (_disposed ||
+        !_canWriteLocalLibrary ||
+        _checkingAutomatic ||
+        _update != null ||
+        _running.isNotEmpty ||
+        !canRun()) {
       return automaticInterval;
     }
     final now = clock.now();
@@ -253,7 +262,7 @@ class LibraryScanService extends ChangeNotifier {
     required bool Function() canRun,
     Duration cooldown = manualIncrementalCooldown,
   }) async {
-    if (_disposed || !canRun()) {
+    if (_disposed || !_canWriteLocalLibrary || !canRun()) {
       return (triggered: false, onCooldown: false, remaining: null);
     }
     if (_checkingAutomatic || _update != null || _running.isNotEmpty) {
@@ -275,7 +284,7 @@ class LibraryScanService extends ChangeNotifier {
   /// Clears scanned local library entries/metadata (preserving mounts and watch
   /// history) and starts a full rescan across all mounted sources.
   Future<bool> rebuildAllMounts() async {
-    if (_disposed || _update != null || _running.isNotEmpty) return false;
+    if (_disposed || !_canWriteLocalLibrary || _update != null || _running.isNotEmpty) return false;
     await repository.clearScannedCatalog();
     if (_disposed) return false;
     _lastManualIncrementalAt = null;
@@ -284,6 +293,7 @@ class LibraryScanService extends ChangeNotifier {
   }
 
   Future<bool> scanAllMounts() async {
+    if (_disposed || !_canWriteLocalLibrary) return false;
     final mounts = (await _mountManager.registry.list())
         .where((m) => !CloudMountMirror.isCloudMountId(m.id))
         .toList(growable: false);
@@ -306,7 +316,7 @@ class LibraryScanService extends ChangeNotifier {
       running.cancel.cancel();
       await running._finished.future;
     }
-    if (_disposed || _update != null || _running.isNotEmpty || mounts.isEmpty) return false;
+    if (_disposed || !_canWriteLocalLibrary || _update != null || _running.isNotEmpty || mounts.isEmpty) return false;
     final job = _update = LibraryUpdate(mode, mounts.map((mount) => mount.id).toSet())
       .._refreshWhenFinished = refreshWhenFinished
       ..scanning = true;
@@ -465,7 +475,7 @@ class LibraryScanService extends ChangeNotifier {
       running.cancel.cancel();
       await running._finished.future;
     }
-    if (_disposed) return null;
+    if (_disposed || !_canWriteLocalLibrary) return null;
     if (!canScan(mount.id)) return null;
     if (!_mountManager.isMountOnline(mount.id)) {
       final probed = await _mountManager.probeMount(mount);
@@ -497,7 +507,7 @@ class LibraryScanService extends ChangeNotifier {
   /// Refreshes the directories holding episodes of [itemId] (a show or season)
   /// on online mounts, scraping any newly discovered episodes immediately.
   Future<bool> refreshShowDirectories(int itemId, {Duration cooldown = const Duration(seconds: 15)}) async {
-    if (_disposed || _update != null) return false;
+    if (_disposed || !_canWriteLocalLibrary || _update != null) return false;
     final now = clock.now();
     final previous = _lastShowJitRefresh[itemId];
     if (previous != null && now.difference(previous) < cooldown) return false;
@@ -663,6 +673,7 @@ class LibraryScanService extends ChangeNotifier {
   /// names already stored, without listing any mount, then looks up what
   /// moved. Returns how many files moved.
   Future<int> refileAll() async {
+    if (_disposed || !_canWriteLocalLibrary) return 0;
     var moved = 0;
     for (final mount in await _mountManager.registry.list()) {
       if (CloudMountMirror.isCloudMountId(mount.id)) continue;
@@ -721,7 +732,7 @@ class LibraryScanService extends ChangeNotifier {
   /// [restart] stops a run that is going after its current title and starts
   /// over at once, for when the settings it was started with changed.
   Future<void> scrapeLibrary({bool retryUnmatched = false, bool restart = false, bool allowKindChange = true}) {
-    if (_disposed || scrape == null) return Future.value();
+    if (_disposed || !_canWriteLocalLibrary || scrape == null) return Future.value();
     final job = _update;
     if (job != null) {
       if (job.scanning && job._triggerManualScrape != null) {

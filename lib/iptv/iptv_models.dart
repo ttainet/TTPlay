@@ -90,6 +90,35 @@ class IptvStreamVariant {
     this.label,
     required this.sourceId,
   });
+
+  Map<String, dynamic> toJson({String? parentSourceId}) => {
+    'url': url,
+    if (headers.isNotEmpty) 'headers': headers,
+    if (label != null && label!.trim().isNotEmpty) 'label': label!.trim(),
+    if (sourceId.isNotEmpty && sourceId != parentSourceId) 'source_id': sourceId,
+  };
+
+  factory IptvStreamVariant.fromJson(Map<String, dynamic> json, {required String fallbackSourceId}) {
+    final rawHeaders = json['headers'];
+    final headers = <String, String>{};
+    if (rawHeaders is Map) {
+      for (final entry in rawHeaders.entries) {
+        final key = entry.key?.toString().trim() ?? '';
+        final value = entry.value?.toString() ?? '';
+        if (key.isNotEmpty) {
+          headers[key] = value;
+        }
+      }
+    }
+    final rawLabel = (json['label'] as String?)?.trim();
+    final rawSourceId = (json['source_id'] as String?)?.trim();
+    return IptvStreamVariant(
+      url: (json['url'] as String? ?? '').trim(),
+      headers: headers.isEmpty ? const {} : Map<String, String>.unmodifiable(headers),
+      label: (rawLabel == null || rawLabel.isEmpty) ? null : rawLabel,
+      sourceId: (rawSourceId == null || rawSourceId.isEmpty) ? fallbackSourceId : rawSourceId,
+    );
+  }
 }
 
 /// An IPTV channel parsed from an M3U/TXT playlist, merging identical `(group, name)` entries into [variants].
@@ -115,6 +144,53 @@ class IptvChannel {
   });
 
   String get favoriteKey => '${group.trim().toLowerCase()}\u0000${name.trim().toLowerCase()}';
+
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'source_id': sourceId,
+    'name': name,
+    'group': group,
+    if (tvgId != null && tvgId!.isNotEmpty) 'tvg_id': tvgId,
+    if (tvgName != null && tvgName!.isNotEmpty) 'tvg_name': tvgName,
+    if (logo != null && logo!.isNotEmpty) 'logo': logo,
+    'variants': [for (final v in variants) v.toJson(parentSourceId: sourceId)],
+  };
+
+  factory IptvChannel.fromJson(Map<String, dynamic> json, {required String fallbackSourceId}) {
+    String? opt(String key) {
+      final raw = (json[key] as String?)?.trim();
+      return (raw == null || raw.isEmpty) ? null : raw;
+    }
+
+    final resolvedSourceId = opt('source_id') ?? fallbackSourceId;
+    final rawGroup = (json['group'] as String? ?? '').trim();
+    final rawVariants = json['variants'];
+    final variants = <IptvStreamVariant>[];
+    if (rawVariants is List) {
+      for (final entry in rawVariants) {
+        if (entry is Map) {
+          final parsed = IptvStreamVariant.fromJson(
+            Map<String, dynamic>.from(entry),
+            fallbackSourceId: resolvedSourceId,
+          );
+          if (parsed.url.isNotEmpty) {
+            variants.add(parsed);
+          }
+        }
+      }
+    }
+
+    return IptvChannel(
+      id: (json['id'] as String? ?? '').trim(),
+      sourceId: resolvedSourceId,
+      name: (json['name'] as String? ?? '').trim(),
+      group: rawGroup.isEmpty ? '未分组' : rawGroup,
+      tvgId: opt('tvg_id'),
+      tvgName: opt('tvg_name'),
+      logo: opt('logo'),
+      variants: List<IptvStreamVariant>.unmodifiable(variants),
+    );
+  }
 
   IptvChannel copyWith({
     String? tvgId,

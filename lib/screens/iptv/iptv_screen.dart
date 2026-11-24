@@ -38,6 +38,7 @@ class _IptvScreenState extends State<IptvScreen> with FocusableTab, ManualRefres
   static const String _allGroupKey = '__iptv_all__';
   static const String _favoritesGroupKey = '__iptv_favorites__';
   static final DateFormat _epgTimeFmt = DateFormat('HH:mm');
+  static final DateFormat _cacheTimeFmt = DateFormat('MM-dd HH:mm');
 
   final GlobalKey<FocusableActionBarState> _actionBarKey = GlobalKey();
   final FocusNode _firstContentFocusNode = FocusNode(debugLabel: 'iptv_first_content');
@@ -372,9 +373,13 @@ class _IptvScreenState extends State<IptvScreen> with FocusableTab, ManualRefres
             ? EmptyStateWidget(
                 icon: Symbols.live_tv_rounded,
                 message: '暂无 IPTV 直播源',
-                subtitle: '添加 M3U / M3U8 / TXT 订阅后即可在此浏览分组与观看直播',
+                subtitle: provider.isCloudMode && PlatformDetector.isTV()
+                    ? '请在手机或电脑端添加 IPTV 直播源，添加后将自动同步到此设备'
+                    : '添加 M3U / M3U8 / TXT 订阅后即可在此浏览分组与观看直播',
                 actionLabel: '管理 IPTV 源',
-                actionIcon: Symbols.add_rounded,
+                actionIcon: provider.isCloudMode && PlatformDetector.isTV()
+                    ? Symbols.sync_rounded
+                    : Symbols.add_rounded,
                 actionFocusNode: _firstContentFocusNode,
                 onActionNavigateLeft: _focusSidebar,
                 onActionNavigateUp: () => _focusAppBar(hasSourceChips: hasSourceChips),
@@ -495,11 +500,50 @@ class _IptvScreenState extends State<IptvScreen> with FocusableTab, ManualRefres
     ];
 
     final epg = provider.epgFor(activeSource.id);
+    final cachedAt = provider.cachedAtFor(activeSource.id);
     final scheme = Theme.of(context).colorScheme;
 
     return Column(
       children: [
         if (isLoading) const LinearProgressIndicator(minHeight: 2),
+        if (error != null && !isLoading)
+          ExcludeFocus(
+            child: Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              decoration: BoxDecoration(
+                color: scheme.surfaceContainerHighest.withValues(alpha: 0.55),
+                border: Border(bottom: BorderSide(color: scheme.outlineVariant.withValues(alpha: 0.45))),
+              ),
+              child: Row(
+                children: [
+                  AppIcon(Symbols.cloud_off_rounded, size: 16, color: scheme.onSurfaceVariant),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      cachedAt != null
+                          ? '订阅刷新失败，当前显示本地缓存（${_cacheTimeFmt.format(cachedAt)}）'
+                          : '订阅刷新失败，当前显示本地缓存',
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(color: scheme.onSurfaceVariant),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  TextButton(
+                    style: TextButton.styleFrom(
+                      visualDensity: VisualDensity.compact,
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                      minimumSize: Size.zero,
+                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    ),
+                    onPressed: manualRefresh,
+                    child: const Text('重试'),
+                  ),
+                ],
+              ),
+            ),
+          ),
         Expanded(
           child: LayoutBuilder(
             builder: (context, constraints) {

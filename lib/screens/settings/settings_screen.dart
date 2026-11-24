@@ -49,13 +49,17 @@ import '../../widgets/settings_section.dart';
 import '../../widgets/system_bottom_inset.dart';
 import 'about_screen.dart';
 import 'account_preferences_screen.dart';
+import 'add_connection_screen.dart';
 import 'appearance_settings_screen.dart';
 import 'general_settings_screen.dart';
 import 'keyboard_shortcuts_screen.dart';
 import '../../connection/connection_registry.dart';
 import '../../connection/connection.dart';
+import '../../profiles/active_profile_provider.dart';
+import '../../profiles/profile.dart';
 import '../iptv/iptv_sources_screen.dart';
 import '../library_admin/cloud_unmatched_screen.dart';
+import '../profile/profile_detail_screen.dart';
 import '../sources/cloud_sources_screen.dart';
 import '../storage/lan_devices_screen.dart';
 import '../storage/mounts_screen.dart';
@@ -118,6 +122,7 @@ class _SettingsScreenState extends State<SettingsScreen> with FocusableTab, Moun
   static const _kAutoHidePerformanceOverlay = 'auto_hide_performance_overlay';
   static const _kViewLogs = 'view_logs';
   static const _kStorageMounts = 'storage_mounts';
+  static const _kMediaBrowserSources = 'media_browser_sources';
   static const _kIptvSources = 'iptv_sources';
   static const _kScraperSettings = 'scraper_settings';
 
@@ -217,6 +222,7 @@ class _SettingsScreenState extends State<SettingsScreen> with FocusableTab, Moun
   Widget _buildContent(BuildContext sheetContext, {required bool hasLibraries}) {
     final appSession = maybeWatchAppSession(sheetContext);
     final ttplayBinder = maybeWatchTtplayBinder(sheetContext);
+    final isSelfHosted = appSession?.isSelfHosted == true;
     final showSelfHostedAdmin = canUseTtplayAdmin(session: appSession, binder: ttplayBinder);
 
     return Scaffold(
@@ -244,30 +250,33 @@ class _SettingsScreenState extends State<SettingsScreen> with FocusableTab, Moun
                       _buildAppearanceTile(),
                       _buildPlaybackTile(),
                       if (hasLibraries) _buildManageLibrariesTile(sheetContext),
-                      if (_hasServerConnections) _buildServicesTile(),
+                      if (!isSelfHosted && _hasServerConnections) _buildServicesTile(),
                     ],
                   ),
 
-                  _buildMediaSourcesSection(),
-
-                  if (showSelfHostedAdmin) _buildSelfHostedAdminSection(),
-                  const SizedBox(height: 16),
-                  SettingsGroup(
-                    children: [
-                      SettingNavigationTile(
-                        focusNode: _focusTracker.get(_kScraperSettings),
-                        icon: Symbols.travel_explore_rounded,
-                        title: t.storage.scraperSettings,
-                        subtitle: t.storage.scraperSettingsDescription,
-                        destinationBuilder: (_) => const ScraperSettingsScreen(),
-                      ),
-                    ],
-                  ),
+                  if (!isSelfHosted) ...[
+                    _buildMediaSourcesSection(sheetContext),
+                    const SizedBox(height: 16),
+                    SettingsGroup(
+                      children: [
+                        SettingNavigationTile(
+                          focusNode: _focusTracker.get(_kScraperSettings),
+                          icon: Symbols.travel_explore_rounded,
+                          title: t.storage.scraperSettings,
+                          subtitle: t.storage.scraperSettingsDescription,
+                          destinationBuilder: (_) => const ScraperSettingsScreen(),
+                        ),
+                      ],
+                    ),
+                  ] else if (showSelfHostedAdmin)
+                    _buildSelfHostedAdminSection()
+                  else
+                    _buildSyncTvMediaSourcesSection(),
 
                   SettingsGroup(title: t.companionRemote.title, children: [_buildLanDevicesTile()]),
 
                   // Server connections only matter to installs that still have some.
-                  if (_hasServerConnections) _buildConnectionsSection(sheetContext),
+                  if (!isSelfHosted && _hasServerConnections) _buildConnectionsSection(sheetContext),
 
                   if (!PlatformDetector.isAppleTV()) _buildDownloadsSection(),
 
@@ -405,8 +414,15 @@ class _SettingsScreenState extends State<SettingsScreen> with FocusableTab, Moun
         SettingNavigationTile(
           icon: Symbols.cloud_sync_rounded,
           title: '云端媒体源',
-          subtitle: '管理跨端加密同步的夸克网盘 / WebDAV / SMB / Emby / Jellyfin',
+          subtitle: '管理跨端加密同步的夸克网盘 / WebDAV / SMB / Emby / Jellyfin / IPTV',
           destinationBuilder: (_) => const CloudSourcesScreen(),
+        ),
+        SettingNavigationTile(
+          focusNode: _focusTracker.get(_kIptvSources),
+          icon: Symbols.live_tv_rounded,
+          title: 'IPTV 直播源',
+          subtitle: '查看与管理云端同步的 IPTV 直播源和 EPG 节目单',
+          destinationBuilder: (_) => const IptvSourcesScreen(),
         ),
         SettingNavigationTile(
           icon: Symbols.help_center_rounded,
@@ -418,7 +434,22 @@ class _SettingsScreenState extends State<SettingsScreen> with FocusableTab, Moun
     );
   }
 
-  Widget _buildMediaSourcesSection() {
+  Widget _buildSyncTvMediaSourcesSection() {
+    return SettingsGroup(
+      title: t.storage.mediaSources,
+      children: [
+        SettingNavigationTile(
+          focusNode: _focusTracker.get(_kIptvSources),
+          icon: Symbols.live_tv_rounded,
+          title: 'IPTV 直播源',
+          subtitle: '查看与刷新已同步的 IPTV 直播源',
+          destinationBuilder: (_) => const IptvSourcesScreen(),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildMediaSourcesSection(BuildContext context) {
     return SettingsGroup(
       title: t.storage.mediaSources,
       children: [
@@ -427,13 +458,31 @@ class _SettingsScreenState extends State<SettingsScreen> with FocusableTab, Moun
           icon: Symbols.folder_rounded,
           title: t.storage.title,
           subtitle: t.storage.description,
-          destinationBuilder: (context) => const MountsScreen(),
+          destinationBuilder: (_) => const MountsScreen(),
+        ),
+        SettingNavigationTile(
+          focusNode: _focusTracker.get(_kMediaBrowserSources),
+          icon: Symbols.dns_rounded,
+          title: 'Emby / Jellyfin',
+          subtitle: '管理本地连接的 Emby / Jellyfin 媒体服务器',
+          destinationBuilder: (ctx) {
+            Profile? activeProfile;
+            try {
+              activeProfile = Provider.of<ActiveProfileProvider?>(ctx, listen: false)?.active;
+            } on ProviderNotFoundException {
+              activeProfile = null;
+            }
+            if (activeProfile != null) {
+              return ProfileDetailScreen(profile: activeProfile, mediaSourcesOnly: true);
+            }
+            return const AddConnectionScreen(mediaBrowserOnly: true);
+          },
         ),
         SettingNavigationTile(
           focusNode: _focusTracker.get(_kIptvSources),
           icon: Symbols.live_tv_rounded,
           title: 'IPTV 直播源',
-          subtitle: '管理本地与云端 M3U / TXT 直播源和 EPG 节目单',
+          subtitle: '管理本地 M3U / TXT 直播源和 EPG 节目单',
           destinationBuilder: (_) => const IptvSourcesScreen(),
         ),
       ],

@@ -7,10 +7,15 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:http/http.dart' as http;
+import 'package:http/testing.dart';
 import 'package:path_provider_platform_interface/path_provider_platform_interface.dart';
+import 'package:ttplay/connection/connection.dart';
 import 'package:ttplay/connection/connection_registry.dart';
 import 'package:ttplay/database/app_database.dart';
 import 'package:ttplay/i18n/strings.g.dart';
+import 'package:ttplay/library/library_repository.dart';
+import 'package:ttplay/library/local_library_client.dart';
 import 'package:ttplay/media/media_backend.dart';
 import 'package:ttplay/media/media_kind.dart';
 import 'package:ttplay/media/media_library.dart';
@@ -27,17 +32,24 @@ import 'package:ttplay/providers/theme_provider.dart';
 import 'package:ttplay/providers/trackers_provider.dart';
 import 'package:ttplay/screens/settings/settings_screen.dart';
 import 'package:ttplay/services/background_work_diagnostics_service.dart';
+import 'package:ttplay/services/credential_vault.dart';
 import 'package:ttplay/services/donation_service.dart';
 import 'package:ttplay/services/download_storage_service.dart';
 import 'package:ttplay/services/download_manager_service.dart';
 import 'package:ttplay/services/file_picker_service.dart';
+import 'package:ttplay/services/multi_server_manager.dart';
 import 'package:ttplay/services/settings_export_service.dart';
 import 'package:ttplay/services/settings_service.dart';
 import 'package:ttplay/services/storage_service.dart';
 import 'package:ttplay/services/supporter/supporter_mode.dart';
 import 'package:ttplay/services/supporter/supporter_service.dart';
 import 'package:ttplay/services/update_service.dart';
+import 'package:ttplay/session/app_session_controller.dart';
+import 'package:ttplay/session/app_session_models.dart';
+import 'package:ttplay/storage/mount_manager.dart';
+import 'package:ttplay/storage/mount_registry.dart';
 import 'package:ttplay/theme/mono_theme.dart';
+import 'package:ttplay/ttplay/ttplay_session_binder.dart';
 import 'package:ttplay/utils/platform_detector.dart';
 import 'package:ttplay/widgets/app_icon.dart';
 import 'package:ttplay/widgets/dialog_action_button.dart';
@@ -46,6 +58,7 @@ import 'package:ttplay/widgets/loading_indicator_box.dart';
 import 'package:ttplay/widgets/setting_tile.dart';
 import 'package:provider/provider.dart';
 
+import '../../test_helpers/backend_client_fixtures.dart';
 import '../../test_helpers/io_fakes.dart';
 import '../../test_helpers/prefs.dart';
 
@@ -63,6 +76,7 @@ void main() {
 
   setUp(() async {
     resetSharedPreferencesForTest();
+    CredentialVault.resetKeyForTesting();
     SettingsService.resetForTesting();
     DownloadStorageService.resetForTesting();
     temporaryDirectory = await Directory.systemTemp.createTemp('plezy_settings_screen_test_');
@@ -585,6 +599,159 @@ void main() {
     expect(find.text(t.sync.scanQrTileTitle), findsNothing);
     expect(find.text(t.sync.title), findsNothing);
   });
+
+  testWidgets('Offline mode SettingsScreen exposes local mounts, Emby/Jellyfin, IPTV, and local scraper settings', (
+    tester,
+  ) async {
+    final sessionDb = AppDatabase.forTesting(NativeDatabase.memory());
+    final mounts = MountManager(MountRegistry(sessionDb));
+    final appSession = AppSessionController(db: sessionDb, mountManager: mounts);
+    appSession.debugSetStateForTesting(mode: AppLoginMode.offline);
+
+    _SettingsHarness? harness;
+    try {
+      harness = await _pumpSettingsScreen(
+        tester,
+        database: sessionDb,
+        appSession: appSession,
+        seedConnection: testJellyfinConnection(machineId: 'jf-off', userId: 'u1'),
+      );
+
+      expect(find.text(t.storage.title), findsOneWidget);
+      expect(find.text('Emby / Jellyfin'), findsOneWidget);
+      expect(find.text('IPTV 直播源'), findsOneWidget);
+      expect(find.text(t.storage.scraperSettings), findsOneWidget);
+      expect(find.text(t.settings.services), findsOneWidget);
+      expect(find.text('云端媒体源'), findsNothing);
+      expect(find.text('云端待匹配中心'), findsNothing);
+    } finally {
+      if (harness != null) {
+        await harness.dispose(tester);
+      }
+      appSession.dispose();
+      await tester.runAsync(() async {
+        await mounts.dispose();
+        await sessionDb.close();
+      });
+    }
+  });
+
+  testWidgets('Sync mode SettingsScreen hides local mounts, local scraper, and local server settings', (tester) async {
+    final sessionDb = AppDatabase.forTesting(NativeDatabase.memory());
+    final mounts = MountManager(MountRegistry(sessionDb));
+    final repo = LibraryRepository(sessionDb);
+    final localClient = LocalLibraryClient(repository: repo, mounts: mounts);
+    final serverManager = MultiServerManager();
+    final appSession = AppSessionController(db: sessionDb, mountManager: mounts);
+    final session = SelfHostedSession(
+      serverUrl: 'http://123.57.195.60:20001',
+      username: 'alice',
+      accessToken: 'tok',
+      householdId: 'hh1',
+      memberId: 'm1',
+    );
+    appSession.debugSetStateForTesting(mode: AppLoginMode.selfHosted, selfHostedSession: session);
+    final binder = TtplaySessionBinder(
+      sessionController: appSession,
+      serverManager: serverManager,
+      localLibraryClient: localClient,
+      isTv: () => false,
+      httpClientFactory: () => MockClient((_) async => http.Response('{"code":0}', 200)),
+    );
+
+    _SettingsHarness? harness;
+    try {
+      binder.seedSelfHostedSynchronously(session);
+      binder.cloudProjectionEngine?.stopListeningEvents();
+
+      harness = await _pumpSettingsScreen(
+        tester,
+        database: sessionDb,
+        appSession: appSession,
+        ttplayBinder: binder,
+        seedConnection: testJellyfinConnection(machineId: 'jf-hidden', userId: 'u1'),
+      );
+
+      expect(find.text('云端媒体源'), findsOneWidget);
+      expect(find.text('IPTV 直播源'), findsOneWidget);
+      expect(find.text('云端待匹配中心'), findsOneWidget);
+      expect(find.text(t.storage.title), findsNothing);
+      expect(find.text('Emby / Jellyfin'), findsNothing);
+      expect(find.text(t.storage.scraperSettings), findsNothing);
+      expect(find.text(t.settings.services), findsNothing);
+    } finally {
+      if (harness != null) {
+        await harness.dispose(tester);
+      }
+      binder.dispose();
+      serverManager.dispose();
+      appSession.dispose();
+      await tester.runAsync(() async {
+        await mounts.dispose();
+        await sessionDb.close();
+      });
+    }
+  });
+
+  testWidgets('Sync mode SettingsScreen on TV shows read-only IPTV without local mounts or admin tiles', (
+    tester,
+  ) async {
+    TvDetectionService.debugSetAppleTVOverride(true);
+
+    final sessionDb = AppDatabase.forTesting(NativeDatabase.memory());
+    final mounts = MountManager(MountRegistry(sessionDb));
+    final repo = LibraryRepository(sessionDb);
+    final localClient = LocalLibraryClient(repository: repo, mounts: mounts);
+    final serverManager = MultiServerManager();
+    final appSession = AppSessionController(db: sessionDb, mountManager: mounts);
+    final session = SelfHostedSession(
+      serverUrl: 'http://123.57.195.60:20001',
+      username: 'alice',
+      accessToken: 'tok',
+      householdId: 'hh1',
+      memberId: 'm1',
+    );
+    appSession.debugSetStateForTesting(mode: AppLoginMode.selfHosted, selfHostedSession: session);
+    final binder = TtplaySessionBinder(
+      sessionController: appSession,
+      serverManager: serverManager,
+      localLibraryClient: localClient,
+      isTv: () => true,
+      httpClientFactory: () => MockClient((_) async => http.Response('{"code":0}', 200)),
+    );
+
+    _SettingsHarness? harness;
+    try {
+      binder.seedSelfHostedSynchronously(session);
+      binder.cloudProjectionEngine?.stopListeningEvents();
+
+      harness = await _pumpSettingsScreen(
+        tester,
+        database: sessionDb,
+        appSession: appSession,
+        ttplayBinder: binder,
+      );
+
+      expect(find.text('IPTV 直播源'), findsOneWidget);
+      expect(find.text('云端媒体源'), findsNothing);
+      expect(find.text('云端待匹配中心'), findsNothing);
+      expect(find.text(t.storage.title), findsNothing);
+      expect(find.text('Emby / Jellyfin'), findsNothing);
+      expect(find.text(t.storage.scraperSettings), findsNothing);
+    } finally {
+      if (harness != null) {
+        await harness.dispose(tester);
+      }
+      binder.dispose();
+      serverManager.dispose();
+      appSession.dispose();
+      await tester.runAsync(() async {
+        await mounts.dispose();
+        await sessionDb.close();
+      });
+      TvDetectionService.debugSetAppleTVOverride(false);
+    }
+  });
 }
 
 Finder _navigationTileFor(String title) =>
@@ -611,6 +778,7 @@ class _MigratedRow {
 class _SettingsHarness {
   _SettingsHarness({
     required this.database,
+    required this.ownsDatabase,
     required this.plexHome,
     required this.activeProfile,
     required this.libraries,
@@ -626,6 +794,7 @@ class _SettingsHarness {
   });
 
   final AppDatabase database;
+  final bool ownsDatabase;
   final PlexHomeService plexHome;
   final ActiveProfileProvider activeProfile;
   final LibrariesProvider libraries;
@@ -642,6 +811,7 @@ class _SettingsHarness {
   Future<void> dispose(WidgetTester tester) async {
     await tester.pumpWidget(const SizedBox.shrink());
     await tester.pump();
+    await tester.pump(Duration.zero);
     downloadProvider.dispose();
     downloadManager.dispose();
     hiddenLibraries.dispose();
@@ -652,7 +822,9 @@ class _SettingsHarness {
     activeProfile.dispose();
     accountPreferences.dispose();
     await plexHome.dispose();
-    await database.close();
+    if (ownsDatabase) {
+      await database.close();
+    }
     expect(trackerHttpClients, hasLength(6));
     expect(trackerHttpClients.toSet(), hasLength(6));
     for (final client in trackerHttpClients) {
@@ -671,16 +843,22 @@ Future<_SettingsHarness> _pumpSettingsScreen(
   List<MediaLibrary> initialLibraries = const [],
   Future<bool> Function(RequireWiFi requirement)? requireWiFiOverride,
   TargetPlatform platform = TargetPlatform.android,
+  AppDatabase? database,
+  AppSessionController? appSession,
+  TtplaySessionBinder? ttplayBinder,
+  Connection? seedConnection,
 }) async {
   tester.view.physicalSize = const Size(1800, 3200);
   tester.view.devicePixelRatio = 1;
   addTearDown(tester.view.resetPhysicalSize);
   addTearDown(tester.view.resetDevicePixelRatio);
 
-  final database = AppDatabase.forTesting(NativeDatabase.memory());
-  final connections = ConnectionRegistry(database);
-  final profileConnections = ProfileConnectionRegistry(database);
-  final profiles = ProfileRegistry(database);
+  final resolvedDatabase = database ?? AppDatabase.forTesting(NativeDatabase.memory());
+  final ConnectionRegistry connections = seedConnection != null
+      ? _FakeConnectionRegistry(resolvedDatabase, [seedConnection])
+      : ConnectionRegistry(resolvedDatabase);
+  final profileConnections = ProfileConnectionRegistry(resolvedDatabase);
+  final profiles = ProfileRegistry(resolvedDatabase);
   final plexHome = PlexHomeService(
     connections: connections,
     profileConnections: profileConnections,
@@ -716,7 +894,7 @@ Future<_SettingsHarness> _pumpSettingsScreen(
   await tester.runAsync(() => storageService.initialize(settingsService));
   final locationEvents = <String>[];
   final downloadManager = DownloadManagerService(
-    database: database,
+    database: resolvedDatabase,
     storageService: _WritableDownloadStorage(),
     clientResolver: (_, {clientScopeId}) => null,
     downloadsSupportedOverride: requireWiFiOverride != null,
@@ -737,9 +915,10 @@ Future<_SettingsHarness> _pumpSettingsScreen(
       locationEvents.add('refresh');
     },
   )..recoveryFuture = Future<void>.value();
-  final downloadProvider = DownloadProvider.forTesting(downloadManager: downloadManager, database: database);
+  final downloadProvider = DownloadProvider.forTesting(downloadManager: downloadManager, database: resolvedDatabase);
   final harness = _SettingsHarness(
-    database: database,
+    database: resolvedDatabase,
+    ownsDatabase: database == null,
     plexHome: plexHome,
     activeProfile: activeProfile,
     libraries: libraries,
@@ -758,6 +937,7 @@ Future<_SettingsHarness> _pumpSettingsScreen(
     TranslationProvider(
       child: MultiProvider(
         providers: [
+          if (seedConnection != null) Provider<ConnectionRegistry>.value(value: connections),
           ChangeNotifierProvider<ActiveProfileProvider>.value(value: activeProfile),
           ChangeNotifierProvider<LibrariesProvider>.value(value: libraries),
           ChangeNotifierProvider<HiddenLibrariesProvider>.value(value: hiddenLibraries),
@@ -766,6 +946,8 @@ Future<_SettingsHarness> _pumpSettingsScreen(
           ChangeNotifierProvider<SeerrAccountProvider>.value(value: seerr),
           ChangeNotifierProvider<DownloadProvider>.value(value: downloadProvider),
           ChangeNotifierProvider<AccountPreferencesController>.value(value: accountPreferences),
+          if (appSession != null) ChangeNotifierProvider<AppSessionController>.value(value: appSession),
+          if (ttplayBinder != null) ChangeNotifierProvider<TtplaySessionBinder>.value(value: ttplayBinder),
         ],
         child: MaterialApp(
           theme: monoTheme(MonoPalette.dark).copyWith(platform: platform),
@@ -829,6 +1011,18 @@ class _FakeHiddenLibrariesStorage implements StorageService {
 
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
+class _FakeConnectionRegistry extends ConnectionRegistry {
+  _FakeConnectionRegistry(super.db, this._connections);
+
+  final List<Connection> _connections;
+
+  @override
+  Stream<List<Connection>> watchConnections() => Stream<List<Connection>>.value(_connections);
+
+  @override
+  Future<List<Connection>> list() async => _connections;
 }
 
 class _FakeDirectoryPicker implements FilePickerDelegate {

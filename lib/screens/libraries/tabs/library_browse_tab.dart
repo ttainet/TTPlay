@@ -21,6 +21,7 @@ import '../../../library/library_scrape_runner.dart';
 import '../../../library/library_settings.dart';
 import '../../../library/local_library_client.dart';
 import '../../../ttplay/ttplay_server_client.dart';
+import '../../library_admin/cloud_unmatched_screen.dart';
 import '../../storage/scraper_settings_screen.dart';
 import '../../ttplay_admin/ttplay_admin_guard.dart';
 import '../../ttplay_admin/ttplay_scraper_settings_screen.dart';
@@ -1859,7 +1860,8 @@ class _LibraryBrowseTabState extends BaseLibraryTabState<MediaItem, LibraryBrows
                   height: _pendingHeaderHeight,
                   builder: (_) => _PendingScrapeHeader(
                     totalSize: totalSize,
-                    isSelfHosted: _isTtplayPendingLibrary,
+                    isSelfHosted:
+                        _isTtplayPendingLibrary || (maybeWatchAppSession(context)?.isSelfHosted == true),
                     primaryButtonFocusNode: _pendingPrimaryButtonFocusNode,
                     settingsButtonFocusNode: _pendingSettingsButtonFocusNode,
                     onRescrape: _triggerRescrape,
@@ -2415,6 +2417,12 @@ class _LibraryBrowseTabState extends BaseLibraryTabState<MediaItem, LibraryBrows
       }
       return;
     }
+    if (maybeReadAppSession(context)?.isSelfHosted == true) {
+      await maybeReadTtplayBinder(context)?.syncCloudProjection(full: false);
+      if (!mounted) return;
+      await performLiveLibraryRefresh();
+      return;
+    }
     final scans = Provider.of<LibraryScanService?>(context, listen: false);
     if (scans == null) return;
     await scans.scrapeLibrary(retryUnmatched: true);
@@ -2436,6 +2444,11 @@ class _LibraryBrowseTabState extends BaseLibraryTabState<MediaItem, LibraryBrows
     if (_isTtplayPendingLibrary) {
       if (PlatformDetector.isTV()) return;
       Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const TtplayScraperSettingsScreen()));
+      return;
+    }
+    if (maybeReadAppSession(context)?.isSelfHosted == true) {
+      if (PlatformDetector.isTV()) return;
+      Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const CloudUnmatchedScreen()));
       return;
     }
     Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const ScraperSettingsScreen()));

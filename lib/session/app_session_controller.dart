@@ -144,6 +144,8 @@ class AppSessionController extends ChangeNotifier {
 
       if (await _archive.hasArchive()) {
         await _archive.restoreSnapshot();
+      } else if (previousSession != null) {
+        await _archive.clearLocalLibraryTables();
       }
 
       await _store.saveOfflineMode();
@@ -419,12 +421,13 @@ class AppSessionController extends ChangeNotifier {
     await _cancelLocalActivity();
 
     // Archive offline local library before clearing, preserving any existing
-    // snapshot if we were already in self-hosted mode.
-    final shouldArchive = _mode == AppLoginMode.offline || await _archive.hasLocalLibraryData();
+    // snapshot if we are already in self-hosted mode or re-entering after logout.
+    final hasExistingArchive = await _archive.hasArchive();
+    final shouldArchive = _mode == AppLoginMode.offline || (!hasExistingArchive && await _archive.hasLocalLibraryData());
     if (shouldArchive) {
       await _archive.captureSnapshot();
-      await _archive.clearLocalLibraryTables();
     }
+    await _archive.clearLocalLibraryTables();
 
     await _store.saveSelfHostedSession(nextSession);
     _mode = AppLoginMode.selfHosted;
@@ -443,7 +446,11 @@ class AppSessionController extends ChangeNotifier {
     _setBusy(true, error: null);
     try {
       final previousSession = _selfHostedSession;
+      final wasSelfHosted = isSelfHosted;
       await _cancelLocalActivity();
+      if (wasSelfHosted) {
+        await _archive.clearLocalLibraryTables();
+      }
       await _store.clearMode();
       _mode = null;
       _selfHostedSession = null;

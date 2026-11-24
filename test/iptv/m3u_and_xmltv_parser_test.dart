@@ -111,7 +111,7 @@ CCTV1,https://a.example.com/1.m3u8
       SharedPreferences.setMockInitialValues({});
     });
 
-    test('persists local sources, merges cloud sources, toggles favorites, and loads playlist/EPG', () async {
+    test('persists local sources, isolates cloud sources by session scope, toggles favorites, and loads playlist/EPG', () async {
       const sampleM3u = '''
 #EXTM3U x-tvg-url="https://epg.example.com/e.xml"
 #EXTINF:-1 tvg-id="c1" group-title="央视",CCTV-1
@@ -147,12 +147,9 @@ https://live.example.com/cctv1.m3u8
         cloudSourceId: 'abc',
       );
       provider.setCloudSources([cloud]);
-      expect(provider.sources.map((s) => s.id).toList(), ['cloud:abc', 'local:1']);
-      expect(provider.activeSource?.id, 'cloud:abc');
-
-      provider.selectSource(local.id);
-      expect(provider.selectedSourceId, local.id);
-      expect(provider.activeSource?.id, local.id);
+      // Offline/local scope keeps cloud sources strictly isolated.
+      expect(provider.sources.map((s) => s.id).toList(), ['local:1']);
+      expect(provider.activeSource?.id, 'local:1');
 
       await provider.ensureLoaded(local);
       final channels = provider.channelsFor(local.id);
@@ -169,11 +166,23 @@ https://live.example.com/cctv1.m3u8
       expect(reloaded.localSources.single.m3uUrl, local.m3uUrl);
       expect(reloaded.isFavorite(channels.first), isTrue);
 
-      await provider.removeLocalSource(local.id);
-      expect(provider.selectedSourceId, isNull);
+      // Switching to Self-Hosted scope shows only cloud sources with isolated favorites.
+      await provider.setSessionScope(isSelfHosted: true, accountScopeKey: 'acct_test');
+      expect(provider.sources.map((s) => s.id).toList(), ['cloud:abc']);
       expect(provider.activeSource?.id, 'cloud:abc');
+      expect(provider.isFavorite(channels.first), isFalse);
 
       provider.setCloudSources(const []);
+      expect(provider.activeSource, isNull);
+      expect(provider.hasSources, isFalse);
+
+      // Switching back to Offline scope restores local sources & offline favorites.
+      await provider.setSessionScope(isSelfHosted: false);
+      expect(provider.sources.map((s) => s.id).toList(), ['local:1']);
+      expect(provider.isFavorite(channels.first), isTrue);
+
+      await provider.removeLocalSource(local.id);
+      expect(provider.selectedSourceId, isNull);
       expect(provider.activeSource, isNull);
       expect(provider.hasSources, isFalse);
     });

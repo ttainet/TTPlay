@@ -6,53 +6,162 @@ import 'package:provider/provider.dart';
 
 import '../../iptv/iptv_models.dart';
 import '../../iptv/iptv_provider.dart';
+import '../../library_cloud/cloud_api_client.dart';
 import '../../utils/dialogs.dart';
+import '../../utils/platform_detector.dart';
 import '../../utils/snackbar_helper.dart';
 import '../../widgets/app_icon.dart';
 import '../../widgets/desktop_app_bar.dart';
-import '../sources/cloud_sources_screen.dart';
 import '../ttplay_admin/ttplay_admin_guard.dart';
 
-/// Manages local IPTV M3U/TXT playlists and surfaces synced cloud IPTV sources.
-class IptvSourcesScreen extends StatelessWidget {
+/// Mode-isolated IPTV subscription management screen.
+///
+/// Offline mode manages local device sources; Self-Hosted Sync mode displays
+/// and (on PC/Mobile) edits encrypted cloud IPTV sources synced via the server.
+class IptvSourcesScreen extends StatefulWidget {
   const IptvSourcesScreen({super.key});
 
-  Future<void> _openLocalEditor(BuildContext context, {IptvSource? existing}) async {
+  @override
+  State<IptvSourcesScreen> createState() => _IptvSourcesScreenState();
+}
+
+class _IptvSourcesScreenState extends State<IptvSourcesScreen> {
+  bool _syncing = false;
+
+  static String _resolveCloudSourceId(IptvSource source) {
+    final explicit = source.cloudSourceId?.trim() ?? '';
+    if (explicit.isNotEmpty) return explicit;
+    if (source.id.startsWith('cloud:')) {
+      return source.id.substring('cloud:'.length);
+    }
+    return source.id;
+  }
+
+  static Map<String, dynamic> _buildCloudCredentialPayload(IptvSource source) => {
+    'm3u_url': source.m3uUrl,
+    if (source.epgUrl != null && source.epgUrl!.isNotEmpty) 'epg_url': source.epgUrl!,
+    if (source.userAgent != null && source.userAgent!.isNotEmpty) 'user_agent': source.userAgent!,
+    if (source.referer != null && source.referer!.isNotEmpty) 'referer': source.referer!,
+  };
+
+  static String _formatError(Object error) => error is CloudApiException ? error.message : '$error';
+
+  Future<void> _openEditor(BuildContext context, {required bool isCloud, IptvSource? existing}) async {
+    final provider = context.read<IptvProvider>();
+    final binder = maybeReadTtplayBinder(context);
+    final repo = binder?.cloudSourceRepository;
+
     final saved = await showScopedDialog<IptvSource>(
       context: context,
-      builder: (_) => _IptvSourceEditDialog(existing: existing),
+      builder: (_) => _IptvSourceEditDialog(
+        isCloud: isCloud,
+        provider: provider,
+        existing: existing,
+        onCommit: (candidate) async {
+          if (isCloud) {
+            if (repo == null || binder == null) {
+              throw StateError('同步服务未就绪，请重新登录后重试');
+            }
+            final payload = _buildCloudCredentialPayload(candidate);
+            final normalizedIdentity = 'iptv:${candidate.m3uUrl.toLowerCase()}';
+            String targetCloudId;
+            if (existing == null) {
+              final created = await repo.createSource(
+                kind: 'iptv',
+                name: candidate.name,
+                normalizedIdentity: normalizedIdentity,
+                credentialPayload: payload,
+              );
+              targetCloudId = created.id;
+            } else {
+              targetCloudId = _resolveCloudSourceId(existing);
+              final cred = await repo.fetchCredential(targetCloudId);
+              if (candidate.name != existing.name) {
+                await repo.renameSource(targetCloudId, candidate.name);
+              }
+              await repo.updateCredential(
+                sourceId: targetCloudId,
+                baseVersion: cred.version,
+                credentialPayload: payload,
+                mode: 'refresh',
+                normalizedIdentity: normalizedIdentity,
+              );
+            }
+            await binder.syncCloudProjection(full: true);
+            final synced = provider.cloudSources
+                .where((s) => s.cloudSourceId == targetCloudId || s.id == 'cloud:$targetCloudId')
+                .firstOrNull;
+            if (synced != null) {
+              unawaited(provider.ensureLoaded(synced, forceRefresh: true));
+            }
+            return;
+          }
+
+          if (existing == null) {
+            await provider.addLocalSource(candidate);
+          } else {
+            await provider.updateLocalSource(candidate);
+          }
+          unawaited(provider.ensureLoaded(candidate, forceRefresh: true));
+        },
+      ),
     );
     if (saved == null || !context.mounted) return;
 
-    final provider = context.read<IptvProvider>();
-    if (existing == null) {
-      await provider.addLocalSource(saved);
-    } else {
-      await provider.updateLocalSource(saved);
-    }
-    unawaited(provider.ensureLoaded(saved, forceRefresh: true));
-    if (!context.mounted) return;
-    final count = provider.channelsFor(saved.id).length;
     showSuccessSnackBar(
       context,
       existing == null
-          ? (count > 0 ? '已添加「${saved.name}」（$count 个频道）' : '已添加「${saved.name}」')
-          : '已更新「${saved.name}」',
+          ? (isCloud ? '已添加并同步「${saved.name}」' : '已添加「${saved.name}」')
+          : (isCloud ? '已更新并同步「${saved.name}」' : '已更新「${saved.name}」'),
     );
   }
 
-  Future<void> _confirmDelete(BuildContext context, IptvSource source) async {
+  Future<void> _confirmDelete(BuildContext context, IptvSource source, {required bool isCloud}) async {
     final ok = await showConfirmDialog(
       context,
       title: '删除 IPTV 直播源',
-      message: '确定要从本设备移除「${source.name}」吗？',
+      message: isCloud
+          ? '确定要从当前同步账号移除「${source.name}」吗？所有已登录设备将同步移除该直播源。'
+          : '确定要从本设备移除「${source.name}」吗？',
       confirmText: '删除',
       isDestructive: true,
     );
     if (!ok || !context.mounted) return;
-    await context.read<IptvProvider>().removeLocalSource(source.id);
-    if (!context.mounted) return;
-    showSuccessSnackBar(context, '已删除「${source.name}」');
+
+    final provider = context.read<IptvProvider>();
+    final binder = maybeReadTtplayBinder(context);
+    try {
+      if (isCloud) {
+        final repo = binder?.cloudSourceRepository;
+        if (repo == null || binder == null) {
+          throw StateError('同步服务未就绪，请重新登录后重试');
+        }
+        await repo.deleteSource(_resolveCloudSourceId(source));
+        await provider.clearSourceDiskCache(source.id);
+        await binder.syncCloudProjection(full: true);
+      } else {
+        await provider.removeLocalSource(source.id);
+      }
+      if (!context.mounted) return;
+      showSuccessSnackBar(context, '已删除「${source.name}」');
+    } catch (e) {
+      if (!context.mounted) return;
+      showErrorSnackBar(context, _formatError(e));
+    }
+  }
+
+  Future<void> _syncNow() async {
+    final binder = maybeReadTtplayBinder(context);
+    if (binder == null || _syncing) return;
+    setState(() => _syncing = true);
+    try {
+      await binder.syncCloudProjection(full: true);
+    } catch (e) {
+      if (!mounted) return;
+      showErrorSnackBar(context, _formatError(e));
+    } finally {
+      if (mounted) setState(() => _syncing = false);
+    }
   }
 
   @override
@@ -60,9 +169,11 @@ class IptvSourcesScreen extends StatelessWidget {
     final provider = context.watch<IptvProvider>();
     final appSession = maybeWatchAppSession(context);
     final ttplayBinder = maybeWatchTtplayBinder(context);
-    final showCloudShortcut = canUseTtplayAdmin(session: appSession, binder: ttplayBinder);
-    final cloudSources = provider.cloudSources;
-    final localSources = provider.localSources;
+    final isSelfHosted = (appSession?.isSelfHosted ?? false) || provider.isCloudMode;
+    final repo = ttplayBinder?.cloudSourceRepository;
+    final canManageCloud = isSelfHosted && !PlatformDetector.isTV() && repo != null;
+    final canAdd = !isSelfHosted || canManageCloud;
+    final sources = isSelfHosted ? provider.cloudSources : provider.localSources;
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
 
@@ -76,11 +187,12 @@ class IptvSourcesScreen extends StatelessWidget {
               title: const Text('IPTV 直播源'),
               pinned: true,
               actions: [
-                IconButton(
-                  tooltip: '添加本地 IPTV 源',
-                  icon: const AppIcon(Symbols.add_rounded),
-                  onPressed: () => _openLocalEditor(context),
-                ),
+                if (canAdd)
+                  IconButton(
+                    tooltip: '添加 IPTV 源',
+                    icon: const AppIcon(Symbols.add_rounded),
+                    onPressed: () => _openEditor(context, isCloud: isSelfHosted),
+                  ),
               ],
             ),
             SliverPadding(
@@ -92,115 +204,54 @@ class IptvSourcesScreen extends StatelessWidget {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-                        if (showCloudShortcut) ...[
-                          Card(
-                            color: scheme.secondaryContainer.withValues(alpha: 0.45),
-                            child: Padding(
-                              padding: const EdgeInsets.all(14),
-                              child: Row(
-                                children: [
-                                  AppIcon(Symbols.cloud_sync_rounded, color: scheme.primary),
-                                  const SizedBox(width: 12),
-                                  const Expanded(
-                                    child: Text(
-                                      '已登录自建后端：可在「云端媒体源」添加加密同步的 IPTV 订阅，也可在此添加仅保存在本机的本地直播源。',
-                                    ),
-                                  ),
-                                  const SizedBox(width: 12),
-                                  OutlinedButton(
-                                    onPressed: () {
-                                      Navigator.of(context).push(
-                                        MaterialPageRoute<void>(builder: (_) => const CloudSourcesScreen()),
-                                      );
-                                    },
-                                    child: const Text('云端媒体源'),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ),
-                          const SizedBox(height: 16),
-                        ],
-                        if (cloudSources.isNotEmpty) ...[
-                          Row(
-                            children: [
-                              Text('云端同步直播源', style: theme.textTheme.titleMedium),
-                              const Spacer(),
-                              if (showCloudShortcut)
-                                TextButton.icon(
-                                  onPressed: () {
-                                    Navigator.of(context).push(
-                                      MaterialPageRoute<void>(builder: (_) => const CloudSourcesScreen()),
-                                    );
-                                  },
-                                  icon: const AppIcon(Symbols.open_in_new_rounded, size: 16),
-                                  label: const Text('前往管理'),
-                                ),
-                            ],
-                          ),
-                          const SizedBox(height: 8),
-                          for (final src in cloudSources) ...[
-                            _SourceCard(
-                              source: src,
-                              channelCount: provider.channelsFor(src.id).length,
-                              isLoading: provider.isLoading(src.id),
-                              error: provider.errorFor(src.id),
-                              onRefresh: () => provider.ensureLoaded(src, forceRefresh: true),
-                            ),
-                            const SizedBox(height: 10),
-                          ],
-                          const SizedBox(height: 12),
-                        ],
-                        Row(
-                          children: [
-                            Text('本地直播源', style: theme.textTheme.titleMedium),
-                            const Spacer(),
-                            FilledButton.tonalIcon(
-                              onPressed: () => _openLocalEditor(context),
-                              icon: const AppIcon(Symbols.add_rounded, size: 18),
-                              label: const Text('添加本地源'),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 10),
-                        if (localSources.isEmpty)
-                          Card(
-                            child: Padding(
-                              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 28),
-                              child: Column(
-                                children: [
-                                  AppIcon(Symbols.live_tv_rounded, size: 48, color: scheme.onSurfaceVariant),
-                                  const SizedBox(height: 12),
-                                  Text('尚未添加本地 IPTV 订阅', style: theme.textTheme.titleSmall),
-                                  const SizedBox(height: 6),
-                                  Text(
-                                    '支持 M3U / M3U8 / TXT (#genre#) 直播源、多线路自动聚合、自定义 User-Agent / Referer 以及 XMLTV EPG 节目单，例如 akiralereal/iptv 导出的订阅链接。',
-                                    textAlign: TextAlign.center,
-                                    style: theme.textTheme.bodySmall?.copyWith(color: scheme.onSurfaceVariant),
-                                  ),
-                                  const SizedBox(height: 16),
-                                  FilledButton.icon(
-                                    onPressed: () => _openLocalEditor(context),
-                                    icon: const AppIcon(Symbols.add_rounded, size: 18),
-                                    label: const Text('添加第一个 IPTV 源'),
-                                  ),
-                                ],
-                              ),
-                            ),
+                        if (sources.isEmpty)
+                          _IptvEmptyCard(
+                            icon: isSelfHosted && !canManageCloud ? Symbols.cloud_sync_rounded : Symbols.live_tv_rounded,
+                            title: isSelfHosted && !canManageCloud ? '尚未同步 IPTV 直播源' : '尚未添加 IPTV 订阅',
+                            subtitle: isSelfHosted
+                                ? (canManageCloud
+                                      ? '添加的直播源将加密同步至当前账号下的所有设备，支持 M3U / M3U8 / TXT (#genre#) 与 XMLTV EPG。'
+                                      : '请在手机或电脑端登录同一账号添加 IPTV 订阅，TV 端将自动同步。')
+                                : '支持 M3U / M3U8 / TXT (#genre#) 直播源、多线路自动聚合、自定义 User-Agent / Referer 以及 XMLTV EPG 节目单。',
+                            actionLabel: isSelfHosted
+                                ? (canManageCloud
+                                      ? '添加 IPTV 源'
+                                      : (ttplayBinder != null ? (_syncing ? '同步中...' : '立即同步') : null))
+                                : '添加第一个 IPTV 源',
+                            actionIcon: isSelfHosted && !canManageCloud ? Symbols.sync_rounded : Symbols.add_rounded,
+                            onAction: isSelfHosted
+                                ? (canManageCloud
+                                      ? () => _openEditor(context, isCloud: true)
+                                      : (ttplayBinder != null && !_syncing ? _syncNow : null))
+                                : () => _openEditor(context, isCloud: false),
                           )
-                        else
-                          for (final src in localSources) ...[
+                        else ...[
+                          for (final src in sources) ...[
                             _SourceCard(
                               source: src,
                               channelCount: provider.channelsFor(src.id).length,
+                              isCached: provider.isUsingDiskCache(src.id),
                               isLoading: provider.isLoading(src.id),
                               error: provider.errorFor(src.id),
                               onRefresh: () => provider.ensureLoaded(src, forceRefresh: true),
-                              onEdit: () => _openLocalEditor(context, existing: src),
-                              onDelete: () => _confirmDelete(context, src),
+                              onEdit: (!isSelfHosted || canManageCloud)
+                                  ? () => _openEditor(context, isCloud: isSelfHosted, existing: src)
+                                  : null,
+                              onDelete: (!isSelfHosted || canManageCloud)
+                                  ? () => _confirmDelete(context, src, isCloud: isSelfHosted)
+                                  : null,
                             ),
                             const SizedBox(height: 10),
                           ],
+                          if (isSelfHosted && !canManageCloud) ...[
+                            const SizedBox(height: 6),
+                            Text(
+                              '直播源由同步服务器管理，请在手机或电脑端添加或编辑。',
+                              textAlign: TextAlign.center,
+                              style: theme.textTheme.bodySmall?.copyWith(color: scheme.onSurfaceVariant),
+                            ),
+                          ],
+                        ],
                       ],
                     ),
                   ),
@@ -214,9 +265,60 @@ class IptvSourcesScreen extends StatelessWidget {
   }
 }
 
+class _IptvEmptyCard extends StatelessWidget {
+  final IconData icon;
+  final String title;
+  final String subtitle;
+  final String? actionLabel;
+  final IconData actionIcon;
+  final VoidCallback? onAction;
+
+  const _IptvEmptyCard({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+    this.actionLabel,
+    required this.actionIcon,
+    this.onAction,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 28),
+        child: Column(
+          children: [
+            AppIcon(icon, size: 48, color: scheme.onSurfaceVariant),
+            const SizedBox(height: 12),
+            Text(title, style: theme.textTheme.titleSmall),
+            const SizedBox(height: 6),
+            Text(
+              subtitle,
+              textAlign: TextAlign.center,
+              style: theme.textTheme.bodySmall?.copyWith(color: scheme.onSurfaceVariant),
+            ),
+            if (actionLabel != null) ...[
+              const SizedBox(height: 16),
+              FilledButton.icon(
+                onPressed: onAction,
+                icon: AppIcon(actionIcon, size: 18),
+                label: Text(actionLabel!),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class _SourceCard extends StatelessWidget {
   final IptvSource source;
   final int channelCount;
+  final bool isCached;
   final bool isLoading;
   final String? error;
   final VoidCallback onRefresh;
@@ -226,6 +328,7 @@ class _SourceCard extends StatelessWidget {
   const _SourceCard({
     required this.source,
     required this.channelCount,
+    required this.isCached,
     required this.isLoading,
     required this.error,
     required this.onRefresh,
@@ -264,17 +367,17 @@ class _SourceCard extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Row(
+                  Wrap(
+                    spacing: 6,
+                    runSpacing: 4,
+                    crossAxisAlignment: WrapCrossAlignment.center,
                     children: [
-                      Flexible(
-                        child: Text(
-                          source.name,
-                          style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w600),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
+                      Text(
+                        source.name,
+                        style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w600),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                       ),
-                      const SizedBox(width: 8),
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                         decoration: BoxDecoration(
@@ -286,8 +389,7 @@ class _SourceCard extends StatelessWidget {
                           style: theme.textTheme.labelSmall,
                         ),
                       ),
-                      if (channelCount > 0) ...[
-                        const SizedBox(width: 6),
+                      if (channelCount > 0)
                         Container(
                           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                           decoration: BoxDecoration(
@@ -296,7 +398,15 @@ class _SourceCard extends StatelessWidget {
                           ),
                           child: Text('$channelCount 频道', style: theme.textTheme.labelSmall),
                         ),
-                      ],
+                      if (channelCount > 0 && isCached)
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: scheme.secondaryContainer.withValues(alpha: 0.7),
+                            borderRadius: BorderRadius.circular(999),
+                          ),
+                          child: Text('本地缓存', style: theme.textTheme.labelSmall),
+                        ),
                     ],
                   ),
                   const SizedBox(height: 4),
@@ -364,9 +474,17 @@ class _SourceCard extends StatelessWidget {
 }
 
 class _IptvSourceEditDialog extends StatefulWidget {
+  final bool isCloud;
+  final IptvProvider provider;
   final IptvSource? existing;
+  final Future<void> Function(IptvSource source)? onCommit;
 
-  const _IptvSourceEditDialog({this.existing});
+  const _IptvSourceEditDialog({
+    required this.isCloud,
+    required this.provider,
+    this.existing,
+    this.onCommit,
+  });
 
   @override
   State<_IptvSourceEditDialog> createState() => _IptvSourceEditDialogState();
@@ -423,10 +541,11 @@ class _IptvSourceEditDialogState extends State<_IptvSourceEditDialog> {
     final epgUrl = _epgCtrl.text.trim();
     final ua = _uaCtrl.text.trim();
     final referer = _refererCtrl.text.trim();
-    final id = widget.existing?.id ?? 'local:${DateTime.now().microsecondsSinceEpoch}';
+    final id = widget.existing?.id ??
+        (widget.isCloud ? 'cloud:pending' : 'local:${DateTime.now().microsecondsSinceEpoch}');
 
     try {
-      final parsed = await IptvProvider.fetchAndParsePlaylist(
+      final parsed = await widget.provider.parsePlaylist(
         m3uUrl,
         sourceId: id,
         userAgent: ua.isEmpty ? null : ua,
@@ -440,11 +559,21 @@ class _IptvSourceEditDialogState extends State<_IptvSourceEditDialog> {
         epgUrl: resolvedEpg,
         userAgent: ua.isEmpty ? null : ua,
         referer: referer.isEmpty ? null : referer,
-        isCloud: false,
+        isCloud: widget.isCloud,
+        cloudSourceId: widget.existing?.cloudSourceId,
       );
+      if (widget.onCommit != null) {
+        await widget.onCommit!(source);
+      }
       if (!mounted) return;
       Navigator.of(context).pop(source);
     } on FormatException catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _saving = false;
+        _error = e.message;
+      });
+    } on CloudApiException catch (e) {
       if (!mounted) return;
       setState(() {
         _saving = false;
@@ -463,8 +592,12 @@ class _IptvSourceEditDialogState extends State<_IptvSourceEditDialog> {
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     final isEditing = widget.existing != null;
+    final dialogTitle = widget.isCloud
+        ? (isEditing ? '编辑云端 IPTV 源' : '添加云端 IPTV 源')
+        : (isEditing ? '编辑 IPTV 源' : '添加 IPTV 源');
+
     return AlertDialog(
-      title: Text(isEditing ? '编辑本地 IPTV 源' : '添加本地 IPTV 源'),
+      title: Text(dialogTitle),
       content: SizedBox(
         width: 460,
         child: Form(
@@ -506,7 +639,10 @@ class _IptvSourceEditDialogState extends State<_IptvSourceEditDialog> {
                   validator: (v) {
                     final raw = (v ?? '').trim();
                     final uri = Uri.tryParse(raw);
-                    if (uri == null || !uri.hasScheme || uri.host.isEmpty || (uri.scheme != 'http' && uri.scheme != 'https')) {
+                    if (uri == null ||
+                        !uri.hasScheme ||
+                        uri.host.isEmpty ||
+                        (uri.scheme != 'http' && uri.scheme != 'https')) {
                       return '请输入有效的 http:// 或 https:// 地址';
                     }
                     return null;

@@ -12,8 +12,11 @@ import '../../library_cloud/cloud_mount_mirror.dart';
 import '../../storage/mount_manager.dart';
 import '../../storage/storage_mount.dart';
 import '../../storage/storage_path.dart';
+import '../../utils/platform_detector.dart';
 import '../../widgets/app_icon.dart';
 import '../../widgets/library_scan_controls.dart';
+import '../sources/cloud_sources_screen.dart';
+import '../ttplay_admin/ttplay_admin_guard.dart';
 import 'library_preview_screen.dart';
 import 'mount_edit_screen.dart';
 import 'quark_account_details.dart';
@@ -118,6 +121,48 @@ class MountsScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isSelfHosted = maybeWatchAppSession(context)?.isSelfHosted == true;
+    if (isSelfHosted) {
+      final theme = Theme.of(context);
+      final scheme = theme.colorScheme;
+      final canManageCloud = !PlatformDetector.isTV() && (maybeWatchTtplayBinder(context)?.cloudSourceRepository != null);
+      return Scaffold(
+        appBar: AppBar(title: Text(t.storage.title)),
+        body: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 440),
+            child: Padding(
+              padding: const EdgeInsets.all(24),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  AppIcon(Symbols.cloud_sync_rounded, size: 48, color: scheme.primary),
+                  const SizedBox(height: 16),
+                  Text(
+                    '当前处于同步模式，所有媒体源均由云端统一同步管理，不再混入本机独立媒体源。',
+                    textAlign: TextAlign.center,
+                    style: theme.textTheme.bodyMedium?.copyWith(color: scheme.onSurfaceVariant),
+                  ),
+                  if (canManageCloud) ...[
+                    const SizedBox(height: 20),
+                    FilledButton.icon(
+                      onPressed: () {
+                        Navigator.of(context).pushReplacement(
+                          MaterialPageRoute<void>(builder: (_) => const CloudSourcesScreen()),
+                        );
+                      },
+                      icon: const AppIcon(Symbols.open_in_new_rounded, size: 18),
+                      label: const Text('前往云端媒体源'),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+
     final manager = context.read<MountManager>();
     return Scaffold(
       appBar: AppBar(

@@ -281,4 +281,116 @@ void main() {
     expect(libraryChanges, 1);
     expect(catalogChanges, 1);
   });
+
+  group('offline standalone TMDB + Bangumi fallback', () {
+    Future<HttpServer> startFakeTmdbServer() async {
+      final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+      server.listen((request) async {
+        final path = request.uri.path;
+        Object? body;
+        if (path == '/3/configuration') {
+          body = const {
+            'images': {'secure_base_url': 'https://image.tmdb.org/t/p/'},
+          };
+        } else if (path == '/3/search/movie') {
+          final query = (request.uri.queryParameters['query'] ?? '').toLowerCase();
+          body = {
+            'results': query.contains('dune')
+                ? const [
+                    {
+                      'id': 438631,
+                      'title': '沙丘',
+                      'original_title': 'Dune',
+                      'release_date': '2021-09-15',
+                    },
+                  ]
+                : const <Object>[],
+          };
+        } else if (path == '/3/movie/438631') {
+          body = const {
+            'id': 438631,
+            'title': '沙丘',
+            'original_title': 'Dune',
+            'release_date': '2021-09-15',
+            'overview': 'Offline standalone TMDB overview.',
+            'tagline': 'Beyond fear.',
+            'vote_average': 8.0,
+            'runtime': 155,
+            'genres': [
+              {'id': 878, 'name': '科幻'},
+            ],
+            'production_companies': [
+              {'id': 1, 'name': 'Legendary Pictures'},
+            ],
+          };
+        }
+        request.response
+          ..statusCode = body == null ? HttpStatus.notFound : HttpStatus.ok
+          ..headers.contentType = ContentType.json
+          ..write(body == null ? '{}' : jsonEncode(body));
+        await request.response.close();
+      });
+      return server;
+    }
+
+    test('returns noTmdbKey when endpoint is null and no local TMDB key is set', () async {
+      final offlineRunner = LibraryScrapeRunner(
+        database: db,
+        repository: repo,
+        settings: store,
+        mounts: mounts,
+        resolveMetadataEndpoint: () async => null,
+      );
+      final offlineService = LibraryScanService(
+        repository: repo,
+        scanner: LibraryScanner(db, repo),
+        mounts: mounts,
+        scrape: offlineRunner.scrapePending,
+      );
+      addTearDown(offlineService.dispose);
+
+      await store.saveScraper(const ScraperSettings(tmdbApiKey: '', bangumiEnabled: false));
+      await offlineService.scrapeLibrary();
+
+      expect(offlineService.scrapeStatus.note, LibraryScrapeRunner.noTmdbKey);
+      expect((await dune()).libraryType, LibraryTypes.pending);
+    });
+
+    test('scrapes queued movie using standalone local TmdbProvider when endpoint is null', () async {
+      final tmdbServer = await startFakeTmdbServer();
+      addTearDown(() => tmdbServer.close(force: true));
+
+      String? discoveredImageBase;
+      final offlineRunner = LibraryScrapeRunner(
+        database: db,
+        repository: repo,
+        settings: store,
+        mounts: mounts,
+        resolveMetadataEndpoint: () async => null,
+        onImageBaseUpdated: (base) => discoveredImageBase = base,
+      );
+      final offlineService = LibraryScanService(
+        repository: repo,
+        scanner: LibraryScanner(db, repo),
+        mounts: mounts,
+        scrape: offlineRunner.scrapePending,
+      );
+      addTearDown(offlineService.dispose);
+
+      await store.saveScraper(
+        ScraperSettings(
+          tmdbApiKey: 'local-v3-key',
+          tmdbApiBase: 'http://127.0.0.1:${tmdbServer.port}/3',
+          tmdbImageBase: 'https://mirror.example.com/t/p',
+          bangumiEnabled: false,
+        ),
+      );
+      await offlineService.scrapeLibrary();
+
+      expect(offlineService.scrapeStatus.note, isNull);
+      expect(discoveredImageBase, 'https://mirror.example.com/t/p');
+      final movie = await dune();
+      expect((movie.title, movie.libraryType, movie.tmdbId), ('沙丘', LibraryTypes.movie, '438631'));
+    });
+  });
 }

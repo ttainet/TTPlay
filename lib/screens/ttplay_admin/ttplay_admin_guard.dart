@@ -25,6 +25,14 @@ AppSessionController? maybeWatchAppSession(BuildContext context) {
   }
 }
 
+AppSessionController? maybeReadAppSession(BuildContext context) {
+  try {
+    return context.read<AppSessionController?>();
+  } on ProviderNotFoundException {
+    return null;
+  }
+}
+
 TtplaySessionBinder? maybeWatchTtplayBinder(BuildContext context) {
   try {
     return context.watch<TtplaySessionBinder?>();

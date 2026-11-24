@@ -10,8 +10,11 @@ import 'library_repository.dart';
 import 'library_scan_service.dart';
 import 'library_scraper.dart';
 import 'library_settings.dart';
+import 'scrapers/bangumi_provider.dart';
 import 'scrapers/scraped_metadata.dart';
+import 'scrapers/scraper_http.dart';
 import 'scrapers/server_metadata_provider.dart';
+import 'scrapers/tmdb_provider.dart';
 
 typedef MetadataEndpointResolver = Future<({String serverUrl, String? accessToken, bool isOfficial})?> Function();
 
@@ -83,23 +86,46 @@ class LibraryScrapeRunner {
     }
   }
 
-  /// Runs [action] with a scraper backed by the official `media_server`
-  /// public metadata endpoint, closing HTTP clients on completion or cancel.
+  /// Runs [action] with a scraper backed by either the configured self-hosted
+  /// metadata server (Sync mode) or standalone local TMDB + Bangumi providers
+  /// (Offline mode), closing HTTP clients on completion or cancellation.
   Future<T> withScraper<T>(
     Future<T> Function(LibraryScraper scraper, ScraperSettings settings) action, {
     bool Function()? isCancelled,
   }) async {
     final current = await settings.loadScraper();
-    final endpoint = await resolveActiveMetadataEndpoint();
-    final providers = <MetadataProvider>[
-      ServerMetadataProvider(
-        serverUrl: endpoint.serverUrl,
-        source: 'all',
-        language: current.language,
-        accessToken: endpoint.accessToken,
-        onImageBaseDiscovered: onImageBaseUpdated,
-      ),
-    ];
+    final endpoint = resolveMetadataEndpoint == null ? null : await resolveMetadataEndpoint!();
+    final useServer = endpoint != null && endpoint.serverUrl.trim().isNotEmpty;
+    final List<MetadataProvider> providers;
+    if (useServer) {
+      providers = <MetadataProvider>[
+        ServerMetadataProvider(
+          serverUrl: endpoint.serverUrl,
+          source: 'all',
+          language: current.language,
+          accessToken: endpoint.accessToken,
+          onImageBaseDiscovered: onImageBaseUpdated,
+        ),
+      ];
+    } else {
+      onImageBaseUpdated?.call(
+        TmdbProvider.normalizeBase(current.tmdbImageBase, TmdbProvider.defaultImageBase, defaultPath: '/t/p'),
+      );
+      providers = <MetadataProvider>[
+        if (current.hasTmdb)
+          TmdbProvider(
+            apiKey: current.tmdbApiKey,
+            language: current.language,
+            apiBase: current.tmdbApiBase,
+            imageBase: current.tmdbImageBase,
+            http: ScraperHttp(proxy: current.proxy),
+          ),
+        if (current.bangumiEnabled)
+          BangumiProvider(
+            http: ScraperHttp(proxy: current.proxy, userAgent: 'ttplay-local-library/1.0 (anime metadata lookup)'),
+          ),
+      ];
+    }
 
     void closeAll() {
       for (final provider in providers) {
@@ -156,7 +182,9 @@ class LibraryScrapeRunner {
     int? refreshBeforeMs,
     bool Function()? isCancelled,
     void Function(int done, int total)? onProgress,
-  }) {
+  }) async {
+    final endpoint = resolveMetadataEndpoint == null ? null : await resolveMetadataEndpoint!();
+    final useServer = endpoint != null && endpoint.serverUrl.trim().isNotEmpty;
     return withScraper((scraper, current) async {
       if (retryUnmatched) await scraper.requeueUnmatched();
       final summary = await scraper.scrapePending(
@@ -167,7 +195,9 @@ class LibraryScrapeRunner {
         isCancelled: isCancelled,
         onProgress: onProgress,
       );
-      final note = summary.stoppedByMissingKey ? noTmdbKey : summary.stoppedBy;
+      final note = useServer
+          ? (summary.stoppedByMissingKey ? noTmdbKey : summary.stoppedBy)
+          : (summary.stoppedBy ?? (summary.skipped > 0 && !current.hasTmdb ? noTmdbKey : null));
       return LibraryScrapeOutcome(note: note, hasChanges: summary.hasChanges);
     }, isCancelled: isCancelled);
   }

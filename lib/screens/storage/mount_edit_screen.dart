@@ -49,6 +49,9 @@ class MountEditScreen extends StatefulWidget {
 class _MountEditScreenState extends State<MountEditScreen> {
   static const List<StorageKind> _selectableKinds = [
     StorageKind.local,
+    StorageKind.webdav,
+    StorageKind.smb,
+    StorageKind.quark,
   ];
   static const double _fieldGap = 14;
 
@@ -94,9 +97,9 @@ class _MountEditScreenState extends State<MountEditScreen> {
   void initState() {
     super.initState();
     final mount = widget.mount;
-    // Offline & local mounts only support local folders; cloud storage types
-    // (Quark / WebDAV / SMB / Emby / Jellyfin) live exclusively in CloudSourcesScreen.
-    _kind = mount?.kind ?? StorageKind.local;
+    // Offline/local mode supports all standalone storage kinds (Local, WebDAV,
+    // SMB, Quark). Sync mode manages cloud sources in CloudSourcesScreen.
+    _kind = mount?.kind;
     _allowInsecureTls = mount?.configBool(MountKeys.allowInsecureTls) ?? false;
     _autoIncrementalScan = mount?.configBool(MountKeys.autoIncrementalScan) ?? false;
     _name = TextEditingController(text: mount?.displayName ?? '');
