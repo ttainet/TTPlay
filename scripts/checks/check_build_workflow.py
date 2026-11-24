@@ -318,8 +318,8 @@ for build_input in (
     "build_linux",
 ):
     require(
-        f"&& inputs.{build_input}" in release_condition,
-        f"release publication must require {build_input}",
+        f"inputs.{build_input}" in release_condition,
+        f"release publication must reference {build_input}",
     )
 require(
     "&& inputs.release_tag != ''" in release_condition,
