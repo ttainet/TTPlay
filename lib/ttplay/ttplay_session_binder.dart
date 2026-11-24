@@ -11,6 +11,7 @@ import '../library/deterministic_keys.dart';
 import '../library/local_library_client.dart';
 import '../library/scrapers/server_metadata_provider.dart';
 import '../library_cloud/cloud_api_client.dart';
+import '../library_cloud/cloud_external_mirror_store.dart';
 import '../library_cloud/cloud_mount_mirror.dart';
 import '../library_cloud/cloud_projection_engine.dart';
 import '../library_cloud/projection_sync.dart';
@@ -104,7 +105,7 @@ class TtplaySessionBinder extends ChangeNotifier {
     _multiServerProvider = provider;
   }
 
-  static String _iptvScopeKey(SelfHostedSession session) => crypto.sha256
+  static String accountScopeKeyFor(SelfHostedSession session) => crypto.sha256
       .convert(utf8.encode('${session.serverUrl}|${session.username}'))
       .toString()
       .substring(0, 16);
@@ -113,12 +114,12 @@ class TtplaySessionBinder extends ChangeNotifier {
     _iptvProvider = provider;
     final session = sessionController.selfHostedSession;
     if (sessionController.isSelfHosted && session != null) {
-      unawaited(provider.setSessionScope(isSelfHosted: true, accountScopeKey: _iptvScopeKey(session)));
+      unawaited(provider.setSessionScope(isSelfHosted: true, accountScopeKey: accountScopeKeyFor(session)));
     } else {
       unawaited(provider.setSessionScope(isSelfHosted: false));
     }
     final mirror = _cloudMountMirror;
-    if (mirror != null) {
+    if (mirror != null && mirror.hasHydratedExternals) {
       provider.setCloudSources(mirror.lastIptvSources);
     }
   }
@@ -127,10 +128,13 @@ class TtplaySessionBinder extends ChangeNotifier {
   ///
   /// For `media_library` v1 sessions, [localLibraryClient] remains registered as
   /// the unified library (combining local folders with cloud-projected items).
-  void seedSelfHostedSynchronously(SelfHostedSession session) {
+  void seedSelfHostedSynchronously(
+    SelfHostedSession session, {
+    CloudExternalMirrorSnapshot? cachedMirror,
+  }) {
     if (_disposed) return;
     _syncGeneration++;
-    unawaited(_iptvProvider?.setSessionScope(isSelfHosted: true, accountScopeKey: _iptvScopeKey(session)));
+    unawaited(_iptvProvider?.setSessionScope(isSelfHosted: true, accountScopeKey: accountScopeKeyFor(session)));
     if (_isMediaLibraryV1(session)) {
       final removedDirect = _directCloudExternalServerIds;
       _apiClient = null;
@@ -146,6 +150,16 @@ class TtplaySessionBinder extends ChangeNotifier {
       serverManager.clearSelfHostedServers();
       serverManager.registerLocalLibrary(localLibraryClient);
       _syncVisibleServerIds(includeLocal: true, removedDirectExternalIds: removedDirect);
+      if (cachedMirror != null) {
+        _cloudMountMirror?.seedCachedMirror(
+          iptvSources: cachedMirror.iptvSources,
+          externalConnections: cachedMirror.externalConnections,
+        );
+        _iptvProvider?.setCloudSources(cachedMirror.iptvSources);
+        if (cachedMirror.externalConnections.isNotEmpty) {
+          unawaited(_mountDirectCloudExternalServers());
+        }
+      }
       return;
     }
 
@@ -185,7 +199,7 @@ class TtplaySessionBinder extends ChangeNotifier {
 
     if (sessionController.isSelfHosted && sessionController.selfHostedSession != null) {
       final session = sessionController.selfHostedSession!;
-      unawaited(_iptvProvider?.setSessionScope(isSelfHosted: true, accountScopeKey: _iptvScopeKey(session)));
+      unawaited(_iptvProvider?.setSessionScope(isSelfHosted: true, accountScopeKey: accountScopeKeyFor(session)));
       final sessionKey = _sessionKeyFor(session);
       if (_isMediaLibraryV1(session)) {
         final needsRebind = _cloudProjectionEngine == null || _boundSessionKey != sessionKey || _primaryClient != null;
@@ -208,6 +222,18 @@ class TtplaySessionBinder extends ChangeNotifier {
           serverManager.registerLocalLibrary(localLibraryClient);
           _syncVisibleServerIds(includeLocal: true, removedDirectExternalIds: removedDirect);
           if (!_disposed) notifyListeners();
+        } else {
+          await localLibraryClient.refreshMounts();
+          if (_disposed || gen != _syncGeneration) return;
+        }
+        final mirror = _cloudMountMirror;
+        if (mirror != null && !mirror.hasHydratedExternals) {
+          final hydrated = await mirror.hydrateFromLocalMirror();
+          if (_disposed || gen != _syncGeneration) return;
+          if (hydrated != null) {
+            await _mountDirectCloudExternalServers();
+            if (_disposed || gen != _syncGeneration) return;
+          }
         }
         if (refreshExternalServers) {
           if (awaitCloudSync) {
@@ -215,6 +241,9 @@ class TtplaySessionBinder extends ChangeNotifier {
               await syncCloudProjection(full: false);
             } catch (e) {
               appLogger.w('Initial media_library cloud projection sync failed: $e');
+              if (!_disposed) {
+                unawaited(localLibraryClient.mountManager.probeAll());
+              }
             }
           } else {
             unawaited(_triggerSafeIncrementalProjection());
@@ -568,6 +597,9 @@ class TtplaySessionBinder extends ChangeNotifier {
       await syncCloudProjection(full: false);
     } catch (e) {
       appLogger.d('Background cloud projection sync skipped: $e');
+      if (!_disposed) {
+        unawaited(localLibraryClient.mountManager.probeAll());
+      }
     }
   }
 
@@ -670,6 +702,8 @@ class TtplaySessionBinder extends ChangeNotifier {
       sourceRepository: repo,
       mountRegistry: localLibraryClient.mountManager.registry,
       mountManager: localLibraryClient.mountManager,
+      externalMirrorStore: CloudExternalMirrorStore(localLibraryClient.repository.database),
+      accountScopeKey: accountScopeKeyFor(session),
     );
     final engine = CloudProjectionEngine(
       db: localLibraryClient.repository.database,

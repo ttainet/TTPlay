@@ -94,6 +94,7 @@ import 'session/app_session_controller.dart';
 import 'session/app_session_models.dart';
 import 'session/app_session_store.dart';
 import 'iptv/iptv_provider.dart';
+import 'library_cloud/cloud_external_mirror_store.dart';
 import 'ttplay/ttplay_session_binder.dart';
 import 'storage/http_range_reader.dart';
 import 'storage/mount_manager.dart';
@@ -920,6 +921,7 @@ final class StartupSessionBootstrap {
     required this.mode,
     this.loginMode,
     this.selfHostedSession,
+    this.initialCloudExternalMirror,
     this.initialMounts = const [],
     this.initialConnections = const [],
     this.connections,
@@ -944,6 +946,7 @@ final class StartupSessionBootstrap {
   StartupSessionBootstrap.readyForHome({
     AppLoginMode? loginMode,
     SelfHostedSession? selfHostedSession,
+    CloudExternalMirrorSnapshot? initialCloudExternalMirror,
     required List<StorageMount> initialMounts,
     required List<Connection> initialConnections,
     required ConnectionRegistry connections,
@@ -956,6 +959,7 @@ final class StartupSessionBootstrap {
          mode: StartupSessionMode.readyForHome,
          loginMode: loginMode,
          selfHostedSession: selfHostedSession,
+         initialCloudExternalMirror: initialCloudExternalMirror,
          initialMounts: initialMounts,
          initialConnections: initialConnections,
          connections: connections,
@@ -969,6 +973,7 @@ final class StartupSessionBootstrap {
   final StartupSessionMode mode;
   final AppLoginMode? loginMode;
   final SelfHostedSession? selfHostedSession;
+  final CloudExternalMirrorSnapshot? initialCloudExternalMirror;
   final List<StorageMount> initialMounts;
   final List<Connection> initialConnections;
   final ConnectionRegistry? connections;
@@ -1084,11 +1089,19 @@ Future<StartupSessionBootstrap> resolveStartupSessionBootstrap({
       trustedPeers.isEmpty &&
       existingLibraryRow == null;
 
+  CloudExternalMirrorSnapshot? initialCloudExternalMirror;
+  if (effectiveMode == AppLoginMode.selfHosted && sessionState.selfHosted != null) {
+    initialCloudExternalMirror = await CloudExternalMirrorStore(
+      appDatabase,
+    ).load(TtplaySessionBinder.accountScopeKeyFor(sessionState.selfHosted!));
+  }
+
   AndroidExitDiagnostics.markStartupPhase(AndroidStartupPhase.credentialsLoaded);
 
   return StartupSessionBootstrap.readyForHome(
     loginMode: effectiveMode,
     selfHostedSession: effectiveMode == AppLoginMode.selfHosted ? sessionState.selfHosted : null,
+    initialCloudExternalMirror: initialCloudExternalMirror,
     initialMounts: initialMounts,
     initialConnections: initialConnections,
     connections: connRegistry,
@@ -1720,7 +1733,11 @@ class _MainAppState extends State<MainApp> with WidgetsBindingObserver {
         bootstrap.isReadyForHome &&
         bootstrap.loginMode == AppLoginMode.selfHosted &&
         bootstrap.selfHostedSession != null) {
-      _ttplaySessionBinder.seedSelfHostedSynchronously(bootstrap.selfHostedSession!);
+      _localLibraryClient.seedMounts(bootstrap.initialMounts);
+      _ttplaySessionBinder.seedSelfHostedSynchronously(
+        bootstrap.selfHostedSession!,
+        cachedMirror: bootstrap.initialCloudExternalMirror,
+      );
       AndroidExitDiagnostics.markStartupPhase(AndroidStartupPhase.mainScreen);
     } else if (bootstrap != null && bootstrap.isReadyForHome && bootstrap.loginMode != AppLoginMode.selfHosted) {
       configureLocalLibraryClientLabels(_localLibraryClient);
@@ -2174,7 +2191,7 @@ class _MainAppState extends State<MainApp> with WidgetsBindingObserver {
             final bootstrap = widget.sessionBootstrap;
             if (bootstrap != null &&
                 bootstrap.isReadyForHome &&
-                bootstrap.initialConnections.isEmpty &&
+                (bootstrap.loginMode == AppLoginMode.selfHosted || bootstrap.initialConnections.isEmpty) &&
                 !bootstrap.requiresProfilePrompt) {
               provider.setExpectedVisibleServerIds(<String>{}, notify: false);
               provider.setVisibleServerIds(<String>{

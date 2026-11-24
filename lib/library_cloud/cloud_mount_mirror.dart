@@ -8,6 +8,7 @@ import '../storage/mount_manager.dart';
 import '../storage/mount_registry.dart';
 import '../storage/storage_mount.dart';
 import '../utils/app_logger.dart';
+import 'cloud_external_mirror_store.dart';
 import 'source_repository.dart';
 
 class CloudMirrorResult {
@@ -35,6 +36,8 @@ class CloudMountMirror {
     required this.sourceRepository,
     required this.mountRegistry,
     this.mountManager,
+    this.externalMirrorStore,
+    this.accountScopeKey,
   });
 
   static const String cloudMountPrefix = 'cloud:';
@@ -47,13 +50,40 @@ class CloudMountMirror {
   final CloudSourceRepository sourceRepository;
   final MountRegistry mountRegistry;
   final MountManager? mountManager;
+  final CloudExternalMirrorStore? externalMirrorStore;
+  final String? accountScopeKey;
 
+  bool _hasSeededOrSynced = false;
+  bool get hasHydratedExternals => _hasSeededOrSynced;
   List<JellyfinConnection> _lastExternalConnections = const [];
   List<JellyfinConnection> get lastExternalConnections => _lastExternalConnections;
   List<IptvSource> _lastIptvSources = const [];
   List<IptvSource> get lastIptvSources => _lastIptvSources;
   final Set<String> _recentlyVerifiedSourceIds = <String>{};
   Set<String> _lastSeededExternalServerIds = const {};
+
+  void seedCachedMirror({
+    required List<IptvSource> iptvSources,
+    required List<JellyfinConnection> externalConnections,
+  }) {
+    _lastIptvSources = List.unmodifiable(iptvSources.map((s) => s.copyWith(isCloud: true)));
+    _lastExternalConnections = List.unmodifiable(externalConnections);
+    _hasSeededOrSynced = true;
+  }
+
+  Future<CloudExternalMirrorSnapshot?> hydrateFromLocalMirror() async {
+    final store = externalMirrorStore;
+    final scope = accountScopeKey?.trim() ?? '';
+    if (store == null || scope.isEmpty) return null;
+    final snapshot = await store.load(scope);
+    if (snapshot != null) {
+      seedCachedMirror(
+        iptvSources: snapshot.iptvSources,
+        externalConnections: snapshot.externalConnections,
+      );
+    }
+    return snapshot;
+  }
 
   void markSourceRecentlyVerified(String sourceId) {
     if (sourceId.isNotEmpty) {
@@ -79,6 +109,8 @@ class CloudMountMirror {
     final remoteSources = await sourceRepository.listSources();
     final existingMounts = await mountRegistry.list();
     final existingById = {for (final m in existingMounts) m.id: m};
+    final prevExternalById = {for (final c in _lastExternalConnections) c.id: c};
+    final prevIptvById = {for (final s in _lastIptvSources) s.id: s};
     final activeCloudMountIds = <String>{};
     final externalConnections = <JellyfinConnection>[];
     final iptvSources = <IptvSource>[];
@@ -98,6 +130,11 @@ class CloudMountMirror {
             }
           }
         } catch (e) {
+          final prev = prevExternalById['cloud-${src.id}'];
+          if (prev != null) {
+            final fallbackName = src.name.trim().isNotEmpty ? src.name.trim() : prev.serverName;
+            externalConnections.add(prev.copyWith(serverName: fallbackName));
+          }
           appLogger.w('CloudMountMirror: skipped external credential sync for ${src.id}: $e');
         }
         continue;
@@ -111,6 +148,11 @@ class CloudMountMirror {
             iptvSources.add(iptv);
           }
         } catch (e) {
+          final prev = prevIptvById['cloud:${src.id}'];
+          if (prev != null) {
+            final fallbackName = src.name.trim().isNotEmpty ? src.name.trim() : prev.name;
+            iptvSources.add(prev.copyWith(name: fallbackName));
+          }
           appLogger.w('CloudMountMirror: skipped iptv credential sync for ${src.id}: $e');
         }
         continue;
@@ -160,6 +202,22 @@ class CloudMountMirror {
     _lastExternalConnections = List.unmodifiable(externalConnections);
     _lastIptvSources = List.unmodifiable(iptvSources);
     _lastSeededExternalServerIds = Set.unmodifiable(seededExternalServerIds);
+    _hasSeededOrSynced = true;
+    final store = externalMirrorStore;
+    final scope = accountScopeKey?.trim() ?? '';
+    if (store != null && scope.isNotEmpty) {
+      try {
+        await store.save(
+          scope,
+          CloudExternalMirrorSnapshot(
+            iptvSources: _lastIptvSources,
+            externalConnections: _lastExternalConnections,
+          ),
+        );
+      } catch (e) {
+        appLogger.w('CloudMountMirror: failed to persist local external mirror: $e');
+      }
+    }
     return CloudMirrorResult(
       sources: remoteSources,
       directExternalConnections: _lastExternalConnections,
