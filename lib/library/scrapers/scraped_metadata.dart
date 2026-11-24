@@ -52,6 +52,7 @@ class ScrapedTitle {
     this.tagline,
     this.rating,
     this.runtimeMs,
+    this.totalEpisodes,
     this.contentRating,
     this.studio,
     this.genres = const [],
@@ -82,6 +83,7 @@ class ScrapedTitle {
   final String? tagline;
   final double? rating;
   final int? runtimeMs;
+  final int? totalEpisodes;
   final String? contentRating;
   final String? studio;
   final List<String> genres;
@@ -130,12 +132,20 @@ class ScrapedEpisode {
 }
 
 class ScrapedSeason {
-  const ScrapedSeason({required this.number, this.title, this.summary, this.posterSource, this.episodes = const []});
+  const ScrapedSeason({
+    required this.number,
+    this.title,
+    this.summary,
+    this.posterSource,
+    this.totalEpisodes,
+    this.episodes = const [],
+  });
 
   final int number;
   final String? title;
   final String? summary;
   final String? posterSource;
+  final int? totalEpisodes;
   final List<ScrapedEpisode> episodes;
 }
 

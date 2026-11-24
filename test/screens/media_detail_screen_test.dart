@@ -1408,6 +1408,103 @@ void main() {
     expect(FocusManager.instance.primaryFocus?.debugLabel, 'detail_more');
   });
 
+  testWidgets('TV detail hero line and details sheet display show total episodes even when focusing an episode', (
+    tester,
+  ) async {
+    await SettingsService.getInstance();
+    tester.view.physicalSize = const Size(1280, 720);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    final show = testMediaItem(
+      id: 'show_total_eps',
+      backend: MediaBackend.jellyfin,
+      kind: MediaKind.show,
+      title: 'Frieren',
+      summary: 'Show summary.',
+      year: 2023,
+      leafCount: 2,
+      totalEpisodes: 28,
+      serverId: 'server_1',
+      serverName: 'Server',
+    );
+    final season = testMediaItem(
+      id: 'season_1',
+      backend: MediaBackend.jellyfin,
+      kind: MediaKind.season,
+      title: 'Season 1',
+      index: 1,
+      parentId: show.id,
+      serverId: show.serverId,
+      serverName: show.serverName,
+    );
+    final episode = testMediaItem(
+      id: 'episode_1',
+      backend: MediaBackend.jellyfin,
+      kind: MediaKind.episode,
+      title: 'The Journey Begins',
+      index: 1,
+      durationMs: 1440000,
+      parentId: season.id,
+      parentIndex: season.index,
+      grandparentId: show.id,
+      grandparentTitle: show.title,
+      serverId: show.serverId,
+      serverName: show.serverName,
+    );
+    final client = _FakeMediaServerClient(
+      show: show,
+      childrenByParent: {
+        show.id: [season],
+        season.id: [episode],
+      },
+    );
+    final provider = testMultiServer(clients: [client]).provider;
+
+    await tester.pumpWidget(
+      TranslationProvider(
+        child: ChangeNotifierProvider<MultiServerProvider>.value(
+          value: provider,
+          child: MaterialApp(
+            theme: monoTheme(MonoPalette.dark),
+            home: withProfileNavigationScope(
+              child: SizedBox(width: 1280, height: 720, child: MediaDetailScreen(metadata: show)),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 200));
+
+    // Before focusing rail: show metadata line has 28 episodes (not leafCount 2).
+    expect(find.textContaining('28 episodes', findRichText: true), findsOneWidget);
+    expect(find.textContaining('2 episodes', findRichText: true), findsNothing);
+
+    // Focus episode in rail: episode metadata line keeps show's 28 episodes.
+    tester.state<TvBrowseRailState>(find.byType(TvBrowseRail)).requestFocus();
+    await tester.pump();
+    expect(find.textContaining('28 episodes', findRichText: true), findsOneWidget);
+
+    // Opening the full details sheet while an episode is focused also shows 28 episodes.
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowUp);
+    await tester.pump();
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowUp);
+    await tester.pump();
+    expect(FocusManager.instance.primaryFocus?.debugLabel, 'tv_detail_info');
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.enter);
+    await tester.pump();
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.enter);
+    await tester.pumpAndSettle();
+
+    final sheet = find.byType(MediaDetailsSheet);
+    expect(sheet, findsOneWidget);
+    expect(find.descendant(of: sheet, matching: find.textContaining('28 episodes')), findsOneWidget);
+  });
+
   group('saved-source detail prediction', () {
     Future<GlobalKey<NavigatorState>> pumpDetail(
       WidgetTester tester,
@@ -2767,6 +2864,52 @@ void main() {
         find.ancestor(of: find.text('Season 2'), matching: find.byType(FocusableTabChip)),
       );
       expect(season2Chip.isSelected, isTrue);
+    });
+
+    testWidgets('hero chip strip displays authoritative totalEpisodes over leafCount', (tester) async {
+      final showWithTotal = testMediaItem(
+        id: 'show_total',
+        backend: MediaBackend.jellyfin,
+        kind: MediaKind.show,
+        title: 'Show With Total',
+        year: 2024,
+        leafCount: 3,
+        totalEpisodes: 24,
+        serverId: 'server_1',
+        serverName: 'Server',
+      );
+      final season1 = buildSeason(showWithTotal, 1);
+      final clientWithTotal = _FakeMediaServerClient(
+        show: showWithTotal,
+        childrenByParent: {
+          showWithTotal.id: [season1],
+          season1.id: [buildEpisode(showWithTotal, season1, 1)],
+        },
+      );
+      await pumpPhoneDetail(tester, clientWithTotal, showWithTotal);
+      expect(find.text('24 episodes'), findsOneWidget);
+      expect(find.text('3 episodes'), findsNothing);
+    });
+
+    testWidgets('hero chip strip falls back to leafCount when totalEpisodes is absent', (tester) async {
+      final showLeafOnly = testMediaItem(
+        id: 'show_leaf',
+        backend: MediaBackend.plex,
+        kind: MediaKind.show,
+        title: 'Show Leaf Only',
+        year: 2024,
+        leafCount: 10,
+        serverId: 'server_1',
+        serverName: 'Server',
+      );
+      final clientLeafOnly = _FakeMediaServerClient(
+        show: showLeafOnly,
+        childrenByParent: {
+          showLeafOnly.id: [buildSeason(showLeafOnly, 1)],
+        },
+      );
+      await pumpPhoneDetail(tester, clientLeafOnly, showLeafOnly);
+      expect(find.text('10 episodes'), findsOneWidget);
     });
   });
 

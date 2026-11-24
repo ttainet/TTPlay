@@ -125,6 +125,8 @@ func TestMultiSourceFetchersFindAndTmdbErrorStrictness(t *testing.T) {
 				return
 			}
 			_, _ = w.Write([]byte(`{"tv_results":[{"id":230311,"name":"爱情有烟火","original_name":"爱情有烟火","first_air_date":"2026-02-01"}],"movie_results":[]}`))
+		case r.URL.Path == "/3/tv/230311":
+			_, _ = w.Write([]byte(`{"id":230311,"name":"爱情有烟火","original_name":"爱情有烟火","first_air_date":"2026-02-01","number_of_episodes":40}`))
 		case r.URL.Path == "/douban/search/subjects":
 			if r.Header.Get("Cookie") != "bid=testcookie" {
 				w.WriteHeader(http.StatusForbidden)
@@ -132,9 +134,11 @@ func TestMultiSourceFetchersFindAndTmdbErrorStrictness(t *testing.T) {
 			}
 			_, _ = w.Write([]byte(`{"subjects":{"items":[{"target_type":"tv","target":{"id":"36283066","title":"爱情有烟火","card_subtitle":"2026 / 中国大陆 / 爱情","cover_url":"https://img9.doubanio.com/p1.jpg"}}]}}`))
 		case r.URL.Path == "/douban/tv/36283066":
-			_, _ = w.Write([]byte(`{"id":"36283066","title":"爱情有烟火","original_title":"爱情有烟火","aka":["我们住在一起"],"year":"2026","pubdate":["2026-02-01(中国大陆)"],"intro":"租房故事","rating":{"value":7.8},"genres":["剧情","爱情"],"imdb":"tt9999999","pic":{"large":"https://img9.doubanio.com/p1.jpg"}}`))
+			_, _ = w.Write([]byte(`{"id":"36283066","title":"爱情有烟火","original_title":"爱情有烟火","aka":["我们住在一起"],"year":"2026","pubdate":["2026-02-01(中国大陆)"],"intro":"租房故事","episodes_count":40,"rating":{"value":7.8},"genres":["剧情","爱情"],"imdb":"tt9999999","pic":{"large":"https://img9.doubanio.com/p1.jpg"}}`))
 		case r.URL.Path == "/anilist":
-			_, _ = w.Write([]byte(`{"data":{"Page":{"media":[{"id":154587,"title":{"romaji":"Sousou no Frieren","english":"Frieren","native":"葬送のフリーレン"},"seasonYear":2023,"coverImage":{"extraLarge":"https://s4.anilist.co/f.jpg"}}]},"Media":{"id":154587,"title":{"romaji":"Sousou no Frieren","english":"Frieren","native":"葬送のフリーレン"},"synonyms":["葬送的芙莉莲"],"seasonYear":2023,"averageScore":91,"duration":24,"genres":["Adventure","Fantasy"],"studios":{"nodes":[{"name":"Madhouse"}]}}}}`))
+			_, _ = w.Write([]byte(`{"data":{"Page":{"media":[{"id":154587,"title":{"romaji":"Sousou no Frieren","english":"Frieren","native":"葬送のフリーレン"},"seasonYear":2023,"coverImage":{"extraLarge":"https://s4.anilist.co/f.jpg"}}]},"Media":{"id":154587,"title":{"romaji":"Sousou no Frieren","english":"Frieren","native":"葬送のフリーレン"},"synonyms":["葬送的芙莉莲"],"seasonYear":2023,"averageScore":91,"duration":24,"episodes":28,"genres":["Adventure","Fantasy"],"studios":{"nodes":[{"name":"Madhouse"}]}}}}`))
+		case r.URL.Path == "/bangumi/v0/subjects/400602":
+			_, _ = w.Write([]byte(`{"id":400602,"name":"葬送のフリーレン","name_cn":"葬送的芙莉莲","date":"2023-09-29","eps":28,"summary":"勇者一行...","rating":{"score":8.5},"images":{"large":"https://lain.bgm.tv/pic/cover/l/frieren.jpg"}}`))
 		case r.URL.Path == "/imdb/search/titles":
 			_, _ = w.Write([]byte(`{"titles":[{"id":"tt1375666","type":"movie","primaryTitle":"Inception","startYear":2010,"primaryImage":{"url":"https://m.media-amazon.com/inc.jpg"}}]}`))
 		case r.URL.Path == "/imdb/titles/tt1375666":
@@ -161,6 +165,7 @@ func TestMultiSourceFetchersFindAndTmdbErrorStrictness(t *testing.T) {
 
 	tmdbKey := "k1"
 	tmdbBase := mock.URL + "/3"
+	bgmBase := mock.URL + "/bangumi"
 	doubanBase := mock.URL + "/douban"
 	doubanCookie := "bid=testcookie"
 	anilistBase := mock.URL + "/anilist"
@@ -171,6 +176,7 @@ func TestMultiSourceFetchersFindAndTmdbErrorStrictness(t *testing.T) {
 	if _, err := store.UpdateServerSettings(db.ServerSettingsUpdate{
 		TmdbAPIKey:     &tmdbKey,
 		TmdbAPIBase:    &tmdbBase,
+		BangumiAPIBase: &bgmBase,
 		DoubanAPIBase:  &doubanBase,
 		DoubanCookie:   &doubanCookie,
 		AniListAPIBase: &anilistBase,
@@ -190,24 +196,32 @@ func TestMultiSourceFetchersFindAndTmdbErrorStrictness(t *testing.T) {
 		t.Fatalf("douban search failed: %+v err=%v", dbCands, err)
 	}
 	dbWork, err := svc.GetWork(ctx, "douban", "show", "36283066", "zh-CN", false)
-	if err != nil || dbWork.ImdbID == nil || *dbWork.ImdbID != "tt9999999" || len(dbWork.Aliases) == 0 {
+	if err != nil || dbWork.ImdbID == nil || *dbWork.ImdbID != "tt9999999" || len(dbWork.Aliases) == 0 || dbWork.TotalEpisodes == nil || *dbWork.TotalEpisodes != 40 {
 		t.Fatalf("unexpected douban work: %+v err=%v", dbWork, err)
 	}
 
-	// 2. TMDB FindByExternalID
+	// 2. TMDB FindByExternalID & Show total_episodes
 	foundCand, foundKind, err := svc.FindByExternalID(ctx, "imdb_id", "tt9999999", "show", "zh-CN", false)
 	if err != nil || foundCand == nil || foundCand.ID != "230311" || foundKind != "show" {
 		t.Fatalf("TMDB FindByExternalID failed: cand=%+v kind=%s err=%v", foundCand, foundKind, err)
 	}
+	tmdbShow, err := svc.GetWork(ctx, "tmdb", "show", "230311", "zh-CN", false)
+	if err != nil || tmdbShow.TotalEpisodes == nil || *tmdbShow.TotalEpisodes != 40 {
+		t.Fatalf("expected TMDB show total_episodes=40, got %+v err=%v", tmdbShow, err)
+	}
 
-	// 3. AniList search & detail
+	// 3. AniList search & detail + Bangumi total_episodes
 	aliCands, err := svc.Search(ctx, "anilist", "show", "Frieren", 0, "zh-CN", false)
 	if err != nil || len(aliCands) != 1 || aliCands[0].ID != "154587" {
 		t.Fatalf("anilist search failed: %+v err=%v", aliCands, err)
 	}
 	aliWork, err := svc.GetWork(ctx, "anilist", "show", "154587", "zh-CN", false)
-	if err != nil || aliWork.Studio == nil || *aliWork.Studio != "Madhouse" {
+	if err != nil || aliWork.Studio == nil || *aliWork.Studio != "Madhouse" || aliWork.TotalEpisodes == nil || *aliWork.TotalEpisodes != 28 {
 		t.Fatalf("anilist work failed: %+v err=%v", aliWork, err)
+	}
+	bgmWork, err := svc.GetWork(ctx, "bangumi", "show", "400602", "zh-CN", false)
+	if err != nil || bgmWork.TotalEpisodes == nil || *bgmWork.TotalEpisodes != 28 {
+		t.Fatalf("bangumi work failed: %+v err=%v", bgmWork, err)
 	}
 
 	// 4. IMDb text + direct tt-ID search

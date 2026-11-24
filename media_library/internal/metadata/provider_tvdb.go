@@ -244,6 +244,25 @@ func (s *Service) fetchTvdbWork(ctx context.Context, cfg db.ServerSettings, kind
 		}
 	}
 
+	var totalEpisodes *int
+	if kind == "show" {
+		if eps := jsonObjs(data, "episodes"); len(eps) > 0 {
+			regularCount := 0
+			for _, ep := range eps {
+				if sn := jsonInt(ep, "seasonNumber"); sn != nil && *sn > 0 {
+					regularCount++
+				}
+			}
+			cnt := regularCount
+			if cnt == 0 {
+				cnt = len(eps)
+			}
+			if cnt > 0 {
+				totalEpisodes = &cnt
+			}
+		}
+	}
+
 	return Work{
 		Source:        "tvdb",
 		Kind:          kind,
@@ -258,6 +277,7 @@ func (s *Service) fetchTvdbWork(ctx context.Context, cfg db.ServerSettings, kind
 		ReleaseDate:   nonEmptyStrPtr(firstAired),
 		Summary:       nonEmptyStrPtr(summary),
 		RuntimeMs:     runtimeMs,
+		TotalEpisodes: totalEpisodes,
 		Genres:        genres,
 		PosterPath:    nonEmptyStrPtr(poster),
 		BackdropPath:  nonEmptyStrPtr(backdrop),
@@ -314,5 +334,6 @@ func (s *Service) fetchTvdbSeason(ctx context.Context, cfg db.ServerSettings, sh
 	if len(episodes) == 0 {
 		return Season{}, fmt.Errorf("%w: TheTvDb series %s season %d empty", ErrNotFound, showID, seasonNumber)
 	}
-	return Season{Number: seasonNumber, Episodes: episodes}, nil
+	totalEps := len(episodes)
+	return Season{Number: seasonNumber, TotalEpisodes: &totalEps, Episodes: episodes}, nil
 }

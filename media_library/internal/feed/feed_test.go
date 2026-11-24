@@ -145,8 +145,8 @@ func TestFeedSnapshotHierarchyAndIncludeFiles(t *testing.T) {
 	)
 
 	sRes, err := tx.Exec(`
-		INSERT INTO media_items(household_id, work_key, kind, library_type, title, sort_title, year, tmdb_id, metadata_source, added_at, updated_at)
-		VALUES ('hh1', 'tmdb:show:100', 'show', 'show', 'Example Show', 'example show', 2022, '100', 'tmdb', ?, ?)`,
+		INSERT INTO media_items(household_id, work_key, kind, library_type, title, sort_title, year, total_episodes, tmdb_id, metadata_source, added_at, updated_at)
+		VALUES ('hh1', 'tmdb:show:100', 'show', 'show', 'Example Show', 'example show', 2022, 16, '100', 'tmdb', ?, ?)`,
 		now, now,
 	)
 	if err != nil {
@@ -155,8 +155,8 @@ func TestFeedSnapshotHierarchyAndIncludeFiles(t *testing.T) {
 	showID, _ := sRes.LastInsertId()
 
 	seRes, err := tx.Exec(`
-		INSERT INTO media_items(household_id, work_key, kind, library_type, parent_id, show_id, title, sort_title, season_number, added_at, updated_at)
-		VALUES ('hh1', '', 'season', 'show', ?, ?, 'Season 1', 'season 1', 1, ?, ?)`,
+		INSERT INTO media_items(household_id, work_key, kind, library_type, parent_id, show_id, title, sort_title, season_number, total_episodes, added_at, updated_at)
+		VALUES ('hh1', '', 'season', 'show', ?, ?, 'Season 1', 'season 1', 1, 8, ?, ?)`,
 		showID, showID, now, now,
 	)
 	if err != nil {
@@ -284,13 +284,19 @@ func TestFeedSnapshotHierarchyAndIncludeFiles(t *testing.T) {
 		t.Fatalf("expected episode change with ShowWorkKey and inline file+subtitle, got %+v", chg.Changes[2].Data)
 	}
 
-	// Verify GetItemDetailByWorkKey returns full show episodes + files.
+	// Verify GetItemDetailByWorkKey returns full show episodes + files + total_episodes.
 	byWk, err := feedSvc.GetItemDetailByWorkKey(p, "tmdb:show:100")
 	if err != nil {
 		t.Fatalf("GetItemDetailByWorkKey failed: %v", err)
 	}
+	if byWk.TotalEpisodes == nil || *byWk.TotalEpisodes != 16 {
+		t.Fatalf("expected show TotalEpisodes=16, got %+v", byWk.TotalEpisodes)
+	}
 	if len(byWk.Children) != 1 || len(byWk.Episodes) != 1 || len(byWk.Episodes[0].Files) != 1 {
 		t.Fatalf("expected show detail children + episodes with files, got children=%d episodes=%d", len(byWk.Children), len(byWk.Episodes))
+	}
+	if byWk.Children[0].TotalEpisodes == nil || *byWk.Children[0].TotalEpisodes != 8 {
+		t.Fatalf("expected season TotalEpisodes=8, got %+v", byWk.Children[0].TotalEpisodes)
 	}
 	if byWk.Children[0].WorkKey != "" || byWk.Children[0].ShowWorkKey != "tmdb:show:100" {
 		t.Fatalf("expected season child to keep empty WorkKey and parent ShowWorkKey, got work_key=%q show_work_key=%q", byWk.Children[0].WorkKey, byWk.Children[0].ShowWorkKey)

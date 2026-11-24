@@ -923,14 +923,14 @@ func (sc *Scraper) persistGroupMatchTx(tx *sql.Tx, p persistGroupParams) (int64,
 			INSERT INTO media_items(
 				household_id, work_key, kind, library_type, parent_id, show_id,
 				title, sort_title, original_title, aliases, year, release_date,
-				summary, tagline, content_rating, studio, rating, runtime_ms,
+				summary, tagline, content_rating, studio, rating, runtime_ms, total_episodes,
 				poster_source, backdrop_source, logo_source,
 				tmdb_id, imdb_id, tvdb_id, bangumi_id, douban_id, anilist_id,
 				metadata_source, locked, added_at, source_added_at, updated_at, scraped_at
-			) VALUES (?, ?, ?, ?, NULL, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?)`,
+			) VALUES (?, ?, ?, ?, NULL, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?)`,
 			p.HouseholdID, p.WorkKey, p.Kind, p.Shelf,
 			p.Work.Title, sortTitle, p.Work.OriginalTitle, aliasesJSON, p.Work.Year, p.Work.ReleaseDate,
-			p.Work.Summary, p.Work.Tagline, p.Work.ContentRating, p.Work.Studio, p.Work.Rating, p.Work.RuntimeMs,
+			p.Work.Summary, p.Work.Tagline, p.Work.ContentRating, p.Work.Studio, p.Work.Rating, p.Work.RuntimeMs, p.Work.TotalEpisodes,
 			posterSrc, backdropSrc, logoSrc,
 			p.Work.TmdbID, p.Work.ImdbID, p.Work.TvdbID, p.Work.BangumiID, p.Work.DoubanID, p.Work.AniListID,
 			metaSrc, earliestAdded, latestSourceAdded, nowMs, nowMs,
@@ -952,7 +952,7 @@ func (sc *Scraper) persistGroupMatchTx(tx *sql.Tx, p persistGroupParams) (int64,
 				UPDATE media_items SET
 					kind = ?, library_type = ?, title = ?, sort_title = ?, original_title = ?,
 					aliases = ?, year = ?, release_date = ?, summary = ?, tagline = ?,
-					content_rating = ?, studio = ?, rating = ?, runtime_ms = ?,
+					content_rating = ?, studio = ?, rating = ?, runtime_ms = ?, total_episodes = ?,
 					poster_source = COALESCE(?, poster_source),
 					backdrop_source = COALESCE(?, backdrop_source),
 					logo_source = COALESCE(?, logo_source),
@@ -963,7 +963,7 @@ func (sc *Scraper) persistGroupMatchTx(tx *sql.Tx, p persistGroupParams) (int64,
 				WHERE id = ?`,
 				p.Kind, p.Shelf, p.Work.Title, sortTitle, p.Work.OriginalTitle,
 				aliasesJSON, p.Work.Year, p.Work.ReleaseDate, p.Work.Summary, p.Work.Tagline,
-				p.Work.ContentRating, p.Work.Studio, p.Work.Rating, p.Work.RuntimeMs,
+				p.Work.ContentRating, p.Work.Studio, p.Work.Rating, p.Work.RuntimeMs, p.Work.TotalEpisodes,
 				posterSrc, backdropSrc, logoSrc,
 				p.Work.TmdbID, p.Work.ImdbID, p.Work.TvdbID, p.Work.BangumiID, p.Work.DoubanID, p.Work.AniListID,
 				metaSrc, lockedVal,
@@ -1077,10 +1077,17 @@ func (sc *Scraper) upsertSeasonItemTx(tx *sql.Tx, p persistGroupParams, showID i
 		title = strings.TrimSpace(*sMeta.Title)
 	}
 	var summary, releaseDate, poster *string
+	var totalEpisodes *int
 	if hasMeta {
 		summary = sMeta.Summary
 		releaseDate = sMeta.AirDate
 		poster = sMeta.PosterPath
+		if sMeta.TotalEpisodes != nil && *sMeta.TotalEpisodes > 0 {
+			totalEpisodes = sMeta.TotalEpisodes
+		} else if len(sMeta.Episodes) > 0 {
+			n := len(sMeta.Episodes)
+			totalEpisodes = &n
+		}
 	}
 	if (poster == nil || *poster == "") && p.SeasonPosters[seasonNum] != "" {
 		v := p.SeasonPosters[seasonNum]
@@ -1091,11 +1098,11 @@ func (sc *Scraper) upsertSeasonItemTx(tx *sql.Tx, p persistGroupParams, showID i
 		res, err := tx.Exec(`
 			INSERT INTO media_items(
 				household_id, work_key, kind, library_type, parent_id, show_id,
-				title, sort_title, release_date, summary, season_number, poster_source,
+				title, sort_title, release_date, summary, season_number, total_episodes, poster_source,
 				metadata_source, locked, added_at, updated_at, scraped_at
-			) VALUES (?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?)`,
+			) VALUES (?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?)`,
 			p.HouseholdID, db.KindSeason, p.Shelf, showID, showID,
-			title, fmt.Sprintf("%05d", seasonNum), releaseDate, summary, seasonNum, poster,
+			title, fmt.Sprintf("%05d", seasonNum), releaseDate, summary, seasonNum, totalEpisodes, poster,
 			p.Work.Source, nowMs, nowMs, nowMs,
 		)
 		if err != nil {
@@ -1109,10 +1116,11 @@ func (sc *Scraper) upsertSeasonItemTx(tx *sql.Tx, p persistGroupParams, showID i
 		if _, err := tx.Exec(`
 			UPDATE media_items SET
 				library_type = ?, title = ?, release_date = COALESCE(?, release_date),
-				summary = COALESCE(?, summary), poster_source = COALESCE(?, poster_source),
+				summary = COALESCE(?, summary), total_episodes = COALESCE(?, total_episodes),
+				poster_source = COALESCE(?, poster_source),
 				updated_at = ?, scraped_at = ?
 			WHERE id = ?`,
-			p.Shelf, title, releaseDate, summary, poster, nowMs, nowMs, seasonID,
+			p.Shelf, title, releaseDate, summary, totalEpisodes, poster, nowMs, nowMs, seasonID,
 		); err != nil {
 			return 0, err
 		}

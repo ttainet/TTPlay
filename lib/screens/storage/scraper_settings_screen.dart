@@ -195,11 +195,13 @@ class _ScraperSettingsScreenState extends State<ScraperSettingsScreen> {
                           t.storage.metadataServiceOfficial,
                           style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w500),
                         ),
-                        const SizedBox(height: 4),
-                        Text(
-                          _endpointUrl,
-                          style: theme.textTheme.bodySmall?.copyWith(color: colorScheme.onSurfaceVariant),
-                        ),
+                        if (_endpointUrl.trim().isNotEmpty) ...[
+                          const SizedBox(height: 4),
+                          Text(
+                            _endpointUrl,
+                            style: theme.textTheme.bodySmall?.copyWith(color: colorScheme.onSurfaceVariant),
+                          ),
+                        ],
                         if (_enabledProviders.isNotEmpty) ...[
                           const SizedBox(height: 8),
                           Wrap(

@@ -422,6 +422,13 @@ func (s *Service) fetchDoubanWork(ctx context.Context, cfg db.ServerSettings, ki
 		}
 	}
 
+	var totalEpisodes *int
+	if kind == "show" {
+		if n := jsonInt(raw, "episodes_count"); n != nil && *n > 0 {
+			totalEpisodes = n
+		}
+	}
+
 	return Work{
 		Source:        "douban",
 		Kind:          kind,
@@ -436,6 +443,7 @@ func (s *Service) fetchDoubanWork(ctx context.Context, cfg db.ServerSettings, ki
 		Summary:       nonEmptyStrPtr(jsonStr(raw, "intro")),
 		Rating:        scorePtr,
 		RuntimeMs:     runtimeMs,
+		TotalEpisodes: totalEpisodes,
 		Genres:        genres,
 		PosterPath:    nonEmptyStrPtr(extractDoubanImageURL(raw)),
 		Credits:       credits,

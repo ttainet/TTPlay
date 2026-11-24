@@ -245,10 +245,17 @@ void main() {
       ..add('/TV/Severance/Season 1/Severance.S01E02.mkv');
     await scan();
     tmdb.results['severance'] = [tmdb.hit('95396', 'Severance', year: 2022)];
-    tmdb.details['95396'] = const ScrapedTitle(source: 'tmdb', tmdbId: '95396', title: '人生切割术', year: 2022);
+    tmdb.details['95396'] = const ScrapedTitle(
+      source: 'tmdb',
+      tmdbId: '95396',
+      title: '人生切割术',
+      year: 2022,
+      totalEpisodes: 19,
+    );
     tmdb.seasons['95396/1'] = const ScrapedSeason(
       number: 1,
       title: '第 1 季',
+      totalEpisodes: 9,
       episodes: [
         ScrapedEpisode(
           number: 1,
@@ -263,8 +270,10 @@ void main() {
     await scraper.scrapePending();
     final show = (await items(LibraryKinds.show)).single;
     expect(show.title, '人生切割术');
+    expect(show.totalEpisodes, 19);
     final season = (await repo.children(show.id)).single.item;
     expect(season.title, '第 1 季');
+    expect(season.totalEpisodes, 9);
     final episodes = await repo.children(season.id);
     expect(episodes.map((e) => e.item.title), ['Good News About Hell', 'Half Loop']);
     expect(episodes.first.item.posterSource, 'https://img/1.jpg');

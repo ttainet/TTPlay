@@ -63,6 +63,7 @@ const aniListWorkGQL = `query ($id: Int) {
       day
     }
     duration
+    episodes
     averageScore
     genres
     description(asHtml: false)
@@ -276,6 +277,12 @@ func (s *Service) fetchAniListWork(ctx context.Context, cfg db.ServerSettings, k
 		}
 	}
 	cat := db.ShelfAnime
+	var totalEpisodes *int
+	if kind == "show" {
+		if n := jsonInt(m, "episodes"); n != nil && *n > 0 {
+			totalEpisodes = n
+		}
+	}
 	return Work{
 		Source:        "anilist",
 		Kind:          kind,
@@ -289,6 +296,7 @@ func (s *Service) fetchAniListWork(ctx context.Context, cfg db.ServerSettings, k
 		Summary:       nonEmptyStrPtr(stripHTMLTags(jsonStr(m, "description"))),
 		Rating:        scorePtr,
 		RuntimeMs:     runtimeMs,
+		TotalEpisodes: totalEpisodes,
 		Studio:        studio,
 		Genres:        extractJSONStringArray(m, "genres"),
 		PosterPath:    nonEmptyStrPtr(poster),

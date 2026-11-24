@@ -170,6 +170,7 @@ class TmdbProvider implements MetadataProvider {
     final runtime = (json['episode_run_time'] is List ? json['episode_run_time'] as List : const [])
         .whereType<num>()
         .firstOrNull;
+    final totalEpisodes = json.integer('number_of_episodes');
     return ScrapedTitle(
       source: source,
       tmdbId: json.str('id') ?? id,
@@ -184,6 +185,7 @@ class TmdbProvider implements MetadataProvider {
       tagline: json.str('tagline'),
       rating: _rating(json),
       runtimeMs: runtime == null || runtime <= 0 ? null : runtime.toInt() * 60000,
+      totalEpisodes: totalEpisodes != null && totalEpisodes > 0 ? totalEpisodes : null,
       contentRating: _showRating(json.obj('content_ratings')),
       studio: json.objs('networks').firstOrNull?.str('name'),
       genres: [for (final g in json.objs('genres')) ?g.str('name')],
@@ -199,24 +201,26 @@ class TmdbProvider implements MetadataProvider {
   Future<ScrapedSeason?> season(String id, int number) async {
     final json = await _get('/tv/$id/season/$number');
     if (json == null) return null;
+    final episodes = <ScrapedEpisode>[
+      for (final row in json.objs('episodes'))
+        if (row.integer('episode_number') != null)
+          ScrapedEpisode(
+            number: row.integer('episode_number')!,
+            title: row.str('name'),
+            summary: row.str('overview'),
+            airDate: row.str('air_date'),
+            runtimeMs: (row.integer('runtime') ?? 0) > 0 ? row.integer('runtime')! * 60000 : null,
+            stillSource: _image(row.str('still_path'), 'w780'),
+            rating: _rating(row),
+          ),
+    ];
     return ScrapedSeason(
       number: number,
       title: json.str('name'),
       summary: json.str('overview'),
       posterSource: _image(json.str('poster_path'), 'w780'),
-      episodes: [
-        for (final row in json.objs('episodes'))
-          if (row.integer('episode_number') != null)
-            ScrapedEpisode(
-              number: row.integer('episode_number')!,
-              title: row.str('name'),
-              summary: row.str('overview'),
-              airDate: row.str('air_date'),
-              runtimeMs: (row.integer('runtime') ?? 0) > 0 ? row.integer('runtime')! * 60000 : null,
-              stillSource: _image(row.str('still_path'), 'w780'),
-              rating: _rating(row),
-            ),
-      ],
+      totalEpisodes: episodes.isNotEmpty ? episodes.length : null,
+      episodes: episodes,
     );
   }
 

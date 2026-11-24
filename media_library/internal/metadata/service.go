@@ -120,6 +120,7 @@ type Work struct {
 	Tagline         *string  `json:"tagline,omitempty"`
 	Rating          *float64 `json:"rating,omitempty"`
 	RuntimeMs       *int64   `json:"runtime_ms,omitempty"`
+	TotalEpisodes   *int     `json:"total_episodes,omitempty"`
 	ContentRating   *string  `json:"content_rating,omitempty"`
 	Studio          *string  `json:"studio,omitempty"`
 	Genres          []string `json:"genres,omitempty"`
@@ -144,12 +145,13 @@ type Episode struct {
 }
 
 type Season struct {
-	Number     int       `json:"number"`
-	Title      *string   `json:"title,omitempty"`
-	Summary    *string   `json:"summary,omitempty"`
-	AirDate    *string   `json:"air_date,omitempty"`
-	PosterPath *string   `json:"poster_path,omitempty"`
-	Episodes   []Episode `json:"episodes"`
+	Number        int       `json:"number"`
+	Title         *string   `json:"title,omitempty"`
+	Summary       *string   `json:"summary,omitempty"`
+	AirDate       *string   `json:"air_date,omitempty"`
+	PosterPath    *string   `json:"poster_path,omitempty"`
+	TotalEpisodes *int      `json:"total_episodes,omitempty"`
+	Episodes      []Episode `json:"episodes"`
 }
 
 type Person struct {
@@ -1347,6 +1349,10 @@ func parseTmdbShow(raw map[string]any, fallbackID, lang string) Work {
 		}
 	}
 	cat := tmdbCategory(raw, true)
+	var totalEpisodes *int
+	if n := jsonInt(raw, "number_of_episodes"); n != nil && *n > 0 {
+		totalEpisodes = n
+	}
 	return Work{
 		Source:        "tmdb",
 		Kind:          "show",
@@ -1363,6 +1369,7 @@ func parseTmdbShow(raw map[string]any, fallbackID, lang string) Work {
 		Tagline:       nonEmptyStrPtr(jsonStr(raw, "tagline")),
 		Rating:        tmdbRating(raw),
 		RuntimeMs:     runtimeMs,
+		TotalEpisodes: totalEpisodes,
 		ContentRating: parseTmdbShowRating(jsonObj(raw, "content_ratings"), lang),
 		Studio:        studio,
 		Genres:        genres,
@@ -1407,13 +1414,19 @@ func (s *Service) fetchTmdbSeason(ctx context.Context, cfg db.ServerSettings, sh
 			Rating:    tmdbRating(row),
 		})
 	}
+	var totalEpisodes *int
+	if len(episodes) > 0 {
+		n := len(episodes)
+		totalEpisodes = &n
+	}
 	return Season{
-		Number:     seasonNumber,
-		Title:      nonEmptyStrPtr(jsonStr(raw, "name")),
-		Summary:    nonEmptyStrPtr(jsonStr(raw, "overview")),
-		AirDate:    nonEmptyStrPtr(jsonStr(raw, "air_date")),
-		PosterPath: nonEmptyStrPtr(jsonStr(raw, "poster_path")),
-		Episodes:   episodes,
+		Number:        seasonNumber,
+		Title:         nonEmptyStrPtr(jsonStr(raw, "name")),
+		Summary:       nonEmptyStrPtr(jsonStr(raw, "overview")),
+		AirDate:       nonEmptyStrPtr(jsonStr(raw, "air_date")),
+		PosterPath:    nonEmptyStrPtr(jsonStr(raw, "poster_path")),
+		TotalEpisodes: totalEpisodes,
+		Episodes:      episodes,
 	}, nil
 }
 
@@ -1735,6 +1748,14 @@ func (s *Service) fetchBangumiWork(ctx context.Context, cfg db.ServerSettings, k
 		}
 	}
 	cat := db.ShelfAnime
+	var totalEpisodes *int
+	if kind == "show" {
+		if n := jsonInt(raw, "eps"); n != nil && *n > 0 {
+			totalEpisodes = n
+		} else if n := jsonInt(raw, "total_episodes"); n != nil && *n > 0 {
+			totalEpisodes = n
+		}
+	}
 	return Work{
 		Source:        "bangumi",
 		Kind:          kind,
@@ -1747,6 +1768,7 @@ func (s *Service) fetchBangumiWork(ctx context.Context, cfg db.ServerSettings, k
 		ReleaseDate:   nonEmptyStrPtr(dateStr),
 		Summary:       nonEmptyStrPtr(jsonStr(raw, "summary")),
 		Rating:        scorePtr,
+		TotalEpisodes: totalEpisodes,
 		Genres:        genres,
 		PosterPath:    nonEmptyStrPtr(poster),
 		Category:      &cat,
@@ -1800,7 +1822,12 @@ func (s *Service) fetchBangumiSeason(ctx context.Context, cfg db.ServerSettings,
 			break
 		}
 	}
-	return Season{Number: 1, Episodes: episodes}, nil
+	var totalEpisodes *int
+	if len(episodes) > 0 {
+		n := len(episodes)
+		totalEpisodes = &n
+	}
+	return Season{Number: 1, TotalEpisodes: totalEpisodes, Episodes: episodes}, nil
 }
 
 // ─── JSON helpers ─────────────────────────────────────────────────────────

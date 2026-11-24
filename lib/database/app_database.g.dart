@@ -7926,6 +7926,17 @@ class $LibraryItemsTable extends LibraryItems
     type: DriftSqlType.int,
     requiredDuringInsert: false,
   );
+  static const VerificationMeta _totalEpisodesMeta = const VerificationMeta(
+    'totalEpisodes',
+  );
+  @override
+  late final GeneratedColumn<int> totalEpisodes = GeneratedColumn<int>(
+    'total_episodes',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
   static const VerificationMeta _seasonNumberMeta = const VerificationMeta(
     'seasonNumber',
   );
@@ -8129,6 +8140,7 @@ class $LibraryItemsTable extends LibraryItems
     studio,
     rating,
     runtimeMs,
+    totalEpisodes,
     seasonNumber,
     episodeNumber,
     absoluteNumber,
@@ -8282,6 +8294,15 @@ class $LibraryItemsTable extends LibraryItems
       context.handle(
         _runtimeMsMeta,
         runtimeMs.isAcceptableOrUnknown(data['runtime_ms']!, _runtimeMsMeta),
+      );
+    }
+    if (data.containsKey('total_episodes')) {
+      context.handle(
+        _totalEpisodesMeta,
+        totalEpisodes.isAcceptableOrUnknown(
+          data['total_episodes']!,
+          _totalEpisodesMeta,
+        ),
       );
     }
     if (data.containsKey('season_number')) {
@@ -8492,6 +8513,10 @@ class $LibraryItemsTable extends LibraryItems
         DriftSqlType.int,
         data['${effectivePrefix}runtime_ms'],
       ),
+      totalEpisodes: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}total_episodes'],
+      ),
       seasonNumber: attachedDatabase.typeMapping.read(
         DriftSqlType.int,
         data['${effectivePrefix}season_number'],
@@ -8606,6 +8631,9 @@ class LibraryItemRow extends DataClass implements Insertable<LibraryItemRow> {
   final double? rating;
   final int? runtimeMs;
 
+  /// Authoritative total episode count for shows and seasons, from metadata scrapers.
+  final int? totalEpisodes;
+
   /// Season number for seasons and episodes; 0 is specials.
   final int? seasonNumber;
   final int? episodeNumber;
@@ -8657,6 +8685,7 @@ class LibraryItemRow extends DataClass implements Insertable<LibraryItemRow> {
     this.studio,
     this.rating,
     this.runtimeMs,
+    this.totalEpisodes,
     this.seasonNumber,
     this.episodeNumber,
     this.absoluteNumber,
@@ -8721,6 +8750,9 @@ class LibraryItemRow extends DataClass implements Insertable<LibraryItemRow> {
     }
     if (!nullToAbsent || runtimeMs != null) {
       map['runtime_ms'] = Variable<int>(runtimeMs);
+    }
+    if (!nullToAbsent || totalEpisodes != null) {
+      map['total_episodes'] = Variable<int>(totalEpisodes);
     }
     if (!nullToAbsent || seasonNumber != null) {
       map['season_number'] = Variable<int>(seasonNumber);
@@ -8814,6 +8846,9 @@ class LibraryItemRow extends DataClass implements Insertable<LibraryItemRow> {
       runtimeMs: runtimeMs == null && nullToAbsent
           ? const Value.absent()
           : Value(runtimeMs),
+      totalEpisodes: totalEpisodes == null && nullToAbsent
+          ? const Value.absent()
+          : Value(totalEpisodes),
       seasonNumber: seasonNumber == null && nullToAbsent
           ? const Value.absent()
           : Value(seasonNumber),
@@ -8886,6 +8921,7 @@ class LibraryItemRow extends DataClass implements Insertable<LibraryItemRow> {
       studio: serializer.fromJson<String?>(json['studio']),
       rating: serializer.fromJson<double?>(json['rating']),
       runtimeMs: serializer.fromJson<int?>(json['runtimeMs']),
+      totalEpisodes: serializer.fromJson<int?>(json['totalEpisodes']),
       seasonNumber: serializer.fromJson<int?>(json['seasonNumber']),
       episodeNumber: serializer.fromJson<int?>(json['episodeNumber']),
       absoluteNumber: serializer.fromJson<int?>(json['absoluteNumber']),
@@ -8927,6 +8963,7 @@ class LibraryItemRow extends DataClass implements Insertable<LibraryItemRow> {
       'studio': serializer.toJson<String?>(studio),
       'rating': serializer.toJson<double?>(rating),
       'runtimeMs': serializer.toJson<int?>(runtimeMs),
+      'totalEpisodes': serializer.toJson<int?>(totalEpisodes),
       'seasonNumber': serializer.toJson<int?>(seasonNumber),
       'episodeNumber': serializer.toJson<int?>(episodeNumber),
       'absoluteNumber': serializer.toJson<int?>(absoluteNumber),
@@ -8966,6 +9003,7 @@ class LibraryItemRow extends DataClass implements Insertable<LibraryItemRow> {
     Value<String?> studio = const Value.absent(),
     Value<double?> rating = const Value.absent(),
     Value<int?> runtimeMs = const Value.absent(),
+    Value<int?> totalEpisodes = const Value.absent(),
     Value<int?> seasonNumber = const Value.absent(),
     Value<int?> episodeNumber = const Value.absent(),
     Value<int?> absoluteNumber = const Value.absent(),
@@ -9006,6 +9044,9 @@ class LibraryItemRow extends DataClass implements Insertable<LibraryItemRow> {
     studio: studio.present ? studio.value : this.studio,
     rating: rating.present ? rating.value : this.rating,
     runtimeMs: runtimeMs.present ? runtimeMs.value : this.runtimeMs,
+    totalEpisodes: totalEpisodes.present
+        ? totalEpisodes.value
+        : this.totalEpisodes,
     seasonNumber: seasonNumber.present ? seasonNumber.value : this.seasonNumber,
     episodeNumber: episodeNumber.present
         ? episodeNumber.value
@@ -9062,6 +9103,9 @@ class LibraryItemRow extends DataClass implements Insertable<LibraryItemRow> {
       studio: data.studio.present ? data.studio.value : this.studio,
       rating: data.rating.present ? data.rating.value : this.rating,
       runtimeMs: data.runtimeMs.present ? data.runtimeMs.value : this.runtimeMs,
+      totalEpisodes: data.totalEpisodes.present
+          ? data.totalEpisodes.value
+          : this.totalEpisodes,
       seasonNumber: data.seasonNumber.present
           ? data.seasonNumber.value
           : this.seasonNumber,
@@ -9119,6 +9163,7 @@ class LibraryItemRow extends DataClass implements Insertable<LibraryItemRow> {
           ..write('studio: $studio, ')
           ..write('rating: $rating, ')
           ..write('runtimeMs: $runtimeMs, ')
+          ..write('totalEpisodes: $totalEpisodes, ')
           ..write('seasonNumber: $seasonNumber, ')
           ..write('episodeNumber: $episodeNumber, ')
           ..write('absoluteNumber: $absoluteNumber, ')
@@ -9160,6 +9205,7 @@ class LibraryItemRow extends DataClass implements Insertable<LibraryItemRow> {
     studio,
     rating,
     runtimeMs,
+    totalEpisodes,
     seasonNumber,
     episodeNumber,
     absoluteNumber,
@@ -9200,6 +9246,7 @@ class LibraryItemRow extends DataClass implements Insertable<LibraryItemRow> {
           other.studio == this.studio &&
           other.rating == this.rating &&
           other.runtimeMs == this.runtimeMs &&
+          other.totalEpisodes == this.totalEpisodes &&
           other.seasonNumber == this.seasonNumber &&
           other.episodeNumber == this.episodeNumber &&
           other.absoluteNumber == this.absoluteNumber &&
@@ -9238,6 +9285,7 @@ class LibraryItemsCompanion extends UpdateCompanion<LibraryItemRow> {
   final Value<String?> studio;
   final Value<double?> rating;
   final Value<int?> runtimeMs;
+  final Value<int?> totalEpisodes;
   final Value<int?> seasonNumber;
   final Value<int?> episodeNumber;
   final Value<int?> absoluteNumber;
@@ -9274,6 +9322,7 @@ class LibraryItemsCompanion extends UpdateCompanion<LibraryItemRow> {
     this.studio = const Value.absent(),
     this.rating = const Value.absent(),
     this.runtimeMs = const Value.absent(),
+    this.totalEpisodes = const Value.absent(),
     this.seasonNumber = const Value.absent(),
     this.episodeNumber = const Value.absent(),
     this.absoluteNumber = const Value.absent(),
@@ -9311,6 +9360,7 @@ class LibraryItemsCompanion extends UpdateCompanion<LibraryItemRow> {
     this.studio = const Value.absent(),
     this.rating = const Value.absent(),
     this.runtimeMs = const Value.absent(),
+    this.totalEpisodes = const Value.absent(),
     this.seasonNumber = const Value.absent(),
     this.episodeNumber = const Value.absent(),
     this.absoluteNumber = const Value.absent(),
@@ -9353,6 +9403,7 @@ class LibraryItemsCompanion extends UpdateCompanion<LibraryItemRow> {
     Expression<String>? studio,
     Expression<double>? rating,
     Expression<int>? runtimeMs,
+    Expression<int>? totalEpisodes,
     Expression<int>? seasonNumber,
     Expression<int>? episodeNumber,
     Expression<int>? absoluteNumber,
@@ -9390,6 +9441,7 @@ class LibraryItemsCompanion extends UpdateCompanion<LibraryItemRow> {
       if (studio != null) 'studio': studio,
       if (rating != null) 'rating': rating,
       if (runtimeMs != null) 'runtime_ms': runtimeMs,
+      if (totalEpisodes != null) 'total_episodes': totalEpisodes,
       if (seasonNumber != null) 'season_number': seasonNumber,
       if (episodeNumber != null) 'episode_number': episodeNumber,
       if (absoluteNumber != null) 'absolute_number': absoluteNumber,
@@ -9429,6 +9481,7 @@ class LibraryItemsCompanion extends UpdateCompanion<LibraryItemRow> {
     Value<String?>? studio,
     Value<double?>? rating,
     Value<int?>? runtimeMs,
+    Value<int?>? totalEpisodes,
     Value<int?>? seasonNumber,
     Value<int?>? episodeNumber,
     Value<int?>? absoluteNumber,
@@ -9466,6 +9519,7 @@ class LibraryItemsCompanion extends UpdateCompanion<LibraryItemRow> {
       studio: studio ?? this.studio,
       rating: rating ?? this.rating,
       runtimeMs: runtimeMs ?? this.runtimeMs,
+      totalEpisodes: totalEpisodes ?? this.totalEpisodes,
       seasonNumber: seasonNumber ?? this.seasonNumber,
       episodeNumber: episodeNumber ?? this.episodeNumber,
       absoluteNumber: absoluteNumber ?? this.absoluteNumber,
@@ -9543,6 +9597,9 @@ class LibraryItemsCompanion extends UpdateCompanion<LibraryItemRow> {
     if (runtimeMs.present) {
       map['runtime_ms'] = Variable<int>(runtimeMs.value);
     }
+    if (totalEpisodes.present) {
+      map['total_episodes'] = Variable<int>(totalEpisodes.value);
+    }
     if (seasonNumber.present) {
       map['season_number'] = Variable<int>(seasonNumber.value);
     }
@@ -9618,6 +9675,7 @@ class LibraryItemsCompanion extends UpdateCompanion<LibraryItemRow> {
           ..write('studio: $studio, ')
           ..write('rating: $rating, ')
           ..write('runtimeMs: $runtimeMs, ')
+          ..write('totalEpisodes: $totalEpisodes, ')
           ..write('seasonNumber: $seasonNumber, ')
           ..write('episodeNumber: $episodeNumber, ')
           ..write('absoluteNumber: $absoluteNumber, ')
@@ -21039,6 +21097,7 @@ typedef $$LibraryItemsTableCreateCompanionBuilder =
       Value<String?> studio,
       Value<double?> rating,
       Value<int?> runtimeMs,
+      Value<int?> totalEpisodes,
       Value<int?> seasonNumber,
       Value<int?> episodeNumber,
       Value<int?> absoluteNumber,
@@ -21077,6 +21136,7 @@ typedef $$LibraryItemsTableUpdateCompanionBuilder =
       Value<String?> studio,
       Value<double?> rating,
       Value<int?> runtimeMs,
+      Value<int?> totalEpisodes,
       Value<int?> seasonNumber,
       Value<int?> episodeNumber,
       Value<int?> absoluteNumber,
@@ -21343,6 +21403,11 @@ class $$LibraryItemsTableFilterComposer
 
   ColumnFilters<int> get runtimeMs => $composableBuilder(
     column: $table.runtimeMs,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get totalEpisodes => $composableBuilder(
+    column: $table.totalEpisodes,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -21717,6 +21782,11 @@ class $$LibraryItemsTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<int> get totalEpisodes => $composableBuilder(
+    column: $table.totalEpisodes,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<int> get seasonNumber => $composableBuilder(
     column: $table.seasonNumber,
     builder: (column) => ColumnOrderings(column),
@@ -21913,6 +21983,11 @@ class $$LibraryItemsTableAnnotationComposer
 
   GeneratedColumn<int> get runtimeMs =>
       $composableBuilder(column: $table.runtimeMs, builder: (column) => column);
+
+  GeneratedColumn<int> get totalEpisodes => $composableBuilder(
+    column: $table.totalEpisodes,
+    builder: (column) => column,
+  );
 
   GeneratedColumn<int> get seasonNumber => $composableBuilder(
     column: $table.seasonNumber,
@@ -22236,6 +22311,7 @@ class $$LibraryItemsTableTableManager
                 Value<String?> studio = const Value.absent(),
                 Value<double?> rating = const Value.absent(),
                 Value<int?> runtimeMs = const Value.absent(),
+                Value<int?> totalEpisodes = const Value.absent(),
                 Value<int?> seasonNumber = const Value.absent(),
                 Value<int?> episodeNumber = const Value.absent(),
                 Value<int?> absoluteNumber = const Value.absent(),
@@ -22272,6 +22348,7 @@ class $$LibraryItemsTableTableManager
                 studio: studio,
                 rating: rating,
                 runtimeMs: runtimeMs,
+                totalEpisodes: totalEpisodes,
                 seasonNumber: seasonNumber,
                 episodeNumber: episodeNumber,
                 absoluteNumber: absoluteNumber,
@@ -22310,6 +22387,7 @@ class $$LibraryItemsTableTableManager
                 Value<String?> studio = const Value.absent(),
                 Value<double?> rating = const Value.absent(),
                 Value<int?> runtimeMs = const Value.absent(),
+                Value<int?> totalEpisodes = const Value.absent(),
                 Value<int?> seasonNumber = const Value.absent(),
                 Value<int?> episodeNumber = const Value.absent(),
                 Value<int?> absoluteNumber = const Value.absent(),
@@ -22346,6 +22424,7 @@ class $$LibraryItemsTableTableManager
                 studio: studio,
                 rating: rating,
                 runtimeMs: runtimeMs,
+                totalEpisodes: totalEpisodes,
                 seasonNumber: seasonNumber,
                 episodeNumber: episodeNumber,
                 absoluteNumber: absoluteNumber,

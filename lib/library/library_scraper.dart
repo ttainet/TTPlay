@@ -910,6 +910,7 @@ class LibraryScraper {
         studio: Value(details.studio),
         rating: Value(details.rating),
         runtimeMs: Value(details.runtimeMs),
+        totalEpisodes: Value(details.totalEpisodes),
         // Art beside the media is the user's own choice and wins.
         posterSource: Value(art['poster'] ?? details.posterSource),
         backdropSource: Value(art['backdrop'] ?? details.backdropSource),
@@ -997,6 +998,9 @@ class LibraryScraper {
       if (season == null) continue;
 
       final appliedSource = seasonProvider ?? provider.source;
+      final seasonTotal = (season.totalEpisodes ?? 0) > 0
+          ? season.totalEpisodes
+          : (season.episodes.isNotEmpty ? season.episodes.length : null);
 
       await _repo.updateItem(
         seasonRow.id,
@@ -1007,6 +1011,9 @@ class LibraryScraper {
           summary: (seasonRow.summary != null && seasonRow.summary!.isNotEmpty && missingSummaryOnly)
               ? const Value.absent()
               : Value(season.summary),
+          totalEpisodes: (missingSummaryOnly && seasonRow.totalEpisodes != null)
+              ? const Value.absent()
+              : Value(seasonTotal),
           posterSource: (seasonRow.posterSource != null && missingSummaryOnly)
               ? const Value.absent()
               : Value(season.posterSource),
@@ -1093,9 +1100,11 @@ class LibraryScraper {
 
     final needsSummary = root.summary == null || root.summary!.isEmpty;
     final needsCredits = (await _repo.creditsOf(root.id)).isEmpty;
+    final needsTotalEpisodes = root.kind == LibraryKinds.show && root.totalEpisodes == null;
     final needsWorkMeta =
         needsSummary ||
         needsCredits ||
+        needsTotalEpisodes ||
         root.backdropSource == null ||
         root.backdropSource!.isEmpty ||
         root.logoSource == null ||
@@ -1157,6 +1166,9 @@ class LibraryScraper {
           final season = batch.seasons['${target.provider}:${target.id}:${entry.key}'];
           if (season == null) continue;
           final (seasonRow, eps) = entry.value;
+          final seasonTotal = (season.totalEpisodes ?? 0) > 0
+              ? season.totalEpisodes
+              : (season.episodes.isNotEmpty ? season.episodes.length : null);
           await _repo.updateItem(
             seasonRow.id,
             LibraryItemsCompanion(
@@ -1166,6 +1178,9 @@ class LibraryScraper {
               summary: (seasonRow.summary != null && seasonRow.summary!.isNotEmpty)
                   ? const Value.absent()
                   : Value(season.summary),
+              totalEpisodes: (seasonRow.totalEpisodes != null || seasonTotal == null)
+                  ? const Value.absent()
+                  : Value(seasonTotal),
               posterSource: seasonRow.posterSource != null ? const Value.absent() : Value(season.posterSource),
               metadataSource: seasonRow.metadataSource != null ? const Value.absent() : Value(target.provider),
               updatedAt: Value(seasonRow.updatedAt),
@@ -1242,6 +1257,9 @@ class LibraryScraper {
         : null;
     final nextStudio = (root.studio == null || root.studio!.isEmpty) ? details.studio : null;
     final nextRuntimeMs = root.runtimeMs == null ? details.runtimeMs : null;
+    final nextTotalEpisodes = root.totalEpisodes == null && (details.totalEpisodes ?? 0) > 0
+        ? details.totalEpisodes
+        : null;
     final nextPoster = (root.posterSource == null || root.posterSource!.isEmpty) ? details.posterSource : null;
     final nextBackdrop = (root.backdropSource == null || root.backdropSource!.isEmpty)
         ? details.backdropSource
@@ -1258,6 +1276,7 @@ class LibraryScraper {
         nextContentRating != null ||
         nextStudio != null ||
         nextRuntimeMs != null ||
+        nextTotalEpisodes != null ||
         nextPoster != null ||
         nextBackdrop != null ||
         nextLogo != null ||
@@ -1274,6 +1293,7 @@ class LibraryScraper {
           contentRating: nextContentRating != null ? Value(nextContentRating) : const Value.absent(),
           studio: nextStudio != null ? Value(nextStudio) : const Value.absent(),
           runtimeMs: nextRuntimeMs != null ? Value(nextRuntimeMs) : const Value.absent(),
+          totalEpisodes: nextTotalEpisodes != null ? Value(nextTotalEpisodes) : const Value.absent(),
           posterSource: nextPoster != null ? Value(nextPoster) : const Value.absent(),
           backdropSource: nextBackdrop != null ? Value(nextBackdrop) : const Value.absent(),
           logoSource: nextLogo != null ? Value(nextLogo) : const Value.absent(),

@@ -52,6 +52,7 @@ sealed class MediaItem with _$MediaItem {
     String? artPath,
     int? durationMs,
     int? leafCount,
+    int? totalEpisodes,
     double? rating,
     List<MediaRatingSource>? ratings,
     List<String>? genres,
@@ -76,6 +77,7 @@ sealed class MediaItem with _$MediaItem {
         artPath: artPath,
         durationMs: durationMs,
         leafCount: leafCount,
+        totalEpisodes: totalEpisodes,
         rating: rating,
         ratings: ratings,
         genres: genres,
@@ -100,6 +102,7 @@ sealed class MediaItem with _$MediaItem {
         artPath: artPath,
         durationMs: durationMs,
         leafCount: leafCount,
+        totalEpisodes: totalEpisodes,
         rating: rating,
         ratings: ratings,
         genres: genres,
@@ -153,6 +156,7 @@ sealed class MediaItem with _$MediaItem {
     @JsonKey(fromJson: flexibleInt) int? leafCount,
     @JsonKey(fromJson: flexibleInt) int? viewedLeafCount,
     @JsonKey(fromJson: flexibleInt) int? childCount,
+    @JsonKey(fromJson: flexibleInt) int? totalEpisodes,
     @JsonKey(fromJson: flexibleInt) int? addedAt,
     @JsonKey(fromJson: flexibleInt) int? updatedAt,
     @JsonKey(fromJson: flexibleDouble) double? rating,
@@ -247,6 +251,7 @@ sealed class MediaItem with _$MediaItem {
     @JsonKey(fromJson: flexibleInt) int? leafCount,
     @JsonKey(fromJson: flexibleInt) int? viewedLeafCount,
     @JsonKey(fromJson: flexibleInt) int? childCount,
+    @JsonKey(fromJson: flexibleInt) int? totalEpisodes,
     @JsonKey(fromJson: flexibleInt) int? addedAt,
     @JsonKey(fromJson: flexibleInt) int? updatedAt,
     @JsonKey(fromJson: flexibleDouble) double? rating,
@@ -399,6 +404,17 @@ sealed class MediaItem with _$MediaItem {
     if (!kind.usesLeafWatchCounts) return null;
     final total = leafCount ?? (kind == MediaKind.season ? childCount : null);
     return total != null && total > 0 ? total : null;
+  }
+
+  /// Total episode count to display for shows and seasons.
+  ///
+  /// Prefers the authoritative scraped total ([totalEpisodes]) when available,
+  /// falling back to [leafWatchTotal] for servers (Plex/Jellyfin/Emby) that
+  /// only report library episode counts.
+  int? get displayTotalEpisodes {
+    if (kind != MediaKind.show && kind != MediaKind.season) return null;
+    if (totalEpisodes != null && totalEpisodes! > 0) return totalEpisodes;
+    return leafWatchTotal;
   }
 
   /// Normalized aggregate completion in the inclusive range 0–1.

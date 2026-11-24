@@ -1352,6 +1352,9 @@ class _MediaDetailScreenState extends State<MediaDetailScreen>
       if (metadata.year != null) addTextChip('${metadata.year}', 0);
       if (metadata case PlexMediaItem(:final editionTitle?)) addTextChip(editionTitle, 3);
       if (metadata.contentRating != null) addTextChip(formatContentRating(metadata.contentRating!), 2);
+      if (metadata.displayTotalEpisodes case final count?) {
+        addTextChip(t.explore.episodeCount(n: count), 1);
+      }
       if (metadata.durationMs != null) addTextChip(formatDurationTextual(metadata.durationMs!), 1);
       for (final label in buildMediaQualityLabels(metadata)) {
         addTextChip(label, 4);
@@ -4146,9 +4149,11 @@ class _MediaDetailScreenState extends State<MediaDetailScreen>
         : _withProbedRatings(focusedEpisode);
     final description = _tvDetailDescription(metadata, hideSpoilers: hideSpoilers);
     final genres = metadata.genres ?? const <String>[];
+    final totalEpisodes = item.displayTotalEpisodes ?? metadata.displayTotalEpisodes;
     unawaited(
       OverlaySheetController.of(context).show<void>(
-        builder: (_) => MediaDetailsSheet(item: item, description: description, genres: genres),
+        builder: (_) =>
+            MediaDetailsSheet(item: item, description: description, genres: genres, totalEpisodes: totalEpisodes),
       ),
     );
   }
@@ -4173,6 +4178,10 @@ class _MediaDetailScreenState extends State<MediaDetailScreen>
     }
     if (lineMetadata.contentRating != null) {
       parts.add(MetadataLineText(formatContentRating(lineMetadata.contentRating!), dropPriority: 2));
+    }
+    final totalEpisodes = lineMetadata.displayTotalEpisodes ?? metadata.displayTotalEpisodes;
+    if (totalEpisodes != null) {
+      parts.add(MetadataLineText(t.explore.episodeCount(n: totalEpisodes), dropPriority: 1));
     }
     if (lineMetadata.durationMs != null) {
       parts.add(MetadataLineText(formatDurationTextual(lineMetadata.durationMs!), dropPriority: 1));

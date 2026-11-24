@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../focus/focusable_wrapper.dart';
+import '../i18n/strings.g.dart';
 import '../media/media_item.dart';
 import '../media/media_item_types.dart';
 import '../utils/content_utils.dart';
@@ -32,7 +33,17 @@ class MediaDetailsSheet extends StatefulWidget {
   /// itself no longer renders them (#2217).
   final List<String> genres;
 
-  const MediaDetailsSheet({super.key, required this.item, this.description, this.genres = const []});
+  /// Total episode count of the show/season when [item] itself is a focused
+  /// episode that carries no container total.
+  final int? totalEpisodes;
+
+  const MediaDetailsSheet({
+    super.key,
+    required this.item,
+    this.description,
+    this.genres = const [],
+    this.totalEpisodes,
+  });
 
   @override
   State<MediaDetailsSheet> createState() => _MediaDetailsSheetState();
@@ -64,6 +75,7 @@ class _MediaDetailsSheetState extends State<MediaDetailsSheet> {
   /// quality label — the plain-text fields of the hero metadata line, complete.
   List<String> _metadataLabels(MediaItem item) {
     final episodeLabel = formatSeasonEpisodeLabel(item.parentIndex, item.index);
+    final totalEpisodes = widget.totalEpisodes ?? item.displayTotalEpisodes;
     return [
       if (item.isEpisode && episodeLabel != null) episodeLabel,
       if (item.isEpisode && item.originallyAvailableAt != null)
@@ -71,6 +83,7 @@ class _MediaDetailsSheetState extends State<MediaDetailsSheet> {
       else if (item.year != null)
         item.year.toString(),
       if (item.contentRating != null) formatContentRating(item.contentRating!),
+      if (totalEpisodes != null) t.explore.episodeCount(n: totalEpisodes),
       if (item.durationMs != null) formatDurationTextual(item.durationMs!),
       ...buildMediaQualityLabels(item),
     ];

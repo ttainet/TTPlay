@@ -361,6 +361,7 @@ class TtplayServerClient implements MediaServerClient, StreamQualityClient {
 
     final episodeCount = ttplayInt(j['episode_count']);
     final watchedEpCount = ttplayInt(j['watched_episode_count']);
+    final totalEpisodes = ttplayInt(j['total_episodes']);
 
     return MediaItem.jellyfin(
       id: id,
@@ -392,6 +393,7 @@ class TtplayServerClient implements MediaServerClient, StreamQualityClient {
       lastViewedAt: _epochSeconds(ttplayInt(watchState?['last_played_at'])),
       leafCount: isContainer ? episodeCount : null,
       viewedLeafCount: isContainer ? watchedEpCount : null,
+      totalEpisodes: isContainer && (totalEpisodes ?? 0) > 0 ? totalEpisodes : null,
       addedAt: _epochSeconds(ttplayInt(j['source_added_at'])) ?? _epochSeconds(ttplayInt(j['added_at'])),
       updatedAt: _epochSeconds(ttplayInt(j['updated_at'])),
       rating: ttplayDouble(j['rating']),

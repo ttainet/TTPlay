@@ -889,6 +889,9 @@ class CloudProjectionEngine {
       contentRating: Value(_nonEmptyString(raw['content_rating'])),
       rating: Value((raw['rating'] as num?)?.toDouble()),
       runtimeMs: Value((raw['runtime_ms'] as num?)?.toInt()),
+      totalEpisodes: raw.containsKey('total_episodes')
+          ? Value(((raw['total_episodes'] as num?)?.toInt() ?? 0) > 0 ? (raw['total_episodes'] as num).toInt() : null)
+          : const Value.absent(),
       seasonNumber: Value(seasonNumber),
       episodeNumber: Value(episodeNumber),
       posterSource: poster != null ? Value(poster) : const Value.absent(),

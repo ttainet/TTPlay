@@ -11,6 +11,7 @@ import 'package:ttplay/library/library_scanner.dart';
 import 'package:ttplay/library/library_scrape_runner.dart';
 import 'package:ttplay/library/library_scraper.dart';
 import 'package:ttplay/library/library_settings.dart';
+import 'package:ttplay/library/local_library_client.dart';
 import 'package:ttplay/library/local_workspace_archive.dart';
 import 'package:ttplay/library/scrapers/server_metadata_provider.dart';
 import 'package:ttplay/services/companion_remote/lan_crypto.dart';
@@ -142,12 +143,28 @@ class _MockMetadataAndAuthServer {
           },
         };
       case '/api/v1/public/metadata/batch':
+        const severanceWork = <String, dynamic>{
+          'source': 'tmdb',
+          'external_id': '95396',
+          'tmdb_id': '95396',
+          'title': 'Severance',
+          'year': 2022,
+          'total_episodes': 19,
+          'summary': 'Mark leads a team of office workers.',
+          'backdrop_path': '/sev_bg.jpg',
+          'logo_path': '/sev_logo.png',
+          'credits': [
+            {'name': 'Adam Scott', 'job': 'actor', 'character': 'Mark'},
+          ],
+        };
         final requestedWorks = (reqBody['works'] as List?) ?? const [];
         final works = <String, dynamic>{};
         for (final entry in requestedWorks.whereType<Map>()) {
           final key = '${entry['provider']}:${entry['kind']}:${entry['id']}';
           if (key == 'tmdb:movie:603') {
             works[key] = matrixWork;
+          } else if (key == 'tmdb:show:95396') {
+            works[key] = severanceWork;
           }
         }
         body = {
@@ -487,4 +504,79 @@ void main() {
       expect((await identityStore.loadTrustedLanPeers()).map((p) => p.deviceId), ['tv-1']);
     },
   );
+
+  test('hydrateWorkDetailsById backfills show totalEpisodes and LocalLibraryClient exposes displayTotalEpisodes', () async {
+    final server = await _MockMetadataAndAuthServer.start();
+    addTearDown(server.close);
+
+    final db = AppDatabase.forTesting(NativeDatabase.memory());
+    final repo = LibraryRepository(db);
+    final mounts = MountManager(MountRegistry(db));
+    final provider = ServerMetadataProvider(serverUrl: server.baseUrl);
+    final scraper = LibraryScraper(db, repo, providers: [provider]);
+    final client = LocalLibraryClient(repository: repo, mounts: mounts);
+    addTearDown(() async {
+      client.close();
+      provider.close();
+      await mounts.dispose();
+      await db.close();
+    });
+
+    final now = DateTime(2026).millisecondsSinceEpoch;
+    final showId = await repo.insertItem(
+      LibraryItemsCompanion.insert(
+        kind: LibraryKinds.show,
+        libraryType: LibraryTypes.show,
+        title: 'Severance',
+        sortTitle: 'severance',
+        summary: const Value('Mark leads a team of office workers.'),
+        backdropSource: const Value('https://img/bg.jpg'),
+        logoSource: const Value('https://img/logo.png'),
+        tmdbId: const Value('95396'),
+        metadataSource: const Value('tmdb'),
+        scrapedAt: Value(now),
+        addedAt: now,
+        updatedAt: now,
+      ),
+    );
+    await repo.setCredits(showId, [(name: 'Adam Scott', job: 'actor', character: 'Mark', tmdbId: null, photoSource: null)]);
+    final seasonId = await repo.insertItem(
+      LibraryItemsCompanion.insert(
+        kind: LibraryKinds.season,
+        libraryType: LibraryTypes.show,
+        parentId: Value(showId),
+        showId: Value(showId),
+        title: 'Season 1',
+        sortTitle: '00001',
+        seasonNumber: const Value(1),
+        addedAt: now,
+        updatedAt: now,
+      ),
+    );
+    await repo.insertItem(
+      LibraryItemsCompanion.insert(
+        kind: LibraryKinds.episode,
+        libraryType: LibraryTypes.show,
+        parentId: Value(seasonId),
+        showId: Value(showId),
+        title: 'Good News About Hell',
+        sortTitle: '00001_00001',
+        seasonNumber: const Value(1),
+        episodeNumber: const Value(1),
+        summary: const Value('Mark gets promoted.'),
+        metadataSource: const Value('tmdb'),
+        addedAt: now,
+        updatedAt: now,
+      ),
+    );
+
+    final hydrated = await scraper.hydrateWorkDetailsById(showId);
+    expect(hydrated, isTrue);
+
+    final item = await client.fetchItem('$showId');
+    expect(item, isNotNull);
+    expect(item!.leafCount, 1);
+    expect(item.totalEpisodes, 19);
+    expect(item.displayTotalEpisodes, 19);
+  });
 }

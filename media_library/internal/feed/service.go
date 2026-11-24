@@ -52,6 +52,7 @@ type ItemSummaryView struct {
 	ContentRating    string   `json:"content_rating,omitempty"`
 	Rating           *float64 `json:"rating,omitempty"`
 	RuntimeMs        *int64   `json:"runtime_ms,omitempty"`
+	TotalEpisodes    *int     `json:"total_episodes,omitempty"`
 	SeasonNumber     *int     `json:"season_number,omitempty"`
 	EpisodeNumber    *int     `json:"episode_number,omitempty"`
 	PosterSource     string   `json:"poster_source,omitempty"`
@@ -309,7 +310,7 @@ func (s *Service) GetSnapshot(p *account.Principal, req SnapshotRequest) (Snapsh
 		SELECT mi.id, COALESCE(mi.work_key, ''), mi.kind, mi.library_type,
 		       mi.parent_id, mi.show_id, mi.title, COALESCE(mi.sort_title, ''),
 		       COALESCE(mi.original_title, ''), mi.year, COALESCE(mi.release_date, ''),
-		       COALESCE(mi.summary, ''), COALESCE(mi.content_rating, ''), mi.rating, mi.runtime_ms,
+		       COALESCE(mi.summary, ''), COALESCE(mi.content_rating, ''), mi.rating, mi.runtime_ms, mi.total_episodes,
 		       mi.season_number, mi.episode_number,
 		       COALESCE(mi.poster_source, ''), COALESCE(mi.backdrop_source, ''), COALESCE(mi.logo_source, ''),
 		       COALESCE(mi.tmdb_id, ''), COALESCE(mi.imdb_id, ''), mi.locked,
@@ -551,7 +552,7 @@ func (s *Service) GetItemDetail(p *account.Principal, itemID int64) (ItemDetailV
 		SELECT mi.id, COALESCE(mi.work_key, ''), mi.kind, mi.library_type,
 		       mi.parent_id, mi.show_id, mi.title, COALESCE(mi.sort_title, ''),
 		       COALESCE(mi.original_title, ''), mi.year, COALESCE(mi.release_date, ''),
-		       COALESCE(mi.summary, ''), COALESCE(mi.content_rating, ''), mi.rating, mi.runtime_ms,
+		       COALESCE(mi.summary, ''), COALESCE(mi.content_rating, ''), mi.rating, mi.runtime_ms, mi.total_episodes,
 		       mi.season_number, mi.episode_number,
 		       COALESCE(mi.poster_source, ''), COALESCE(mi.backdrop_source, ''), COALESCE(mi.logo_source, ''),
 		       COALESCE(mi.tmdb_id, ''), COALESCE(mi.imdb_id, ''), mi.locked,
@@ -563,16 +564,16 @@ func (s *Service) GetItemDetail(p *account.Principal, itemID int64) (ItemDetailV
 	)
 
 	var (
-		parentID, showID, runtimeMs, srcAdded sql.NullInt64
-		year, sNum, eNum                      sql.NullInt64
-		rating                                sql.NullFloat64
-		locked                                int
+		parentID, showID, runtimeMs, totalEps, srcAdded sql.NullInt64
+		year, sNum, eNum                                sql.NullInt64
+		rating                                          sql.NullFloat64
+		locked                                          int
 	)
 	err := row.Scan(
 		&det.ID, &det.WorkKey, &det.Kind, &det.LibraryType,
 		&parentID, &showID, &det.Title, &det.SortTitle,
 		&det.OriginalTitle, &year, &det.ReleaseDate,
-		&det.Summary, &det.ContentRating, &rating, &runtimeMs,
+		&det.Summary, &det.ContentRating, &rating, &runtimeMs, &totalEps,
 		&sNum, &eNum,
 		&det.PosterSource, &det.BackdropSource, &det.LogoSource,
 		&det.TmdbID, &det.ImdbID, &locked,
@@ -585,7 +586,7 @@ func (s *Service) GetItemDetail(p *account.Principal, itemID int64) (ItemDetailV
 	if err != nil {
 		return ItemDetailView{}, err
 	}
-	populateNulls(&det.ItemSummaryView, parentID, showID, year, rating, runtimeMs, sNum, eNum, srcAdded, locked)
+	populateNulls(&det.ItemSummaryView, parentID, showID, year, rating, runtimeMs, totalEps, sNum, eNum, srcAdded, locked)
 	_ = json.Unmarshal([]byte(aliasesJSON), &det.Aliases)
 
 	effectiveWorkKey := det.WorkKey
@@ -1107,7 +1108,7 @@ func (s *Service) loadChildItemsWithOpts(householdID, memberID string, parentID 
 		SELECT mi.id, COALESCE(mi.work_key, ''), mi.kind, mi.library_type,
 		       mi.parent_id, mi.show_id, mi.title, COALESCE(mi.sort_title, ''),
 		       COALESCE(mi.original_title, ''), mi.year, COALESCE(mi.release_date, ''),
-		       COALESCE(mi.summary, ''), COALESCE(mi.content_rating, ''), mi.rating, mi.runtime_ms,
+		       COALESCE(mi.summary, ''), COALESCE(mi.content_rating, ''), mi.rating, mi.runtime_ms, mi.total_episodes,
 		       mi.season_number, mi.episode_number,
 		       COALESCE(mi.poster_source, ''), COALESCE(mi.backdrop_source, ''), COALESCE(mi.logo_source, ''),
 		       COALESCE(mi.tmdb_id, ''), COALESCE(mi.imdb_id, ''), mi.locked,
@@ -1152,7 +1153,7 @@ func (s *Service) loadShowEpisodes(householdID, memberID string, showID int64, w
 		SELECT mi.id, COALESCE(mi.work_key, ''), mi.kind, mi.library_type,
 		       mi.parent_id, mi.show_id, mi.title, COALESCE(mi.sort_title, ''),
 		       COALESCE(mi.original_title, ''), mi.year, COALESCE(mi.release_date, ''),
-		       COALESCE(mi.summary, ''), COALESCE(mi.content_rating, ''), mi.rating, mi.runtime_ms,
+		       COALESCE(mi.summary, ''), COALESCE(mi.content_rating, ''), mi.rating, mi.runtime_ms, mi.total_episodes,
 		       mi.season_number, mi.episode_number,
 		       COALESCE(mi.poster_source, ''), COALESCE(mi.backdrop_source, ''), COALESCE(mi.logo_source, ''),
 		       COALESCE(mi.tmdb_id, ''), COALESCE(mi.imdb_id, ''), mi.locked,
@@ -1215,7 +1216,7 @@ func (s *Service) hydrateChangeEventWithOpts(
 			SELECT mi.id, COALESCE(mi.work_key, ''), mi.kind, mi.library_type,
 			       mi.parent_id, mi.show_id, mi.title, COALESCE(mi.sort_title, ''),
 			       COALESCE(mi.original_title, ''), mi.year, COALESCE(mi.release_date, ''),
-			       COALESCE(mi.summary, ''), COALESCE(mi.content_rating, ''), mi.rating, mi.runtime_ms,
+			       COALESCE(mi.summary, ''), COALESCE(mi.content_rating, ''), mi.rating, mi.runtime_ms, mi.total_episodes,
 			       mi.season_number, mi.episode_number,
 			       COALESCE(mi.poster_source, ''), COALESCE(mi.backdrop_source, ''), COALESCE(mi.logo_source, ''),
 			       COALESCE(mi.tmdb_id, ''), COALESCE(mi.imdb_id, ''), mi.locked,
@@ -1278,17 +1279,17 @@ type summaryScanner interface {
 
 func scanItemSummary(r summaryScanner) (ItemSummaryView, error) {
 	var (
-		item                                  ItemSummaryView
-		parentID, showID, runtimeMs, srcAdded sql.NullInt64
-		year, sNum, eNum                      sql.NullInt64
-		rating                                sql.NullFloat64
-		locked                                int
+		item                                            ItemSummaryView
+		parentID, showID, runtimeMs, totalEps, srcAdded sql.NullInt64
+		year, sNum, eNum                                sql.NullInt64
+		rating                                          sql.NullFloat64
+		locked                                          int
 	)
 	err := r.Scan(
 		&item.ID, &item.WorkKey, &item.Kind, &item.LibraryType,
 		&parentID, &showID, &item.Title, &item.SortTitle,
 		&item.OriginalTitle, &year, &item.ReleaseDate,
-		&item.Summary, &item.ContentRating, &rating, &runtimeMs,
+		&item.Summary, &item.ContentRating, &rating, &runtimeMs, &totalEps,
 		&sNum, &eNum,
 		&item.PosterSource, &item.BackdropSource, &item.LogoSource,
 		&item.TmdbID, &item.ImdbID, &locked,
@@ -1297,7 +1298,7 @@ func scanItemSummary(r summaryScanner) (ItemSummaryView, error) {
 	if err != nil {
 		return ItemSummaryView{}, err
 	}
-	populateNulls(&item, parentID, showID, year, rating, runtimeMs, sNum, eNum, srcAdded, locked)
+	populateNulls(&item, parentID, showID, year, rating, runtimeMs, totalEps, sNum, eNum, srcAdded, locked)
 	return item, nil
 }
 
@@ -1305,7 +1306,7 @@ func populateNulls(
 	item *ItemSummaryView,
 	parentID, showID, year sql.NullInt64,
 	rating sql.NullFloat64,
-	runtimeMs, sNum, eNum, srcAdded sql.NullInt64,
+	runtimeMs, totalEps, sNum, eNum, srcAdded sql.NullInt64,
 	locked int,
 ) {
 	item.Locked = locked != 0
@@ -1328,6 +1329,10 @@ func populateNulls(
 	if runtimeMs.Valid {
 		v := runtimeMs.Int64
 		item.RuntimeMs = &v
+	}
+	if totalEps.Valid && totalEps.Int64 > 0 {
+		v := int(totalEps.Int64)
+		item.TotalEpisodes = &v
 	}
 	if sNum.Valid {
 		v := int(sNum.Int64)

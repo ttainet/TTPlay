@@ -119,7 +119,7 @@ class ServerMetadataProvider implements MetadataProvider {
 
   static const String defaultOfficialMetadataUrl = String.fromEnvironment(
     'PLEZY_OFFICIAL_METADATA_URL',
-    defaultValue: 'https://play.ttai.net',
+    defaultValue: '',
   );
 
   static const String defaultArtworkProxyPath = '/api/v1/public/metadata/artwork';
@@ -537,6 +537,7 @@ class ServerMetadataProvider implements MetadataProvider {
       tagline: work.str('tagline'),
       rating: work.number('rating'),
       runtimeMs: work.integer('runtime_ms'),
+      totalEpisodes: (work.integer('total_episodes') ?? 0) > 0 ? work.integer('total_episodes') : null,
       contentRating: work.str('content_rating'),
       studio: work.str('studio'),
       genres: [
@@ -569,18 +570,8 @@ class ServerMetadataProvider implements MetadataProvider {
     String serverBaseUrl = '',
     bool proxyImages = false,
     String artworkProxyPath = defaultArtworkProxyPath,
-  }) => ScrapedSeason(
-    number: season.integer('number') ?? 0,
-    title: season.str('title'),
-    summary: season.str('summary'),
-    posterSource: resolveArtworkUrl(
-      season.str('poster_path'),
-      serverBaseUrl: serverBaseUrl,
-      proxyImages: proxyImages,
-      artworkProxyPath: artworkProxyPath,
-      size: 'w500',
-    ),
-    episodes: [
+  }) {
+    final episodes = <ScrapedEpisode>[
       for (final ep in season.objs('episodes'))
         if (ep.integer('number') != null)
           ScrapedEpisode(
@@ -598,8 +589,23 @@ class ServerMetadataProvider implements MetadataProvider {
             ),
             rating: ep.number('rating'),
           ),
-    ],
-  );
+    ];
+    final totalEps = season.integer('total_episodes');
+    return ScrapedSeason(
+      number: season.integer('number') ?? 0,
+      title: season.str('title'),
+      summary: season.str('summary'),
+      posterSource: resolveArtworkUrl(
+        season.str('poster_path'),
+        serverBaseUrl: serverBaseUrl,
+        proxyImages: proxyImages,
+        artworkProxyPath: artworkProxyPath,
+        size: 'w500',
+      ),
+      totalEpisodes: (totalEps ?? 0) > 0 ? totalEps : (episodes.isNotEmpty ? episodes.length : null),
+      episodes: episodes,
+    );
+  }
 
   @override
   void close() {

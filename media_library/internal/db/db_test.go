@@ -37,8 +37,8 @@ func TestMigrationsIdempotencyAndAllTables(t *testing.T) {
 		t.Fatalf("expected library.db file: %v", err)
 	}
 	ver, err := s1.SchemaVersion()
-	if err != nil || ver != 3 {
-		t.Fatalf("schema version = %d, err = %v, want 3", ver, err)
+	if err != nil || ver != 4 {
+		t.Fatalf("schema version = %d, err = %v, want 4", ver, err)
 	}
 	_ = s1.Close()
 
@@ -49,8 +49,8 @@ func TestMigrationsIdempotencyAndAllTables(t *testing.T) {
 	}
 	defer s2.Close()
 	ver2, err := s2.SchemaVersion()
-	if err != nil || ver2 != 3 {
-		t.Fatalf("schema version on reopen = %d, err = %v, want 3", ver2, err)
+	if err != nil || ver2 != 4 {
+		t.Fatalf("schema version on reopen = %d, err = %v, want 4", ver2, err)
 	}
 
 	expectedTables := []string{
@@ -73,11 +73,12 @@ func TestMigrationsIdempotencyAndAllTables(t *testing.T) {
 		}
 	}
 
-	// Verify Migration 2 columns exist on sessions, accounts, and qr_login_sessions.
+	// Verify Migration 2 and 4 columns exist on sessions, accounts, qr_login_sessions, and media_items.
 	for _, checkSQL := range []string{
 		`SELECT login_mode FROM sessions LIMIT 0`,
 		`SELECT recovery_salt, recovery_hash FROM accounts LIMIT 0`,
 		`SELECT poll_secret_hash FROM qr_login_sessions LIMIT 0`,
+		`SELECT total_episodes FROM media_items LIMIT 0`,
 	} {
 		if _, err := s2.ReadDB().Exec(checkSQL); err != nil {
 			t.Fatalf("migration 2 column check failed (%s): %v", checkSQL, err)

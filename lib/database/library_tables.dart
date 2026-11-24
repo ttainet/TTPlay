@@ -57,6 +57,9 @@ class LibraryItems extends Table {
   RealColumn get rating => real().nullable()();
   IntColumn get runtimeMs => integer().nullable()();
 
+  /// Authoritative total episode count for shows and seasons, from metadata scrapers.
+  IntColumn get totalEpisodes => integer().nullable()();
+
   /// Season number for seasons and episodes; 0 is specials.
   IntColumn get seasonNumber => integer().nullable()();
   IntColumn get episodeNumber => integer().nullable()();

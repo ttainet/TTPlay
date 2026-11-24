@@ -61,11 +61,16 @@ class BangumiProvider implements MetadataProvider {
   @override
   Future<List<ScrapedCandidate>> searchShow(String title, {int? year}) => _search(title);
 
-  Future<ScrapedTitle> _subject(String id) async {
+  Future<ScrapedTitle> _subject(String id, {bool isShow = false}) async {
     final decoded = await _http.json('GET', _url('/v0/subjects/$id'), service: 'Bangumi');
     if (decoded is! Map) throw ScrapeException('Bangumi has no subject $id');
     final images = decoded.obj('images');
     final score = decoded.obj('rating')?.number('score');
+    final rawEps = decoded.integer('eps');
+    final rawTotalEps = decoded.integer('total_episodes');
+    final totalEps = isShow
+        ? ((rawEps != null && rawEps > 0) ? rawEps : ((rawTotalEps != null && rawTotalEps > 0) ? rawTotalEps : null))
+        : null;
     return ScrapedTitle(
       source: source,
       category: LibraryTypes.anime,
@@ -77,6 +82,7 @@ class BangumiProvider implements MetadataProvider {
       releaseDate: decoded.str('date'),
       summary: decoded.str('summary'),
       rating: score == null || score <= 0 ? null : score,
+      totalEpisodes: totalEps,
       genres: [
         // Tags are user-made and noisy; the most-used ones that describe the
         // content (not its air date, format or source) read as genres.
@@ -162,7 +168,7 @@ class BangumiProvider implements MetadataProvider {
   Future<ScrapedTitle> movie(String id) => _subject(id);
 
   @override
-  Future<ScrapedTitle> show(String id) => _subject(id);
+  Future<ScrapedTitle> show(String id) => _subject(id, isShow: true);
 
   @override
   Future<ScrapedSeason?> season(String id, int number) async {
@@ -196,7 +202,11 @@ class BangumiProvider implements MetadataProvider {
       }
       if (rows.length < pageSize) break;
     }
-    return ScrapedSeason(number: 1, episodes: episodes);
+    return ScrapedSeason(
+      number: 1,
+      totalEpisodes: episodes.isNotEmpty ? episodes.length : null,
+      episodes: episodes,
+    );
   }
 
   @override

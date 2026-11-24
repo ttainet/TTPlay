@@ -219,6 +219,10 @@ func supplementTmdbWork(tmdbWork *metadata.Work, aux *metadata.Work) {
 		v := *aux.BackdropPath
 		tmdbWork.BackdropPath = &v
 	}
+	if (tmdbWork.TotalEpisodes == nil || *tmdbWork.TotalEpisodes <= 0) && aux.TotalEpisodes != nil && *aux.TotalEpisodes > 0 {
+		v := *aux.TotalEpisodes
+		tmdbWork.TotalEpisodes = &v
+	}
 	if strings.TrimSpace(aux.Title) != "" {
 		tmdbWork.Aliases = append(tmdbWork.Aliases, aux.Title)
 	}

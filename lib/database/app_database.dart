@@ -387,7 +387,7 @@ class AppDatabase extends _$AppDatabase {
   static const FormatException _invalidRecoveryImage = FormatException('Invalid tvOS database recovery image');
 
   @override
-  int get schemaVersion => 38;
+  int get schemaVersion => 39;
 
   @override
   MigrationStrategy get migration {
@@ -939,6 +939,13 @@ class AppDatabase extends _$AppDatabase {
         if (from < 38) {
           appLogger.i('Adding sync_workspace_archives table (v38 migration)');
           await _ensureWorkspaceArchiveSchema();
+        }
+        if (from >= 27 && from < 39) {
+          appLogger.i('Adding LibraryItems.totalEpisodes column (v39 migration)');
+          await _ignoreAlreadyExists(
+            'LibraryItems.totalEpisodes column',
+            () => m.addColumn(libraryItems, libraryItems.totalEpisodes),
+          );
         }
       },
     );

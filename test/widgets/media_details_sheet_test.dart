@@ -24,6 +24,7 @@ void main() {
     required MediaItem item,
     String? description,
     List<String> genres = const [],
+    int? totalEpisodes,
     Size size = const Size(700, 800),
   }) async {
     tester.view.physicalSize = size;
@@ -35,7 +36,12 @@ void main() {
         child: MaterialApp(
           home: InputModeTracker(
             child: Scaffold(
-              body: MediaDetailsSheet(item: item, description: description, genres: genres),
+              body: MediaDetailsSheet(
+                item: item,
+                description: description,
+                genres: genres,
+                totalEpisodes: totalEpisodes,
+              ),
             ),
           ),
         ),
@@ -154,5 +160,40 @@ void main() {
     await tester.sendKeyEvent(LogicalKeyboardKey.arrowUp);
     await tester.pumpAndSettle();
     expect(position().pixels, lessThan(pixelsAfterDown));
+  });
+
+  testWidgets('renders total episodes for a show and for a focused episode via totalEpisodes', (tester) async {
+    const show = MediaItem.plex(
+      id: 'show_eps',
+      kind: MediaKind.show,
+      title: 'The Show',
+      year: 2024,
+      contentRating: 'TV-14',
+      leafCount: 3,
+      totalEpisodes: 24,
+      durationMs: 2700000,
+    );
+    await pumpSheet(tester, item: show);
+    expect(
+      tester.widget<Text>(find.textContaining('2024')).textSpan!.toPlainText(),
+      '2024  •  TV-14  •  24 episodes  •  45min',
+    );
+
+    const episode = MediaItem.plex(
+      id: 'ep_1',
+      kind: MediaKind.episode,
+      title: 'Pilot',
+      grandparentTitle: 'The Show',
+      parentIndex: 1,
+      index: 1,
+      originallyAvailableAt: '2024-01-10',
+      contentRating: 'TV-14',
+      durationMs: 2700000,
+    );
+    await pumpSheet(tester, item: episode, totalEpisodes: 24);
+    expect(
+      tester.widget<Text>(find.textContaining('S1 E1')).textSpan!.toPlainText(),
+      'S1 E1  •  ${formatAbbreviatedDate('2024-01-10')}  •  TV-14  •  24 episodes  •  45min',
+    );
   });
 }

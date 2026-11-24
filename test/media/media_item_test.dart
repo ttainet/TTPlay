@@ -768,4 +768,33 @@ void main() {
       expect(_movie(year: 2001).albumYear, isNull);
     });
   });
+
+  group('MediaItem.displayTotalEpisodes', () {
+    test('prefers authoritative totalEpisodes over leafCount for shows and seasons', () {
+      final show = testMediaItem(
+        kind: MediaKind.show,
+        leafCount: 3,
+        totalEpisodes: 24,
+      );
+      final season = testMediaItem(
+        kind: MediaKind.season,
+        leafCount: 2,
+        childCount: 2,
+        totalEpisodes: 12,
+      );
+      expect(show.displayTotalEpisodes, 24);
+      expect(season.displayTotalEpisodes, 12);
+    });
+
+    test('falls back to leafWatchTotal when totalEpisodes is null or zero and hides for movies/episodes', () {
+      final show = testMediaItem(kind: MediaKind.show, leafCount: 8, totalEpisodes: 0);
+      final season = testMediaItem(kind: MediaKind.season, childCount: 10);
+      final movie = _movie(leafCount: 1);
+      final episode = testMediaItem(kind: MediaKind.episode, totalEpisodes: 24, leafCount: 1);
+      expect(show.displayTotalEpisodes, 8);
+      expect(season.displayTotalEpisodes, 10);
+      expect(movie.displayTotalEpisodes, isNull);
+      expect(episode.displayTotalEpisodes, isNull);
+    });
+  });
 }

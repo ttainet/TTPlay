@@ -655,6 +655,14 @@ var migrations = []Migration{
 			WHERE kind IN ('movie', 'show')`,
 		},
 	},
+	{
+		Version: 4,
+		Name:    "0004_total_episodes",
+		Statements: []string{
+			`ALTER TABLE media_items ADD COLUMN total_episodes INTEGER`,
+			`UPDATE meta_works_cache SET expires_at = 0 WHERE kind = 'show'`,
+		},
+	},
 }
 
 func (s *Store) runMigrations() error {

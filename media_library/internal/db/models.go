@@ -159,6 +159,7 @@ type MediaItem struct {
 	Studio         *string  `json:"studio,omitempty"`
 	Rating         *float64 `json:"rating,omitempty"`
 	RuntimeMs      *int64   `json:"runtime_ms,omitempty"`
+	TotalEpisodes  *int     `json:"total_episodes,omitempty"`
 	SeasonNumber   *int     `json:"season_number,omitempty"`
 	EpisodeNumber  *int     `json:"episode_number,omitempty"`
 	AbsoluteNumber *int     `json:"absolute_number,omitempty"`
