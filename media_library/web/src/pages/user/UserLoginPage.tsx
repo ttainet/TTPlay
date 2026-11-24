@@ -3,7 +3,6 @@ import { Link } from 'react-router-dom';
 import {
   AlertCircle,
   ArrowLeft,
-  Clapperboard,
   KeyRound,
   Loader2,
   Lock,
@@ -17,6 +16,7 @@ import { useApp } from '../../contexts/AppContext';
 import { useUser } from '../../contexts/UserContext';
 import type { MemberView } from '../../types';
 import { ROLE_LABELS } from '../../utils/userPerms';
+import { BrandLogo } from '../../components/BrandLogo';
 
 function formatUserAuthError(err: unknown): string {
   if (err instanceof ApiError) {
@@ -242,9 +242,7 @@ export const UserLoginPage: React.FC = () => {
       ) : (
         <form className="glass-panel auth-card" onSubmit={handleLogin}>
           <div className="flex-row" style={{ gap: 12 }}>
-            <span className="brand-mark" style={{ width: 44, height: 44 }}>
-              <Clapperboard size={22} />
-            </span>
+            <BrandLogo size={44} alt={serverTitle} />
             <div>
               <h2 style={{ margin: 0, fontSize: 20 }}>{serverTitle}</h2>
               <div className="muted-sm">用户中心登录</div>

@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { AlertCircle, Clapperboard, KeyRound, Loader2, LogIn, ShieldCheck } from 'lucide-react';
+import { AlertCircle, KeyRound, Loader2, LogIn, ShieldCheck } from 'lucide-react';
 import { ApiError, api, setAdminToken } from '../api/client';
+import { BrandLogo } from '../components/BrandLogo';
 import { useApp } from '../contexts/AppContext';
 
 function formatAuthError(err: unknown): string {
@@ -149,9 +150,7 @@ export const LoginPage: React.FC = () => {
       ) : (
         <form className="glass-panel auth-card" onSubmit={handleLogin}>
           <div className="flex-row" style={{ gap: 12 }}>
-            <span className="brand-mark" style={{ width: 44, height: 44 }}>
-              <Clapperboard size={22} />
-            </span>
+            <BrandLogo size={44} alt={serverTitle} />
             <div>
               <h2 style={{ margin: 0, fontSize: 20 }}>{serverTitle}</h2>
               <div className="muted-sm">平台管理员控制台</div>

@@ -133,8 +133,10 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byType(SelfHostedLoginScreen), findsOneWidget);
-    expect(find.text(SelfHostedLoginScreen.defaultServerUrl), findsOneWidget);
-    expect(SelfHostedLoginScreen.defaultServerUrl, 'https://play.ttai.net');
+    expect(SelfHostedLoginScreen.defaultServerUrl, isEmpty);
+    expect(find.text('https://play.ttai.net'), findsNothing);
+    final serverField = tester.widget<EditableText>(find.byType(EditableText).first);
+    expect(serverField.controller.text, isEmpty);
     expect(find.text(t.session.serverUrlLabel), findsOneWidget);
     expect(find.text(t.session.testServer), findsOneWidget);
     expect(find.text(t.session.usernameLabel), findsOneWidget);

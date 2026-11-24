@@ -4,7 +4,6 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart' show SemanticsNode;
 import 'package:flutter/services.dart';
-import 'package:flutter_svg/flutter_svg.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:ttplay/focus/input_mode_tracker.dart';
 import 'package:ttplay/focus/key_event_utils.dart';
@@ -349,43 +348,41 @@ void main() {
         await pumpPicker(tester, supporter: supporter, appIcons: await appIconsFor(supporter));
       }
 
-      Finder defaultLogo() => find.descendant(of: tile(defaultAppIconId), matching: find.byType(SvgPicture));
-
-      Color plate(WidgetTester tester) =>
-          tester.widget<ColoredBox>(find.ancestor(of: defaultLogo(), matching: find.byType(ColoredBox)).first).color;
+      String defaultAssetName(WidgetTester tester) {
+        final image = tester.widget<Image>(find.descendant(of: tile(defaultAppIconId), matching: find.byType(Image)));
+        return (image.image as AssetImage).assetName;
+      }
 
       testWidgets('on TV: the dark TV artwork', (tester) async {
         TvDetectionService.debugSetAppleTVOverride(true);
         addTearDown(() => TvDetectionService.debugSetAppleTVOverride(null));
         await pumpDefault(tester);
 
-        final image = tester.widget<Image>(find.descendant(of: tile(defaultAppIconId), matching: find.byType(Image)));
-        expect((image.image as AssetImage).assetName, defaultAppIconTvosPreview);
-        expect(defaultLogo(), findsNothing);
+        expect(defaultAssetName(tester), defaultAppIconTvosPreview);
       });
 
-      testWidgets('on Android phones: white, or #1A1A1A in night mode', (tester) async {
+      testWidgets('on Android phones: the full-bleed Plan B icon', (tester) async {
         debugDefaultTargetPlatformOverride = TargetPlatform.android;
         try {
           await pumpDefault(tester);
-          expect(plate(tester), const Color(0xFFFFFFFF));
+          expect(defaultAssetName(tester), 'assets/ttplay_icon.png');
 
           tester.platformDispatcher.platformBrightnessTestValue = Brightness.dark;
           addTearDown(tester.platformDispatcher.clearPlatformBrightnessTestValue);
           await tester.pump();
-          expect(plate(tester), const Color(0xFF1A1A1A));
+          expect(defaultAssetName(tester), 'assets/ttplay_icon.png');
         } finally {
           debugDefaultTargetPlatformOverride = null;
         }
       });
 
-      testWidgets('on iOS: the light plate, also in dark mode', (tester) async {
+      testWidgets('on iOS: the full-bleed Plan B icon, also in dark mode', (tester) async {
         debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
         try {
           tester.platformDispatcher.platformBrightnessTestValue = Brightness.dark;
           addTearDown(tester.platformDispatcher.clearPlatformBrightnessTestValue);
           await pumpDefault(tester);
-          expect(plate(tester), const Color(0xFFF1F1F1));
+          expect(defaultAssetName(tester), 'assets/ttplay_icon.png');
         } finally {
           debugDefaultTargetPlatformOverride = null;
         }

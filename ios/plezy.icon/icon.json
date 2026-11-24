@@ -1,6 +1,6 @@
 {
   "fill" : {
-    "solid" : "gray:0.94630,1.00000"
+    "solid" : "srgb:0.07843,0.13725,0.23922,1.00000"
   },
   "groups" : [
     {
@@ -24,10 +24,10 @@
           ],
           "glass" : true,
           "hidden" : false,
-          "image-name" : "plezy-cropped.svg",
-          "name" : "plezy-cropped",
+          "image-name" : "ttplay-ribbon.png",
+          "name" : "ttplay-ribbon",
           "position" : {
-            "scale" : 2,
+            "scale" : 1,
             "translation-in-points" : [
               0,
               0

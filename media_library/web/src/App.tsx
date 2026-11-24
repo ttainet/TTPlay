@@ -1,7 +1,8 @@
 import React from 'react';
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
-import { Clapperboard, Loader2 } from 'lucide-react';
+import { Loader2 } from 'lucide-react';
 import { AppShell } from './components/AppShell';
+import { BrandLogo } from './components/BrandLogo';
 import { ToastStack } from './components/ToastStack';
 import { UserShell } from './components/UserShell';
 import { AppProvider, useApp } from './contexts/AppContext';
@@ -23,9 +24,7 @@ import { UserSourcesPage } from './pages/user/UserSourcesPage';
 const FullscreenLoader: React.FC<{ label: string }> = ({ label }) => (
   <div className="auth-screen">
     <div className="glass-panel" style={{ padding: '24px 32px', display: 'flex', alignItems: 'center', gap: 14 }}>
-      <span className="brand-mark">
-        <Clapperboard size={18} />
-      </span>
+      <BrandLogo size={32} />
       <div className="flex-row" style={{ gap: 8 }}>
         <Loader2 size={16} className="spin" style={{ color: 'var(--accent)' }} />
         <span style={{ fontSize: 14, color: 'var(--text-secondary)' }}>{label}</span>

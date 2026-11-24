@@ -1,5 +1,5 @@
 <h1>
-  <img src="assets/plezy.png" alt="TTPlay Logo" height="24" style="vertical-align: middle;" />
+  <img src="assets/ttplay.png" alt="TTPlay Logo" height="24" style="vertical-align: middle;" />
   TTPlay
 </h1>
 

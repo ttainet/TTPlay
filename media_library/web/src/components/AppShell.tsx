@@ -3,7 +3,6 @@ import { NavLink, useLocation } from 'react-router-dom';
 import {
   Activity,
   AlertCircle,
-  Clapperboard,
   Database,
   Loader2,
   LogOut,
@@ -22,6 +21,7 @@ import {
 } from 'lucide-react';
 import { api } from '../api/client';
 import { useApp } from '../contexts/AppContext';
+import { BrandLogo } from './BrandLogo';
 
 const ROUTE_TITLES: Record<string, { title: string; subtitle: string }> = {
   '/admin': { title: '平台概览与队列', subtitle: '非隐私聚合指标与全局识别引擎监控' },
@@ -113,9 +113,7 @@ export const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) 
       <aside className={`sidebar ${collapsed ? 'collapsed' : ''}`}>
         <div className="brand-row">
           <NavLink to="/admin" className="brand-logo" title={serverTitle}>
-            <span className="brand-mark">
-              <Clapperboard size={18} />
-            </span>
+            <BrandLogo size={32} alt={serverTitle} />
             <span className="brand-title">{serverTitle}</span>
           </NavLink>
           <button

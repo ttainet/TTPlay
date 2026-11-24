@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
 import {
-  Clapperboard,
   FolderCog,
   Home,
   LayoutDashboard,
@@ -14,6 +13,7 @@ import {
 import { useApp } from '../contexts/AppContext';
 import { useUser } from '../contexts/UserContext';
 import { ROLE_LABELS } from '../utils/userPerms';
+import { BrandLogo } from './BrandLogo';
 
 const USER_ROUTE_TITLES: Record<string, { title: string; subtitle: string }> = {
   '/app': { title: '我的概览', subtitle: '查看家庭媒体空间、配额使用与设备活跃状态' },
@@ -40,9 +40,7 @@ export const UserShell: React.FC<{ children: React.ReactNode }> = ({ children })
       <aside className={`sidebar ${collapsed ? 'collapsed' : ''}`}>
         <div className="brand-row">
           <NavLink to="/app" className="brand-logo" title={serverTitle}>
-            <span className="brand-mark">
-              <Clapperboard size={18} />
-            </span>
+            <BrandLogo size={32} alt={serverTitle} />
             <span className="brand-title">{serverTitle}</span>
           </NavLink>
           <button

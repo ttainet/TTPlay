@@ -144,7 +144,8 @@ flutter:
   assets:
     - assets/licenses/SpatialAudioBridge.txt
     - assets/ttplay.png
-    - assets/ttplay_adaptive_foreground.svg
+    - assets/ttplay_icon.png
+    - assets/ttplay_adaptive_foreground.png
     - assets/plex_chevron.svg
     - assets/jellyfin_icon.svg
     - assets/emby_icon.svg

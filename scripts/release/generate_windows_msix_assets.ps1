@@ -1,5 +1,5 @@
 #!/usr/bin/env pwsh
-# Generate committed MSIX assets from assets/plezy.png.
+# Generate committed MSIX assets from assets/ttplay.png.
 
 $ErrorActionPreference = "Stop"
 
@@ -9,7 +9,7 @@ Set-Location $ProjectRoot
 
 Add-Type -AssemblyName System.Drawing
 
-$Source = Resolve-Path "assets\plezy.png"
+$Source = Resolve-Path "assets\ttplay.png"
 $OutputDir = Join-Path $ProjectRoot "windows\msix\assets"
 
 # Names and dimensions mirror the manifest's VisualElements.
