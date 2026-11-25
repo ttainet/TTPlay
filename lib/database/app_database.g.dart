@@ -16200,6 +16200,749 @@ class SyncMetadataCompanion extends UpdateCompanion<SyncMetadataRow> {
   }
 }
 
+class $DownloadedOnlineSubtitlesTable extends DownloadedOnlineSubtitles
+    with
+        TableInfo<
+          $DownloadedOnlineSubtitlesTable,
+          DownloadedOnlineSubtitleRow
+        > {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $DownloadedOnlineSubtitlesTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<int> id = GeneratedColumn<int>(
+    'id',
+    aliasedName,
+    false,
+    hasAutoIncrement: true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'PRIMARY KEY AUTOINCREMENT',
+    ),
+  );
+  static const VerificationMeta _itemGlobalKeyMeta = const VerificationMeta(
+    'itemGlobalKey',
+  );
+  @override
+  late final GeneratedColumn<String> itemGlobalKey = GeneratedColumn<String>(
+    'item_global_key',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _mediaSourceIdMeta = const VerificationMeta(
+    'mediaSourceId',
+  );
+  @override
+  late final GeneratedColumn<String> mediaSourceId = GeneratedColumn<String>(
+    'media_source_id',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _providerMeta = const VerificationMeta(
+    'provider',
+  );
+  @override
+  late final GeneratedColumn<String> provider = GeneratedColumn<String>(
+    'provider',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _remoteIdMeta = const VerificationMeta(
+    'remoteId',
+  );
+  @override
+  late final GeneratedColumn<String> remoteId = GeneratedColumn<String>(
+    'remote_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _titleMeta = const VerificationMeta('title');
+  @override
+  late final GeneratedColumn<String> title = GeneratedColumn<String>(
+    'title',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _languageMeta = const VerificationMeta(
+    'language',
+  );
+  @override
+  late final GeneratedColumn<String> language = GeneratedColumn<String>(
+    'language',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _formatMeta = const VerificationMeta('format');
+  @override
+  late final GeneratedColumn<String> format = GeneratedColumn<String>(
+    'format',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _relativePathMeta = const VerificationMeta(
+    'relativePath',
+  );
+  @override
+  late final GeneratedColumn<String> relativePath = GeneratedColumn<String>(
+    'relative_path',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _sha256Meta = const VerificationMeta('sha256');
+  @override
+  late final GeneratedColumn<String> sha256 = GeneratedColumn<String>(
+    'sha256',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _isSelectedMeta = const VerificationMeta(
+    'isSelected',
+  );
+  @override
+  late final GeneratedColumn<bool> isSelected = GeneratedColumn<bool>(
+    'is_selected',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("is_selected" IN (0, 1))',
+    ),
+    defaultValue: const Constant(false),
+  );
+  static const VerificationMeta _createdAtMeta = const VerificationMeta(
+    'createdAt',
+  );
+  @override
+  late final GeneratedColumn<int> createdAt = GeneratedColumn<int>(
+    'created_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    itemGlobalKey,
+    mediaSourceId,
+    provider,
+    remoteId,
+    title,
+    language,
+    format,
+    relativePath,
+    sha256,
+    isSelected,
+    createdAt,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'downloaded_online_subtitles';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<DownloadedOnlineSubtitleRow> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    }
+    if (data.containsKey('item_global_key')) {
+      context.handle(
+        _itemGlobalKeyMeta,
+        itemGlobalKey.isAcceptableOrUnknown(
+          data['item_global_key']!,
+          _itemGlobalKeyMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_itemGlobalKeyMeta);
+    }
+    if (data.containsKey('media_source_id')) {
+      context.handle(
+        _mediaSourceIdMeta,
+        mediaSourceId.isAcceptableOrUnknown(
+          data['media_source_id']!,
+          _mediaSourceIdMeta,
+        ),
+      );
+    }
+    if (data.containsKey('provider')) {
+      context.handle(
+        _providerMeta,
+        provider.isAcceptableOrUnknown(data['provider']!, _providerMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_providerMeta);
+    }
+    if (data.containsKey('remote_id')) {
+      context.handle(
+        _remoteIdMeta,
+        remoteId.isAcceptableOrUnknown(data['remote_id']!, _remoteIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_remoteIdMeta);
+    }
+    if (data.containsKey('title')) {
+      context.handle(
+        _titleMeta,
+        title.isAcceptableOrUnknown(data['title']!, _titleMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_titleMeta);
+    }
+    if (data.containsKey('language')) {
+      context.handle(
+        _languageMeta,
+        language.isAcceptableOrUnknown(data['language']!, _languageMeta),
+      );
+    }
+    if (data.containsKey('format')) {
+      context.handle(
+        _formatMeta,
+        format.isAcceptableOrUnknown(data['format']!, _formatMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_formatMeta);
+    }
+    if (data.containsKey('relative_path')) {
+      context.handle(
+        _relativePathMeta,
+        relativePath.isAcceptableOrUnknown(
+          data['relative_path']!,
+          _relativePathMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_relativePathMeta);
+    }
+    if (data.containsKey('sha256')) {
+      context.handle(
+        _sha256Meta,
+        sha256.isAcceptableOrUnknown(data['sha256']!, _sha256Meta),
+      );
+    } else if (isInserting) {
+      context.missing(_sha256Meta);
+    }
+    if (data.containsKey('is_selected')) {
+      context.handle(
+        _isSelectedMeta,
+        isSelected.isAcceptableOrUnknown(data['is_selected']!, _isSelectedMeta),
+      );
+    }
+    if (data.containsKey('created_at')) {
+      context.handle(
+        _createdAtMeta,
+        createdAt.isAcceptableOrUnknown(data['created_at']!, _createdAtMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_createdAtMeta);
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  DownloadedOnlineSubtitleRow map(
+    Map<String, dynamic> data, {
+    String? tablePrefix,
+  }) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return DownloadedOnlineSubtitleRow(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}id'],
+      )!,
+      itemGlobalKey: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}item_global_key'],
+      )!,
+      mediaSourceId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}media_source_id'],
+      ),
+      provider: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}provider'],
+      )!,
+      remoteId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}remote_id'],
+      )!,
+      title: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}title'],
+      )!,
+      language: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}language'],
+      ),
+      format: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}format'],
+      )!,
+      relativePath: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}relative_path'],
+      )!,
+      sha256: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}sha256'],
+      )!,
+      isSelected: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}is_selected'],
+      )!,
+      createdAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}created_at'],
+      )!,
+    );
+  }
+
+  @override
+  $DownloadedOnlineSubtitlesTable createAlias(String alias) {
+    return $DownloadedOnlineSubtitlesTable(attachedDatabase, alias);
+  }
+}
+
+class DownloadedOnlineSubtitleRow extends DataClass
+    implements Insertable<DownloadedOnlineSubtitleRow> {
+  final int id;
+
+  /// Global media key (`serverId:itemId`) or standalone id.
+  final String itemGlobalKey;
+
+  /// Optional version/source id to disambiguate multi-version items.
+  final String? mediaSourceId;
+
+  /// Provider id (`xunlei`, `assrt`, `subdl`, `opensubtitles`).
+  final String provider;
+
+  /// Provider-scoped subtitle id.
+  final String remoteId;
+
+  /// Human-readable subtitle title for track menus.
+  final String title;
+
+  /// Normalized ISO 639-1 language code (e.g. `zh`, `en`).
+  final String? language;
+
+  /// File extension (`srt`, `ass`, `ssa`, `vtt`).
+  final String format;
+
+  /// Relative path under `<ApplicationSupportDirectory>/online_subtitles/`.
+  final String relativePath;
+
+  /// SHA-256 hex digest of the UTF-8 subtitle content.
+  final String sha256;
+
+  /// Whether this subtitle should be pre-selected on the next playback open.
+  final bool isSelected;
+
+  /// Timestamp when cached (milliseconds since epoch).
+  final int createdAt;
+  const DownloadedOnlineSubtitleRow({
+    required this.id,
+    required this.itemGlobalKey,
+    this.mediaSourceId,
+    required this.provider,
+    required this.remoteId,
+    required this.title,
+    this.language,
+    required this.format,
+    required this.relativePath,
+    required this.sha256,
+    required this.isSelected,
+    required this.createdAt,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<int>(id);
+    map['item_global_key'] = Variable<String>(itemGlobalKey);
+    if (!nullToAbsent || mediaSourceId != null) {
+      map['media_source_id'] = Variable<String>(mediaSourceId);
+    }
+    map['provider'] = Variable<String>(provider);
+    map['remote_id'] = Variable<String>(remoteId);
+    map['title'] = Variable<String>(title);
+    if (!nullToAbsent || language != null) {
+      map['language'] = Variable<String>(language);
+    }
+    map['format'] = Variable<String>(format);
+    map['relative_path'] = Variable<String>(relativePath);
+    map['sha256'] = Variable<String>(sha256);
+    map['is_selected'] = Variable<bool>(isSelected);
+    map['created_at'] = Variable<int>(createdAt);
+    return map;
+  }
+
+  DownloadedOnlineSubtitlesCompanion toCompanion(bool nullToAbsent) {
+    return DownloadedOnlineSubtitlesCompanion(
+      id: Value(id),
+      itemGlobalKey: Value(itemGlobalKey),
+      mediaSourceId: mediaSourceId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(mediaSourceId),
+      provider: Value(provider),
+      remoteId: Value(remoteId),
+      title: Value(title),
+      language: language == null && nullToAbsent
+          ? const Value.absent()
+          : Value(language),
+      format: Value(format),
+      relativePath: Value(relativePath),
+      sha256: Value(sha256),
+      isSelected: Value(isSelected),
+      createdAt: Value(createdAt),
+    );
+  }
+
+  factory DownloadedOnlineSubtitleRow.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return DownloadedOnlineSubtitleRow(
+      id: serializer.fromJson<int>(json['id']),
+      itemGlobalKey: serializer.fromJson<String>(json['itemGlobalKey']),
+      mediaSourceId: serializer.fromJson<String?>(json['mediaSourceId']),
+      provider: serializer.fromJson<String>(json['provider']),
+      remoteId: serializer.fromJson<String>(json['remoteId']),
+      title: serializer.fromJson<String>(json['title']),
+      language: serializer.fromJson<String?>(json['language']),
+      format: serializer.fromJson<String>(json['format']),
+      relativePath: serializer.fromJson<String>(json['relativePath']),
+      sha256: serializer.fromJson<String>(json['sha256']),
+      isSelected: serializer.fromJson<bool>(json['isSelected']),
+      createdAt: serializer.fromJson<int>(json['createdAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<int>(id),
+      'itemGlobalKey': serializer.toJson<String>(itemGlobalKey),
+      'mediaSourceId': serializer.toJson<String?>(mediaSourceId),
+      'provider': serializer.toJson<String>(provider),
+      'remoteId': serializer.toJson<String>(remoteId),
+      'title': serializer.toJson<String>(title),
+      'language': serializer.toJson<String?>(language),
+      'format': serializer.toJson<String>(format),
+      'relativePath': serializer.toJson<String>(relativePath),
+      'sha256': serializer.toJson<String>(sha256),
+      'isSelected': serializer.toJson<bool>(isSelected),
+      'createdAt': serializer.toJson<int>(createdAt),
+    };
+  }
+
+  DownloadedOnlineSubtitleRow copyWith({
+    int? id,
+    String? itemGlobalKey,
+    Value<String?> mediaSourceId = const Value.absent(),
+    String? provider,
+    String? remoteId,
+    String? title,
+    Value<String?> language = const Value.absent(),
+    String? format,
+    String? relativePath,
+    String? sha256,
+    bool? isSelected,
+    int? createdAt,
+  }) => DownloadedOnlineSubtitleRow(
+    id: id ?? this.id,
+    itemGlobalKey: itemGlobalKey ?? this.itemGlobalKey,
+    mediaSourceId: mediaSourceId.present
+        ? mediaSourceId.value
+        : this.mediaSourceId,
+    provider: provider ?? this.provider,
+    remoteId: remoteId ?? this.remoteId,
+    title: title ?? this.title,
+    language: language.present ? language.value : this.language,
+    format: format ?? this.format,
+    relativePath: relativePath ?? this.relativePath,
+    sha256: sha256 ?? this.sha256,
+    isSelected: isSelected ?? this.isSelected,
+    createdAt: createdAt ?? this.createdAt,
+  );
+  DownloadedOnlineSubtitleRow copyWithCompanion(
+    DownloadedOnlineSubtitlesCompanion data,
+  ) {
+    return DownloadedOnlineSubtitleRow(
+      id: data.id.present ? data.id.value : this.id,
+      itemGlobalKey: data.itemGlobalKey.present
+          ? data.itemGlobalKey.value
+          : this.itemGlobalKey,
+      mediaSourceId: data.mediaSourceId.present
+          ? data.mediaSourceId.value
+          : this.mediaSourceId,
+      provider: data.provider.present ? data.provider.value : this.provider,
+      remoteId: data.remoteId.present ? data.remoteId.value : this.remoteId,
+      title: data.title.present ? data.title.value : this.title,
+      language: data.language.present ? data.language.value : this.language,
+      format: data.format.present ? data.format.value : this.format,
+      relativePath: data.relativePath.present
+          ? data.relativePath.value
+          : this.relativePath,
+      sha256: data.sha256.present ? data.sha256.value : this.sha256,
+      isSelected: data.isSelected.present
+          ? data.isSelected.value
+          : this.isSelected,
+      createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('DownloadedOnlineSubtitleRow(')
+          ..write('id: $id, ')
+          ..write('itemGlobalKey: $itemGlobalKey, ')
+          ..write('mediaSourceId: $mediaSourceId, ')
+          ..write('provider: $provider, ')
+          ..write('remoteId: $remoteId, ')
+          ..write('title: $title, ')
+          ..write('language: $language, ')
+          ..write('format: $format, ')
+          ..write('relativePath: $relativePath, ')
+          ..write('sha256: $sha256, ')
+          ..write('isSelected: $isSelected, ')
+          ..write('createdAt: $createdAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    id,
+    itemGlobalKey,
+    mediaSourceId,
+    provider,
+    remoteId,
+    title,
+    language,
+    format,
+    relativePath,
+    sha256,
+    isSelected,
+    createdAt,
+  );
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is DownloadedOnlineSubtitleRow &&
+          other.id == this.id &&
+          other.itemGlobalKey == this.itemGlobalKey &&
+          other.mediaSourceId == this.mediaSourceId &&
+          other.provider == this.provider &&
+          other.remoteId == this.remoteId &&
+          other.title == this.title &&
+          other.language == this.language &&
+          other.format == this.format &&
+          other.relativePath == this.relativePath &&
+          other.sha256 == this.sha256 &&
+          other.isSelected == this.isSelected &&
+          other.createdAt == this.createdAt);
+}
+
+class DownloadedOnlineSubtitlesCompanion
+    extends UpdateCompanion<DownloadedOnlineSubtitleRow> {
+  final Value<int> id;
+  final Value<String> itemGlobalKey;
+  final Value<String?> mediaSourceId;
+  final Value<String> provider;
+  final Value<String> remoteId;
+  final Value<String> title;
+  final Value<String?> language;
+  final Value<String> format;
+  final Value<String> relativePath;
+  final Value<String> sha256;
+  final Value<bool> isSelected;
+  final Value<int> createdAt;
+  const DownloadedOnlineSubtitlesCompanion({
+    this.id = const Value.absent(),
+    this.itemGlobalKey = const Value.absent(),
+    this.mediaSourceId = const Value.absent(),
+    this.provider = const Value.absent(),
+    this.remoteId = const Value.absent(),
+    this.title = const Value.absent(),
+    this.language = const Value.absent(),
+    this.format = const Value.absent(),
+    this.relativePath = const Value.absent(),
+    this.sha256 = const Value.absent(),
+    this.isSelected = const Value.absent(),
+    this.createdAt = const Value.absent(),
+  });
+  DownloadedOnlineSubtitlesCompanion.insert({
+    this.id = const Value.absent(),
+    required String itemGlobalKey,
+    this.mediaSourceId = const Value.absent(),
+    required String provider,
+    required String remoteId,
+    required String title,
+    this.language = const Value.absent(),
+    required String format,
+    required String relativePath,
+    required String sha256,
+    this.isSelected = const Value.absent(),
+    required int createdAt,
+  }) : itemGlobalKey = Value(itemGlobalKey),
+       provider = Value(provider),
+       remoteId = Value(remoteId),
+       title = Value(title),
+       format = Value(format),
+       relativePath = Value(relativePath),
+       sha256 = Value(sha256),
+       createdAt = Value(createdAt);
+  static Insertable<DownloadedOnlineSubtitleRow> custom({
+    Expression<int>? id,
+    Expression<String>? itemGlobalKey,
+    Expression<String>? mediaSourceId,
+    Expression<String>? provider,
+    Expression<String>? remoteId,
+    Expression<String>? title,
+    Expression<String>? language,
+    Expression<String>? format,
+    Expression<String>? relativePath,
+    Expression<String>? sha256,
+    Expression<bool>? isSelected,
+    Expression<int>? createdAt,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (itemGlobalKey != null) 'item_global_key': itemGlobalKey,
+      if (mediaSourceId != null) 'media_source_id': mediaSourceId,
+      if (provider != null) 'provider': provider,
+      if (remoteId != null) 'remote_id': remoteId,
+      if (title != null) 'title': title,
+      if (language != null) 'language': language,
+      if (format != null) 'format': format,
+      if (relativePath != null) 'relative_path': relativePath,
+      if (sha256 != null) 'sha256': sha256,
+      if (isSelected != null) 'is_selected': isSelected,
+      if (createdAt != null) 'created_at': createdAt,
+    });
+  }
+
+  DownloadedOnlineSubtitlesCompanion copyWith({
+    Value<int>? id,
+    Value<String>? itemGlobalKey,
+    Value<String?>? mediaSourceId,
+    Value<String>? provider,
+    Value<String>? remoteId,
+    Value<String>? title,
+    Value<String?>? language,
+    Value<String>? format,
+    Value<String>? relativePath,
+    Value<String>? sha256,
+    Value<bool>? isSelected,
+    Value<int>? createdAt,
+  }) {
+    return DownloadedOnlineSubtitlesCompanion(
+      id: id ?? this.id,
+      itemGlobalKey: itemGlobalKey ?? this.itemGlobalKey,
+      mediaSourceId: mediaSourceId ?? this.mediaSourceId,
+      provider: provider ?? this.provider,
+      remoteId: remoteId ?? this.remoteId,
+      title: title ?? this.title,
+      language: language ?? this.language,
+      format: format ?? this.format,
+      relativePath: relativePath ?? this.relativePath,
+      sha256: sha256 ?? this.sha256,
+      isSelected: isSelected ?? this.isSelected,
+      createdAt: createdAt ?? this.createdAt,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<int>(id.value);
+    }
+    if (itemGlobalKey.present) {
+      map['item_global_key'] = Variable<String>(itemGlobalKey.value);
+    }
+    if (mediaSourceId.present) {
+      map['media_source_id'] = Variable<String>(mediaSourceId.value);
+    }
+    if (provider.present) {
+      map['provider'] = Variable<String>(provider.value);
+    }
+    if (remoteId.present) {
+      map['remote_id'] = Variable<String>(remoteId.value);
+    }
+    if (title.present) {
+      map['title'] = Variable<String>(title.value);
+    }
+    if (language.present) {
+      map['language'] = Variable<String>(language.value);
+    }
+    if (format.present) {
+      map['format'] = Variable<String>(format.value);
+    }
+    if (relativePath.present) {
+      map['relative_path'] = Variable<String>(relativePath.value);
+    }
+    if (sha256.present) {
+      map['sha256'] = Variable<String>(sha256.value);
+    }
+    if (isSelected.present) {
+      map['is_selected'] = Variable<bool>(isSelected.value);
+    }
+    if (createdAt.present) {
+      map['created_at'] = Variable<int>(createdAt.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('DownloadedOnlineSubtitlesCompanion(')
+          ..write('id: $id, ')
+          ..write('itemGlobalKey: $itemGlobalKey, ')
+          ..write('mediaSourceId: $mediaSourceId, ')
+          ..write('provider: $provider, ')
+          ..write('remoteId: $remoteId, ')
+          ..write('title: $title, ')
+          ..write('language: $language, ')
+          ..write('format: $format, ')
+          ..write('relativePath: $relativePath, ')
+          ..write('sha256: $sha256, ')
+          ..write('isSelected: $isSelected, ')
+          ..write('createdAt: $createdAt')
+          ..write(')'))
+        .toString();
+  }
+}
+
 abstract class _$AppDatabase extends GeneratedDatabase {
   _$AppDatabase(QueryExecutor e) : super(e);
   $AppDatabaseManager get managers => $AppDatabaseManager(this);
@@ -16249,6 +16992,8 @@ abstract class _$AppDatabase extends GeneratedDatabase {
   );
   late final $SyncOutboxTable syncOutbox = $SyncOutboxTable(this);
   late final $SyncMetadataTable syncMetadata = $SyncMetadataTable(this);
+  late final $DownloadedOnlineSubtitlesTable downloadedOnlineSubtitles =
+      $DownloadedOnlineSubtitlesTable(this);
   late final Index idxDownloadedMediaStatus = Index(
     'idx_downloaded_media_status',
     'CREATE INDEX idx_downloaded_media_status ON downloaded_media (status)',
@@ -16415,6 +17160,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
     librarySettings,
     syncOutbox,
     syncMetadata,
+    downloadedOnlineSubtitles,
     idxDownloadedMediaStatus,
     idxDownloadedMediaServer,
     idxDownloadedMediaParent,
@@ -27683,6 +28429,360 @@ typedef $$SyncMetadataTableProcessedTableManager =
       SyncMetadataRow,
       PrefetchHooks Function()
     >;
+typedef $$DownloadedOnlineSubtitlesTableCreateCompanionBuilder =
+    DownloadedOnlineSubtitlesCompanion Function({
+      Value<int> id,
+      required String itemGlobalKey,
+      Value<String?> mediaSourceId,
+      required String provider,
+      required String remoteId,
+      required String title,
+      Value<String?> language,
+      required String format,
+      required String relativePath,
+      required String sha256,
+      Value<bool> isSelected,
+      required int createdAt,
+    });
+typedef $$DownloadedOnlineSubtitlesTableUpdateCompanionBuilder =
+    DownloadedOnlineSubtitlesCompanion Function({
+      Value<int> id,
+      Value<String> itemGlobalKey,
+      Value<String?> mediaSourceId,
+      Value<String> provider,
+      Value<String> remoteId,
+      Value<String> title,
+      Value<String?> language,
+      Value<String> format,
+      Value<String> relativePath,
+      Value<String> sha256,
+      Value<bool> isSelected,
+      Value<int> createdAt,
+    });
+
+class $$DownloadedOnlineSubtitlesTableFilterComposer
+    extends Composer<_$AppDatabase, $DownloadedOnlineSubtitlesTable> {
+  $$DownloadedOnlineSubtitlesTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get itemGlobalKey => $composableBuilder(
+    column: $table.itemGlobalKey,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get mediaSourceId => $composableBuilder(
+    column: $table.mediaSourceId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get provider => $composableBuilder(
+    column: $table.provider,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get remoteId => $composableBuilder(
+    column: $table.remoteId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get title => $composableBuilder(
+    column: $table.title,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get language => $composableBuilder(
+    column: $table.language,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get format => $composableBuilder(
+    column: $table.format,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get relativePath => $composableBuilder(
+    column: $table.relativePath,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get sha256 => $composableBuilder(
+    column: $table.sha256,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get isSelected => $composableBuilder(
+    column: $table.isSelected,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$DownloadedOnlineSubtitlesTableOrderingComposer
+    extends Composer<_$AppDatabase, $DownloadedOnlineSubtitlesTable> {
+  $$DownloadedOnlineSubtitlesTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get itemGlobalKey => $composableBuilder(
+    column: $table.itemGlobalKey,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get mediaSourceId => $composableBuilder(
+    column: $table.mediaSourceId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get provider => $composableBuilder(
+    column: $table.provider,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get remoteId => $composableBuilder(
+    column: $table.remoteId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get title => $composableBuilder(
+    column: $table.title,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get language => $composableBuilder(
+    column: $table.language,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get format => $composableBuilder(
+    column: $table.format,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get relativePath => $composableBuilder(
+    column: $table.relativePath,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get sha256 => $composableBuilder(
+    column: $table.sha256,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<bool> get isSelected => $composableBuilder(
+    column: $table.isSelected,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$DownloadedOnlineSubtitlesTableAnnotationComposer
+    extends Composer<_$AppDatabase, $DownloadedOnlineSubtitlesTable> {
+  $$DownloadedOnlineSubtitlesTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<int> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get itemGlobalKey => $composableBuilder(
+    column: $table.itemGlobalKey,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get mediaSourceId => $composableBuilder(
+    column: $table.mediaSourceId,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get provider =>
+      $composableBuilder(column: $table.provider, builder: (column) => column);
+
+  GeneratedColumn<String> get remoteId =>
+      $composableBuilder(column: $table.remoteId, builder: (column) => column);
+
+  GeneratedColumn<String> get title =>
+      $composableBuilder(column: $table.title, builder: (column) => column);
+
+  GeneratedColumn<String> get language =>
+      $composableBuilder(column: $table.language, builder: (column) => column);
+
+  GeneratedColumn<String> get format =>
+      $composableBuilder(column: $table.format, builder: (column) => column);
+
+  GeneratedColumn<String> get relativePath => $composableBuilder(
+    column: $table.relativePath,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get sha256 =>
+      $composableBuilder(column: $table.sha256, builder: (column) => column);
+
+  GeneratedColumn<bool> get isSelected => $composableBuilder(
+    column: $table.isSelected,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get createdAt =>
+      $composableBuilder(column: $table.createdAt, builder: (column) => column);
+}
+
+class $$DownloadedOnlineSubtitlesTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $DownloadedOnlineSubtitlesTable,
+          DownloadedOnlineSubtitleRow,
+          $$DownloadedOnlineSubtitlesTableFilterComposer,
+          $$DownloadedOnlineSubtitlesTableOrderingComposer,
+          $$DownloadedOnlineSubtitlesTableAnnotationComposer,
+          $$DownloadedOnlineSubtitlesTableCreateCompanionBuilder,
+          $$DownloadedOnlineSubtitlesTableUpdateCompanionBuilder,
+          (
+            DownloadedOnlineSubtitleRow,
+            BaseReferences<
+              _$AppDatabase,
+              $DownloadedOnlineSubtitlesTable,
+              DownloadedOnlineSubtitleRow
+            >,
+          ),
+          DownloadedOnlineSubtitleRow,
+          PrefetchHooks Function()
+        > {
+  $$DownloadedOnlineSubtitlesTableTableManager(
+    _$AppDatabase db,
+    $DownloadedOnlineSubtitlesTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$DownloadedOnlineSubtitlesTableFilterComposer(
+                $db: db,
+                $table: table,
+              ),
+          createOrderingComposer: () =>
+              $$DownloadedOnlineSubtitlesTableOrderingComposer(
+                $db: db,
+                $table: table,
+              ),
+          createComputedFieldComposer: () =>
+              $$DownloadedOnlineSubtitlesTableAnnotationComposer(
+                $db: db,
+                $table: table,
+              ),
+          updateCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                Value<String> itemGlobalKey = const Value.absent(),
+                Value<String?> mediaSourceId = const Value.absent(),
+                Value<String> provider = const Value.absent(),
+                Value<String> remoteId = const Value.absent(),
+                Value<String> title = const Value.absent(),
+                Value<String?> language = const Value.absent(),
+                Value<String> format = const Value.absent(),
+                Value<String> relativePath = const Value.absent(),
+                Value<String> sha256 = const Value.absent(),
+                Value<bool> isSelected = const Value.absent(),
+                Value<int> createdAt = const Value.absent(),
+              }) => DownloadedOnlineSubtitlesCompanion(
+                id: id,
+                itemGlobalKey: itemGlobalKey,
+                mediaSourceId: mediaSourceId,
+                provider: provider,
+                remoteId: remoteId,
+                title: title,
+                language: language,
+                format: format,
+                relativePath: relativePath,
+                sha256: sha256,
+                isSelected: isSelected,
+                createdAt: createdAt,
+              ),
+          createCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                required String itemGlobalKey,
+                Value<String?> mediaSourceId = const Value.absent(),
+                required String provider,
+                required String remoteId,
+                required String title,
+                Value<String?> language = const Value.absent(),
+                required String format,
+                required String relativePath,
+                required String sha256,
+                Value<bool> isSelected = const Value.absent(),
+                required int createdAt,
+              }) => DownloadedOnlineSubtitlesCompanion.insert(
+                id: id,
+                itemGlobalKey: itemGlobalKey,
+                mediaSourceId: mediaSourceId,
+                provider: provider,
+                remoteId: remoteId,
+                title: title,
+                language: language,
+                format: format,
+                relativePath: relativePath,
+                sha256: sha256,
+                isSelected: isSelected,
+                createdAt: createdAt,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$DownloadedOnlineSubtitlesTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $DownloadedOnlineSubtitlesTable,
+      DownloadedOnlineSubtitleRow,
+      $$DownloadedOnlineSubtitlesTableFilterComposer,
+      $$DownloadedOnlineSubtitlesTableOrderingComposer,
+      $$DownloadedOnlineSubtitlesTableAnnotationComposer,
+      $$DownloadedOnlineSubtitlesTableCreateCompanionBuilder,
+      $$DownloadedOnlineSubtitlesTableUpdateCompanionBuilder,
+      (
+        DownloadedOnlineSubtitleRow,
+        BaseReferences<
+          _$AppDatabase,
+          $DownloadedOnlineSubtitlesTable,
+          DownloadedOnlineSubtitleRow
+        >,
+      ),
+      DownloadedOnlineSubtitleRow,
+      PrefetchHooks Function()
+    >;
 
 class $AppDatabaseManager {
   final _$AppDatabase _db;
@@ -27748,4 +28848,9 @@ class $AppDatabaseManager {
       $$SyncOutboxTableTableManager(_db, _db.syncOutbox);
   $$SyncMetadataTableTableManager get syncMetadata =>
       $$SyncMetadataTableTableManager(_db, _db.syncMetadata);
+  $$DownloadedOnlineSubtitlesTableTableManager get downloadedOnlineSubtitles =>
+      $$DownloadedOnlineSubtitlesTableTableManager(
+        _db,
+        _db.downloadedOnlineSubtitles,
+      );
 }

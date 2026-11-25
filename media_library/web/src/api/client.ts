@@ -12,6 +12,7 @@ import type {
   PlatformOverview,
   ServerLogEntry,
   ServerSettings,
+  SubtitleProvider,
 } from '../types';
 
 const TOKEN_STORAGE_KEY = 'media_library_admin_token';
@@ -176,7 +177,7 @@ export const api = {
     }),
 
   testProvider: (payload: {
-    provider: MetadataProvider;
+    provider: MetadataProvider | SubtitleProvider;
     api_key?: string;
     pin?: string;
     token?: string;

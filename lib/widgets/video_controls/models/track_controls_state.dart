@@ -6,6 +6,7 @@ import '../../../media/media_source_info.dart';
 import '../../../media/stream_quality.dart';
 import '../../../models/transcode_quality_preset.dart';
 import '../../../mpv/mpv.dart';
+import '../../../services/online_subtitle_store.dart';
 import '../../../services/playback_initialization_types.dart';
 import '../../../services/playback_subtitle_resolver.dart';
 import '../../../services/shader_service.dart';
@@ -85,14 +86,12 @@ class TrackControlsState {
   /// Item currently playing, used to key scope-persisted player settings
   /// ([ScopedPlayerPrefs]). Null only for embedders without item identity.
   final MediaItem? metadata;
-  final Future<SubtitleDownloadApplyOutcome> Function({required String serverId, required String ratingKey})?
-  onSubtitleDownloaded;
+  final String? activeMediaSourceId;
+  final String? activeFilePath;
+  final Future<SubtitleDownloadApplyOutcome> Function(CachedOnlineSubtitle subtitle)? onOnlineSubtitleApplied;
   final Future<int> Function()? onRefreshDirectorySubtitles;
 
-  /// Whether OpenSubtitles search is reachable for this server. The Plex
-  /// server proxies the OpenSubtitles plugin; Jellyfin doesn't expose an
-  /// equivalent. The track sheet hides the "Search subtitles" tile when
-  /// this is false.
+  /// Whether online subtitle search is available for this playback item.
   final bool subtitleSearchSupported;
 
   const TrackControlsState({
@@ -152,9 +151,11 @@ class TrackControlsState {
     this.onQueueItemSelected,
     this.ratingKey = '',
     this.mediaTitle,
-    this.onSubtitleDownloaded,
+    this.activeMediaSourceId,
+    this.activeFilePath,
+    this.onOnlineSubtitleApplied,
     this.onRefreshDirectorySubtitles,
-    this.subtitleSearchSupported = true,
+    this.subtitleSearchSupported = false,
   });
 
   /// Whether the quality column lists the source's own renditions rather
@@ -198,10 +199,9 @@ class TrackControlsState {
             .toList(growable: false)
       : const <MediaSubtitleTrack>[];
 
-  /// External subtitle search needs both a searchable media item and a server
-  /// that can proxy the OpenSubtitles request.
-  bool get canSearchSubtitles =>
-      ratingKey.isNotEmpty && serverId != null && serverId!.isNotEmpty && subtitleSearchSupported;
+  /// Online subtitle search is available for non-live items whenever a backend
+  /// subtitle endpoint is configured.
+  bool get canSearchSubtitles => !isLive && subtitleSearchSupported;
 
   /// Whether the track sheet should expose subtitle controls at all. This is
   /// the single source of truth shared by the toolbar icon and the sheet layout.

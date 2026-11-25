@@ -78,6 +78,7 @@ import '../services/scoped_player_prefs.dart';
 import '../services/settings_service.dart';
 import '../services/sleep_timer_service.dart';
 import '../services/subtitle_preference.dart';
+import '../services/online_subtitle_store.dart';
 import '../services/track_manager.dart';
 import '../services/track_selection_service.dart';
 import '../services/ambient_lighting_service.dart';
@@ -136,6 +137,7 @@ import 'video_player/visual_effects_controller.dart';
 import 'video_player/widgets/player_prompt_overlays.dart';
 import '../widgets/overlay_sheet.dart';
 import '../widgets/video_controls/player_chrome_controller.dart';
+import '../widgets/video_controls/models/track_controls_state.dart';
 import '../widgets/video_controls/video_controls.dart';
 import '../widgets/video_controls/widgets/player_toast_indicator.dart';
 import '../focus/focusable_button.dart';
@@ -221,10 +223,8 @@ const _appOwnedMpvProperties = {
 /// Whether an in-place source reload may start the replacement media.
 ///
 /// Reloading a paused player must not manufacture a new play intent.
-bool shouldAutoStartReloadedMedia({
-  required bool wasPlayingBeforeReload,
-  required bool startPaused,
-}) => wasPlayingBeforeReload && !startPaused;
+bool shouldAutoStartReloadedMedia({required bool wasPlayingBeforeReload, required bool startPaused}) =>
+    wasPlayingBeforeReload && !startPaused;
 
 /// Whether a freshly opened player route starts with its chrome up.
 ///
@@ -2862,7 +2862,143 @@ class VideoPlayerScreenState extends State<VideoPlayerScreen>
     await _trackManager?.onAudioTrackSelectedByUser(track);
   }
 
+  OnlineSubtitleStore? _tryOnlineSubtitleStore() {
+    try {
+      final db = Provider.of<AppDatabase?>(context, listen: false);
+      return db == null ? null : OnlineSubtitleStore(db);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  static String _normalizeOnlineSubtitleUriKey(String raw) {
+    final trimmed = raw.trim();
+    if (trimmed.startsWith('file://')) {
+      try {
+        return Uri.parse(trimmed).toFilePath().replaceAll('\\', '/').toLowerCase();
+      } catch (_) {}
+    }
+    return trimmed.replaceAll('\\', '/').toLowerCase();
+  }
+
+  Future<SubtitleDownloadApplyOutcome> _applyOnlineSubtitle(CachedOnlineSubtitle subtitle) async {
+    final currentPlayer = player;
+    if (!mounted || currentPlayer == null) return SubtitleDownloadApplyOutcome.unavailable;
+
+    final forExo = currentPlayer.playerType == 'exoplayer';
+    final track = SubtitleTrack.uri(
+      subtitle.playableUri(forExoPlayer: forExo),
+      title: subtitle.title,
+      language: subtitle.language,
+      codec: subtitle.format,
+    );
+
+    if (forExo) {
+      final transitionLease = _transitionGate.tryAcquire(PlaybackTransition.switchingSource);
+      if (transitionLease == null) return SubtitleDownloadApplyOutcome.busy;
+      try {
+        final outcome = await _reloadMediaInPlace(
+          metadata: _currentMetadata.copyWith(viewOffsetMs: currentPlayer.state.position.inMilliseconds),
+          selectedMediaIndex: _effectiveSelectedMediaIndex,
+          selectedMediaSourceId: _requestedMediaSourceId,
+          qualityPreset: _selectedQualityPreset,
+          selectedAudioStreamId: _selectedAudioStreamId,
+          useCurrentAudioStreamSelection: true,
+          resumePosition: currentPlayer.state.position,
+          preserveCurrentTrackSelection: false,
+          preferredSubtitleTrackOverride: SubtitlePreference.track(track),
+          transitionLease: transitionLease,
+          reason: 'online subtitle',
+        );
+        return switch (outcome) {
+          MediaReloadOutcome.opened => SubtitleDownloadApplyOutcome.applied,
+          MediaReloadOutcome.rejected => SubtitleDownloadApplyOutcome.busy,
+          MediaReloadOutcome.superseded => SubtitleDownloadApplyOutcome.superseded,
+          MediaReloadOutcome.failed => SubtitleDownloadApplyOutcome.failed,
+        };
+      } finally {
+        _transitionGate.release(transitionLease);
+      }
+    }
+
+    currentPlayer.registerExternalSubtitleMetadata(track);
+    await _trackManager?.invalidatePendingSelection();
+    if (!mounted || player != currentPlayer) return SubtitleDownloadApplyOutcome.superseded;
+
+    await currentPlayer.command(['sub-add', subtitle.absPath, 'select', subtitle.title, subtitle.language ?? '']);
+    if (!mounted || player != currentPlayer) return SubtitleDownloadApplyOutcome.superseded;
+
+    _sessionSubtitlePreference = SubtitlePreference.track(track);
+    final session = _playbackSession;
+    if (session != null) {
+      final sidecar = PlaybackSubtitleSidecar(sourceStreamId: null, track: track, preload: true);
+      final currentSelection = session.subtitleSelection;
+      final existingPreloaded = currentSelection.preloadedSidecars
+          .where(
+            (s) =>
+                s.track.uri == null ||
+                _normalizeOnlineSubtitleUriKey(s.track.uri!) != _normalizeOnlineSubtitleUriKey(subtitle.absPath),
+          )
+          .toList(growable: false);
+      _updatePlaybackSessionSubtitleSelection(
+        session,
+        PlaybackSubtitleSelection(
+          primaryTrack: track,
+          primarySidecar: sidecar,
+          secondaryTrack: currentSelection.secondaryTrack,
+          secondarySourceStreamId: currentSelection.secondarySourceStreamId,
+          secondarySidecar: currentSelection.secondarySidecar,
+          preloadedSidecars: [...existingPreloaded, sidecar],
+          primaryHonorsPreference: true,
+        ),
+      );
+    }
+    if (mounted) _setPlayerState(() {});
+    return SubtitleDownloadApplyOutcome.applied;
+  }
+
   Future<void> _onSubtitleTrackChanged(SubtitleTrack track, {int? sourceStreamId}) async {
+    final store = _tryOnlineSubtitleStore();
+    if (store != null) {
+      final uri = track.uri;
+      CachedOnlineSubtitle? matched;
+      if (track.isExternal && uri != null && uri.isNotEmpty) {
+        try {
+          final cached = await store.listForItem(_currentMetadata.globalKey, mediaSourceId: _requestedMediaSourceId);
+          final targetKey = _normalizeOnlineSubtitleUriKey(uri);
+          for (final item in cached) {
+            if (_normalizeOnlineSubtitleUriKey(item.absPath) == targetKey) {
+              matched = item;
+              break;
+            }
+          }
+        } catch (e) {
+          appLogger.d('Failed checking online subtitle cache on track change', error: e);
+        }
+      }
+
+      if (matched != null) {
+        try {
+          await store.markSelected(
+            matched.id,
+            itemGlobalKey: _currentMetadata.globalKey,
+            mediaSourceId: _requestedMediaSourceId,
+          );
+        } catch (e) {
+          appLogger.d('Failed marking online subtitle selected', error: e);
+        }
+        _rememberNativeSubtitleSelection(track, sourceStreamId: sourceStreamId);
+        await _trackManager?.invalidatePendingSelection();
+        return;
+      }
+
+      unawaited(
+        store
+            .clearSelection(_currentMetadata.globalKey, mediaSourceId: _requestedMediaSourceId)
+            .catchError((Object e) => appLogger.d('Failed clearing online subtitle selection', error: e)),
+      );
+    }
+
     _rememberNativeSubtitleSelection(track, sourceStreamId: sourceStreamId);
     await _trackManager?.onSubtitleTrackSelectedByUser(track, sourceStreamId: sourceStreamId);
   }

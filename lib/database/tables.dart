@@ -404,3 +404,42 @@ class Mounts extends Table {
   @override
   Set<Column> get primaryKey => {id};
 }
+
+/// Locally cached online subtitles downloaded via `OnlineSubtitleService`.
+@DataClassName('DownloadedOnlineSubtitleRow')
+class DownloadedOnlineSubtitles extends Table {
+  IntColumn get id => integer().autoIncrement()();
+
+  /// Global media key (`serverId:itemId`) or standalone id.
+  TextColumn get itemGlobalKey => text()();
+
+  /// Optional version/source id to disambiguate multi-version items.
+  TextColumn get mediaSourceId => text().nullable()();
+
+  /// Provider id (`xunlei`, `assrt`, `subdl`, `opensubtitles`).
+  TextColumn get provider => text()();
+
+  /// Provider-scoped subtitle id.
+  TextColumn get remoteId => text()();
+
+  /// Human-readable subtitle title for track menus.
+  TextColumn get title => text()();
+
+  /// Normalized ISO 639-1 language code (e.g. `zh`, `en`).
+  TextColumn get language => text().nullable()();
+
+  /// File extension (`srt`, `ass`, `ssa`, `vtt`).
+  TextColumn get format => text()();
+
+  /// Relative path under `<ApplicationSupportDirectory>/online_subtitles/`.
+  TextColumn get relativePath => text()();
+
+  /// SHA-256 hex digest of the UTF-8 subtitle content.
+  TextColumn get sha256 => text()();
+
+  /// Whether this subtitle should be pre-selected on the next playback open.
+  BoolColumn get isSelected => boolean().withDefault(const Constant(false))();
+
+  /// Timestamp when cached (milliseconds since epoch).
+  IntColumn get createdAt => integer()();
+}

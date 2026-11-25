@@ -509,10 +509,11 @@ List<Widget> _buildSubtitleFooter(BuildContext context, TrackControlsState state
         onTap: () {
           OverlaySheetController.of(context).push(
             builder: (_) => SubtitleSearchSheet(
-              ratingKey: state.ratingKey,
-              serverId: state.serverId!,
+              metadata: state.metadata,
               mediaTitle: state.mediaTitle,
-              onSubtitleDownloaded: state.onSubtitleDownloaded,
+              mediaSourceId: state.activeMediaSourceId,
+              filePath: state.activeFilePath,
+              onOnlineSubtitleApplied: state.onOnlineSubtitleApplied,
             ),
           );
         },
@@ -541,16 +542,10 @@ class _RefreshDirectorySubtitlesTileState extends State<_RefreshDirectorySubtitl
       if (!mounted) return;
       final isZh = Localizations.localeOf(context).languageCode == 'zh';
       if (added > 0) {
-        showAppSnackBar(
-          context,
-          isZh ? '发现并加载了 $added 个外挂字幕' : 'Found and loaded $added folder subtitle(s)',
-        );
+        showAppSnackBar(context, isZh ? '发现并加载了 $added 个外挂字幕' : 'Found and loaded $added folder subtitle(s)');
         OverlaySheetController.of(context).close();
       } else {
-        showAppSnackBar(
-          context,
-          isZh ? '同目录未发现新的外挂字幕' : 'No new subtitles found in folder',
-        );
+        showAppSnackBar(context, isZh ? '同目录未发现新的外挂字幕' : 'No new subtitles found in folder');
       }
     } catch (e) {
       if (mounted) {

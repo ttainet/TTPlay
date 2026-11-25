@@ -1031,6 +1031,14 @@ class Translations$videoControls$zh extends Translations$videoControls$en {
 	@override String get subtitleDownloadedNotApplied => '字幕已下载，但无法选择';
 	@override String get subtitleDownloadFailed => '字幕下载失败';
 	@override String get subtitleDownloadTimedOut => '字幕未及时出现，下载可能已失败';
+	@override String get subtitleProviderAll => '全部';
+	@override String get subtitleProviderXunlei => '迅雷';
+	@override String get subtitleProviderAssrt => '射手';
+	@override String get subtitleProviderSubdl => 'SubDL';
+	@override String get subtitleProviderOpenSubtitles => 'OpenSubtitles';
+	@override String get subtitleCached => '已缓存';
+	@override String get subtitleNoProvidersConfigured => '服务器未启用在线字幕源';
+	@override String get subtitleServerUnavailable => '未配置在线字幕服务器';
 	@override String get searchLanguages => '搜索语言…';
 	@override String get skipIntro => '跳过片头';
 	@override String get skipCredits => '跳过片尾';
@@ -4917,6 +4925,14 @@ extension on TranslationsZh {
 			'videoControls.subtitleDownloadedNotApplied' => '字幕已下载，但无法选择',
 			'videoControls.subtitleDownloadFailed' => '字幕下载失败',
 			'videoControls.subtitleDownloadTimedOut' => '字幕未及时出现，下载可能已失败',
+			'videoControls.subtitleProviderAll' => '全部',
+			'videoControls.subtitleProviderXunlei' => '迅雷',
+			'videoControls.subtitleProviderAssrt' => '射手',
+			'videoControls.subtitleProviderSubdl' => 'SubDL',
+			'videoControls.subtitleProviderOpenSubtitles' => 'OpenSubtitles',
+			'videoControls.subtitleCached' => '已缓存',
+			'videoControls.subtitleNoProvidersConfigured' => '服务器未启用在线字幕源',
+			'videoControls.subtitleServerUnavailable' => '未配置在线字幕服务器',
 			'videoControls.searchLanguages' => '搜索语言…',
 			'videoControls.skipIntro' => '跳过片头',
 			'videoControls.skipCredits' => '跳过片尾',
@@ -5078,6 +5094,8 @@ extension on TranslationsZh {
 			'profiles.noConnections' => '没有连接',
 			'profiles.plexHomeAccount' => 'Plex Home 账户',
 			'profiles.plexAccountChip' => ({required Object account}) => 'Plex 账户：${account}',
+			_ => null,
+		} ?? switch (path) {
 			'profiles.plexAccountUserChip' => ({required Object account, required Object user}) => '${account} 账户下的 ${user}',
 			'profiles.connectionDefault' => '默认',
 			'profiles.connectionAs' => ({required Object displayName}) => '以 ${displayName} 身份',
@@ -5086,8 +5104,6 @@ extension on TranslationsZh {
 			'profiles.profileRenamed' => '用户资料已重命名。',
 			'profiles.borrowAddTo' => ({required Object displayName}) => '添加到 ${displayName}',
 			'profiles.borrowExplain' => '使用另一个用户资料的连接。受 PIN 保护的用户资料需要输入 PIN。',
-			_ => null,
-		} ?? switch (path) {
 			'profiles.borrowEmpty' => '暂无可用连接。',
 			'profiles.borrowEmptySubtitle' => '请先将 Plex、Jellyfin 或 Emby 连接到另一个用户资料。',
 			'profiles.borrowLoadFailed' => '无法加载可用连接。请重试。',
@@ -5592,6 +5608,8 @@ extension on TranslationsZh {
 			'liveTv.cancelRecordingMessage' => ({required Object title}) => '将不再录制 ${title}。',
 			'liveTv.deleteRule' => '删除规则',
 			'liveTv.deleteRuleTitle' => '删除录制规则？',
+			_ => null,
+		} ?? switch (path) {
 			'liveTv.deleteRuleMessage' => ({required Object title}) => '今后将不再录制 ${title} 的剧集。',
 			'liveTv.recordingScheduled' => '录制已安排',
 			'liveTv.alreadyScheduled' => '此节目已安排录制',
@@ -5600,8 +5618,6 @@ extension on TranslationsZh {
 			'liveTv.recordingTargetMissing' => '无法确定录制库',
 			'liveTv.recordNotAvailable' => '此节目无法录制',
 			'liveTv.recordingCancelled' => '录制已取消',
-			_ => null,
-		} ?? switch (path) {
 			'liveTv.recordingRuleDeleted' => '录制规则已删除',
 			'liveTv.processRecordingRules' => '重新评估规则',
 			'liveTv.recordingInProgress' => '正在录制',
@@ -6106,6 +6122,8 @@ extension on TranslationsZh {
 			'companionRemote.errors.failedToConnectAnyAddress' => '无法连接到任何地址',
 			'companionRemote.errors.connectionLostAfterAttempts' => ({required Object attempts}) => '${attempts} 次尝试后连接丢失',
 			'companionRemote.errors.connectionLost' => '连接丢失',
+			_ => null,
+		} ?? switch (path) {
 			'companionRemote.closedBeforeAuth' => '连接在身份验证前已关闭',
 			'videoSettings.playbackSpeed' => '播放速度',
 			'videoSettings.normalSpeed' => '正常',
@@ -6114,8 +6132,6 @@ extension on TranslationsZh {
 			'videoSettings.sleepTimer' => '睡眠定时器',
 			'videoSettings.audioSync' => '音频同步',
 			'videoSettings.subtitleSync' => '字幕同步',
-			_ => null,
-		} ?? switch (path) {
 			'videoSettings.hdr' => 'HDR',
 			'videoSettings.hdrUnsupported' => '此处不支持 HDR——当前桌面合成器或视频输出无法传输 HDR。',
 			'videoSettings.hdrToneMapping' => 'HDR 色调映射',
@@ -6620,6 +6636,8 @@ extension on TranslationsZh {
 			'storage.scraperSettingsDescription' => '官方元数据服务与刮削语言偏好',
 			'storage.metadataServiceTitle' => '官方元数据服务',
 			'storage.metadataServiceOfficial' => '当前使用 TTPlay 官方通用元数据服务',
+			_ => null,
+		} ?? switch (path) {
 			'storage.metadataServiceSelfHosted' => '当前使用自建服务器元数据服务',
 			'storage.metadataServiceManagedHint' => 'TMDB、豆瓣、Bangumi、代理与图片转发均由官方元数据服务端统一提供，本地免配密钥。',
 			'storage.metadataServerTest' => '测试元数据服务',
@@ -6628,8 +6646,6 @@ extension on TranslationsZh {
 			'storage.metadataPreferencesHeading' => '客户端偏好',
 			'storage.fallbackUrl' => '备用地址（可选）',
 			'storage.fallbackUrlHelp' => '主地址不可达时自动切换（例如外出时使用的外网 DDNS 地址）。',
-			_ => null,
-		} ?? switch (path) {
 			'storage.smbFallbackHost' => '备用服务器（可选）',
 			'storage.includePaths' => '仅扫描目录（可选）',
 			'storage.includePathsHelp' => '每行或逗号分隔一个目录（如 /Movies），留空则扫描整个挂载。',

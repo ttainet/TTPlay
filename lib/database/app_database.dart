@@ -80,6 +80,7 @@ final class AppDatabaseBootstrap {
     LibrarySettings,
     SyncOutbox,
     SyncMetadata,
+    DownloadedOnlineSubtitles,
   ],
 )
 class AppDatabase extends _$AppDatabase {
@@ -387,7 +388,7 @@ class AppDatabase extends _$AppDatabase {
   static const FormatException _invalidRecoveryImage = FormatException('Invalid tvOS database recovery image');
 
   @override
-  int get schemaVersion => 39;
+  int get schemaVersion => 40;
 
   @override
   MigrationStrategy get migration {
@@ -946,6 +947,10 @@ class AppDatabase extends _$AppDatabase {
             'LibraryItems.totalEpisodes column',
             () => m.addColumn(libraryItems, libraryItems.totalEpisodes),
           );
+        }
+        if (from < 40) {
+          appLogger.i('Adding downloaded_online_subtitles table (v40 migration)');
+          await _ignoreAlreadyExists('DownloadedOnlineSubtitles table', () => m.createTable(downloadedOnlineSubtitles));
         }
       },
     );

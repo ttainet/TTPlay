@@ -1,5 +1,6 @@
 export type AccentTheme = 'glacier' | 'neutral' | 'ember' | 'plum';
 export type MetadataProvider = 'tmdb' | 'bangumi' | 'douban' | 'anilist' | 'imdb' | 'tvdb';
+export type SubtitleProvider = 'xunlei' | 'assrt' | 'subdl' | 'opensubtitles';
 
 export interface BootstrapInfo {
   server_name: string;
@@ -135,6 +136,20 @@ export interface ServerSettings {
   tvdb_api_base: string;
   tvdb_api_key_set: boolean;
   tvdb_pin_set: boolean;
+  xunlei_sub_enabled: boolean;
+  xunlei_sub_api_base: string;
+  assrt_enabled: boolean;
+  assrt_api_base: string;
+  assrt_token_set: boolean;
+  assrt_token_masked?: string;
+  subdl_enabled: boolean;
+  subdl_api_base: string;
+  subdl_api_key_set: boolean;
+  subdl_api_key_masked?: string;
+  opensubtitles_enabled: boolean;
+  opensubtitles_api_base: string;
+  opensubtitles_api_key_set: boolean;
+  opensubtitles_api_key_masked?: string;
   allow_public_metadata: boolean;
   allow_fallback_metadata: boolean;
   custom_recognition_words: string;

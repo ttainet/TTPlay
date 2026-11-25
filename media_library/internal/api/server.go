@@ -26,6 +26,7 @@ import (
 	"ttplay/media_library/internal/platform"
 	"ttplay/media_library/internal/security"
 	"ttplay/media_library/internal/source"
+	"ttplay/media_library/internal/subtitles"
 	"ttplay/media_library/internal/userdata"
 )
 
@@ -51,6 +52,7 @@ type Server struct {
 	Src      *source.Service
 	Ing      *ingest.Service
 	Idf      *identify.Queue
+	Sub      *subtitles.Service
 	UserData *userdata.Service
 	Feed     *feed.Service
 	Mux      http.Handler
@@ -96,9 +98,11 @@ func NewServer(
 	}
 	var udSvc *userdata.Service
 	var feedSvc *feed.Service
+	var subSvc *subtitles.Service
 	if store != nil {
 		udSvc = userdata.NewService(store, hub)
 		feedSvc = feed.NewService(store, udSvc)
+		subSvc = subtitles.NewService(store)
 	}
 	s := &Server{
 		Store:       store,
@@ -110,6 +114,7 @@ func NewServer(
 		Src:         srcSvc,
 		Ing:         ingSvc,
 		Idf:         idfQueue,
+		Sub:         subSvc,
 		UserData:    udSvc,
 		Feed:        feedSvc,
 		pubRate:     make(map[string]*ipRateBucket),
@@ -139,6 +144,16 @@ func (s *Server) buildMux() http.Handler {
 	mux.HandleFunc("GET /api/v1/public/metadata/season/{provider}/{id}/{season}", s.requirePublicMetadata(s.handlePublicMetadataSeason))
 	mux.HandleFunc("POST /api/v1/public/metadata/batch", s.requirePublicMetadata(s.handlePublicMetadataBatch))
 	mux.HandleFunc("GET /api/v1/public/metadata/artwork", s.requirePublicMetadata(s.handlePublicMetadataArtwork))
+
+	// Public online subtitle search & download proxy (offline clients + authenticated bypass)
+	mux.HandleFunc("GET /api/v1/public/subtitles/config", s.requirePublicMetadata(s.handleSubtitlesConfig))
+	mux.HandleFunc("GET /api/v1/public/subtitles/search", s.requirePublicMetadata(s.handleSubtitlesSearch))
+	mux.HandleFunc("POST /api/v1/public/subtitles/download", s.requirePublicMetadata(s.handleSubtitlesDownload))
+
+	// Authenticated online subtitle search & download proxy
+	mux.HandleFunc("GET /api/v1/subtitles/config", s.requireUserMetadataQuota(s.handleSubtitlesConfig))
+	mux.HandleFunc("GET /api/v1/subtitles/search", s.requireUserMetadataQuota(s.handleSubtitlesSearch))
+	mux.HandleFunc("POST /api/v1/subtitles/download", s.requireUserMetadataQuota(s.handleSubtitlesDownload))
 
 	// User account authentication & recovery
 	mux.HandleFunc("POST /api/v1/auth/register", s.handleUserRegister)

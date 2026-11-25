@@ -663,6 +663,31 @@ var migrations = []Migration{
 			`UPDATE meta_works_cache SET expires_at = 0 WHERE kind = 'show'`,
 		},
 	},
+	{
+		Version: 5,
+		Name:    "0005_subtitle_cache",
+		Statements: []string{
+			`CREATE TABLE IF NOT EXISTS subtitle_search_cache (
+				cache_key    TEXT PRIMARY KEY,
+				payload_json TEXT NOT NULL,
+				fetched_at   INTEGER NOT NULL,
+				expires_at   INTEGER NOT NULL
+			)`,
+			`CREATE INDEX IF NOT EXISTS idx_subtitle_search_cache_exp ON subtitle_search_cache(expires_at)`,
+			`CREATE TABLE IF NOT EXISTS subtitle_file_cache (
+				cache_key    TEXT PRIMARY KEY,
+				provider     TEXT NOT NULL,
+				filename     TEXT NOT NULL,
+				format       TEXT NOT NULL,
+				language     TEXT NOT NULL,
+				sha256       TEXT NOT NULL,
+				content_utf8 TEXT NOT NULL,
+				fetched_at   INTEGER NOT NULL,
+				expires_at   INTEGER NOT NULL
+			)`,
+			`CREATE INDEX IF NOT EXISTS idx_subtitle_file_cache_exp ON subtitle_file_cache(expires_at)`,
+		},
+	},
 }
 
 func (s *Store) runMigrations() error {

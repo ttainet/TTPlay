@@ -1029,6 +1029,14 @@ class _Translations$videoControls$zh_Hant extends Translations$videoControls$zh 
 	@override String get subtitleDownloadedNotApplied => '字幕已下載，但無法套用';
 	@override String get subtitleDownloadFailed => '字幕下載失敗';
 	@override String get subtitleDownloadTimedOut => '字幕未及時出現，下載可能已失敗';
+	@override String get subtitleProviderAll => '全部';
+	@override String get subtitleProviderXunlei => '迅雷';
+	@override String get subtitleProviderAssrt => '射手';
+	@override String get subtitleProviderSubdl => 'SubDL';
+	@override String get subtitleProviderOpenSubtitles => 'OpenSubtitles';
+	@override String get subtitleCached => '已快取';
+	@override String get subtitleNoProvidersConfigured => '伺服器未啟用線上字幕來源';
+	@override String get subtitleServerUnavailable => '未設定線上字幕伺服器';
 	@override String get searchLanguages => '搜尋語言…';
 	@override String get skipIntro => '略過片頭';
 	@override String get skipCredits => '略過片尾';
@@ -4549,6 +4557,14 @@ extension on TranslationsZhHant {
 			'videoControls.subtitleDownloadedNotApplied' => '字幕已下載，但無法套用',
 			'videoControls.subtitleDownloadFailed' => '字幕下載失敗',
 			'videoControls.subtitleDownloadTimedOut' => '字幕未及時出現，下載可能已失敗',
+			'videoControls.subtitleProviderAll' => '全部',
+			'videoControls.subtitleProviderXunlei' => '迅雷',
+			'videoControls.subtitleProviderAssrt' => '射手',
+			'videoControls.subtitleProviderSubdl' => 'SubDL',
+			'videoControls.subtitleProviderOpenSubtitles' => 'OpenSubtitles',
+			'videoControls.subtitleCached' => '已快取',
+			'videoControls.subtitleNoProvidersConfigured' => '伺服器未啟用線上字幕來源',
+			'videoControls.subtitleServerUnavailable' => '未設定線上字幕伺服器',
 			'videoControls.searchLanguages' => '搜尋語言…',
 			'videoControls.skipIntro' => '略過片頭',
 			'videoControls.skipCredits' => '略過片尾',
@@ -4710,6 +4726,8 @@ extension on TranslationsZhHant {
 			'profiles.noConnections' => '無連線資訊',
 			'profiles.plexHomeAccount' => 'Plex Home 帳戶',
 			'profiles.plexAccountChip' => ({required Object account}) => 'Plex 帳戶：${account}',
+			_ => null,
+		} ?? switch (path) {
 			'profiles.plexAccountUserChip' => ({required Object account, required Object user}) => '${account} 帳戶下的 ${user}',
 			'profiles.connectionDefault' => '預設',
 			'profiles.connectionAs' => ({required Object displayName}) => '以 ${displayName} 身分',
@@ -4718,8 +4736,6 @@ extension on TranslationsZhHant {
 			'profiles.profileRenamed' => '使用者設定檔已重新命名。',
 			'profiles.borrowAddTo' => ({required Object displayName}) => '新增至 ${displayName}',
 			'profiles.borrowExplain' => '共用另一個使用者設定檔的連線資訊。受 PIN 碼保護的設定檔需輸入 PIN 碼。',
-			_ => null,
-		} ?? switch (path) {
 			'profiles.borrowEmpty' => '目前沒有可共用的連線。',
 			'profiles.borrowEmptySubtitle' => '請先將 Plex、Jellyfin 或 Emby 連線至另一個使用者設定檔。',
 			'profiles.borrowLoadFailed' => '無法載入可用的連線。請重試。',
@@ -5224,6 +5240,8 @@ extension on TranslationsZhHant {
 			'liveTv.cancelRecordingMessage' => ({required Object title}) => '將不再錄製 ${title}。',
 			'liveTv.deleteRule' => '刪除規則',
 			'liveTv.deleteRuleTitle' => '刪除錄製規則？',
+			_ => null,
+		} ?? switch (path) {
 			'liveTv.deleteRuleMessage' => ({required Object title}) => '將不再錄製 ${title} 的後續單集。',
 			'liveTv.recordingScheduled' => '錄製已排程',
 			'liveTv.alreadyScheduled' => '此節目已安排排程錄製',
@@ -5232,8 +5250,6 @@ extension on TranslationsZhHant {
 			'liveTv.recordingTargetMissing' => '無法確定錄製媒體庫',
 			'liveTv.recordNotAvailable' => '此節目無法錄製',
 			'liveTv.recordingCancelled' => '錄製已取消',
-			_ => null,
-		} ?? switch (path) {
 			'liveTv.recordingRuleDeleted' => '錄製規則已刪除',
 			'liveTv.processRecordingRules' => '重新評估規則',
 			'liveTv.recordingInProgress' => '正在錄製',
@@ -5738,6 +5754,8 @@ extension on TranslationsZhHant {
 			'performanceOverlay.dvRouteReshaped' => 'RPU 重塑（gpu-next）',
 			'performanceOverlay.p7Conversion' => 'P7 轉換',
 			'performanceOverlay.sampleRate' => '取樣率',
+			_ => null,
+		} ?? switch (path) {
 			'performanceOverlay.pixelFormat' => '像素格式',
 			'performanceOverlay.hwFormat' => '硬體格式',
 			'performanceOverlay.matrix' => '矩陣',
@@ -5746,8 +5764,6 @@ extension on TranslationsZhHant {
 			'performanceOverlay.renderFps' => '渲染 FPS',
 			'performanceOverlay.displayFps' => '螢幕 FPS',
 			'performanceOverlay.avSync' => '影音同步（A/V Sync）',
-			_ => null,
-		} ?? switch (path) {
 			'performanceOverlay.dropped' => '丟格數（Dropped）',
 			'performanceOverlay.dvRpus' => 'DV RPU 數',
 			'performanceOverlay.dvRpuAverage' => 'DV RPU 平均',

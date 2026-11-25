@@ -136,6 +136,11 @@ abstract class Player {
   /// Pass [SubtitleTrack.off] to disable secondary subtitles.
   Future<void> selectSecondarySubtitleTrack(SubtitleTrack track);
 
+  /// Registers display metadata for an external subtitle track before it is
+  /// added dynamically (e.g. via `sub-add`) so `track-list` updates keep
+  /// human-readable title, language, and codec fields.
+  void registerExternalSubtitleMetadata(SubtitleTrack track) {}
+
   /// Whether this player backend supports secondary subtitle tracks.
   bool get supportsSecondarySubtitles;
 

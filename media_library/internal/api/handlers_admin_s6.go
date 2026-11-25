@@ -15,6 +15,7 @@ import (
 	"ttplay/media_library/internal/applog"
 	"ttplay/media_library/internal/metadata"
 	"ttplay/media_library/internal/security"
+	"ttplay/media_library/internal/subtitles"
 	"ttplay/media_library/web"
 )
 
@@ -121,6 +122,30 @@ func (s *Server) handleAdminTestProvider(w http.ResponseWriter, r *http.Request)
 	}
 	if err := decodeJSON(w, r, &req); err != nil {
 		writeErrCode(w, r, http.StatusBadRequest, "invalid_input", "invalid JSON payload")
+		return
+	}
+	switch subtitles.NormalizeProviderName(req.Provider) {
+	case subtitles.ProviderXunlei, subtitles.ProviderAssrt, subtitles.ProviderSubDL, subtitles.ProviderOpenSubtitles:
+		if s.Sub == nil {
+			writeErrCode(w, r, http.StatusServiceUnavailable, "unavailable", "subtitle service unavailable")
+			return
+		}
+		latencyMs, msg, err := s.Sub.TestProviderConnection(r.Context(), req.Provider, subtitles.ProviderTestOverrides{
+			APIKey:        req.APIKey,
+			Token:         req.Token,
+			APIBase:       req.APIBase,
+			MetadataProxy: req.MetadataProxy,
+		})
+		if err != nil {
+			writeSubtitleError(w, r, err)
+			return
+		}
+		writeJSON(w, r, http.StatusOK, map[string]any{
+			"code":       0,
+			"ok":         true,
+			"latency_ms": latencyMs,
+			"message":    msg,
+		})
 		return
 	}
 	latencyMs, msg, err := s.Meta.TestProviderConnection(r.Context(), req.Provider, metadata.ProviderTestOverrides{

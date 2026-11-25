@@ -153,6 +153,11 @@ extension _PlexVideoControlsTrackMethods on _PlexVideoControlsState {
       selectedSubtitleChoice: widget.selectedSubtitleChoice,
     );
     final canSwitchSourceSubtitles = versionQuality.canSwitch && versionQuality.sourceSubtitleTracks.isNotEmpty;
+    final activeVersion =
+        (widget.selectedMediaIndex >= 0 && widget.selectedMediaIndex < widget.availableVersions.length)
+        ? widget.availableVersions[widget.selectedMediaIndex]
+        : null;
+    final activeFilePath = activeVersion?.parts.firstOrNull?.file ?? widget.metadata.allPartFiles.firstOrNull;
     return TrackControlsState(
       availableVersions: versionQuality.availableVersions,
       selectedMediaIndex: widget.selectedMediaIndex,
@@ -220,12 +225,10 @@ extension _PlexVideoControlsTrackMethods on _PlexVideoControlsState {
       onQueueItemSelected: playbackState.isQueueActive && widget.canNavigateMediaItems ? _onQueueItemSelected : null,
       ratingKey: widget.metadata.id,
       mediaTitle: widget.metadata.title,
-      onSubtitleDownloaded: _onSubtitleDownloaded,
-      // Plex proxies OpenSubtitles via its server-side plugin; Jellyfin
-      // doesn't expose an equivalent so the Search Subtitles tile is hidden
-      // for Jellyfin items. The check uses the registered client type for
-      // this metadata's serverId.
-      subtitleSearchSupported: _isPlexBackedMetadata(),
+      activeMediaSourceId: activeVersion?.id,
+      activeFilePath: activeFilePath,
+      onOnlineSubtitleApplied: _handleOnlineSubtitleApplied,
+      subtitleSearchSupported: _canSearchOnlineSubtitles(),
       onRefreshDirectorySubtitles: _buildRefreshDirectorySubtitlesCallback(),
     );
   }
@@ -251,10 +254,7 @@ extension _PlexVideoControlsTrackMethods on _PlexVideoControlsState {
         ? widget.availableVersions[widget.selectedMediaIndex].id
         : null;
     return () async {
-      final added = await localClient.refreshDirectorySubtitles(
-        widget.metadata.id,
-        mediaSourceId: mediaSourceId,
-      );
+      final added = await localClient.refreshDirectorySubtitles(widget.metadata.id, mediaSourceId: mediaSourceId);
       if (added > 0) {
         await widget.onPlaybackSourceChanged?.call(forceReload: true);
       }
@@ -262,16 +262,12 @@ extension _PlexVideoControlsTrackMethods on _PlexVideoControlsState {
     };
   }
 
-  /// True when the active server supports external subtitle search (Plex
-  /// today). Requires a server id because the download callback needs the
-  /// Plex client/token for that server.
-  bool _isPlexBackedMetadata() {
+  /// True when online subtitle search is available for the active media item.
+  bool _canSearchOnlineSubtitles() {
+    if (widget.isLive) return false;
     try {
-      final serverId = widget.metadata.serverId;
-      if (serverId == null) return false;
-      final manager = context.read<MultiServerProvider>().serverManager;
-      final c = manager.getClient(ServerId(serverId));
-      return c?.capabilities.externalSubtitleSearch ?? false;
+      final multiServer = Provider.of<MultiServerProvider?>(context, listen: false);
+      return OnlineSubtitleService.resolveEndpoint(multiServer) != null;
     } catch (_) {
       return false;
     }

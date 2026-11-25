@@ -27,6 +27,7 @@ import (
 	"ttplay/media_library/internal/platform"
 	"ttplay/media_library/internal/security"
 	"ttplay/media_library/internal/source"
+	"ttplay/media_library/internal/subtitles"
 	"ttplay/media_library/internal/vault"
 )
 
@@ -149,7 +150,7 @@ func main() {
 	bgWG.Add(1)
 	go func() {
 		defer bgWG.Done()
-		runPeriodicCleanup(ctx, accSvc, platSvc, srcSvc, ingSvc)
+		runPeriodicCleanup(ctx, accSvc, platSvc, srcSvc, ingSvc, srvHandler.Sub)
 	}()
 
 	fmt.Printf("LISTENING http://%s\n", ln.Addr().String())
@@ -181,7 +182,7 @@ func main() {
 	applog.Infof("system", "服务已关闭")
 }
 
-func runPeriodicCleanup(ctx context.Context, accSvc *account.Service, platSvc *platform.Service, srcSvc *source.Service, ingSvc *ingest.Service) {
+func runPeriodicCleanup(ctx context.Context, accSvc *account.Service, platSvc *platform.Service, srcSvc *source.Service, ingSvc *ingest.Service, subSvc *subtitles.Service) {
 	ticker := time.NewTicker(10 * time.Minute)
 	defer ticker.Stop()
 	for {
@@ -189,6 +190,11 @@ func runPeriodicCleanup(ctx context.Context, accSvc *account.Service, platSvc *p
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
+			if subSvc != nil {
+				if err := subSvc.CleanupExpiredCache(); err != nil {
+					applog.Warnf("cleanup", "subtitle cache cleanup error: %v", err)
+				}
+			}
 			if err := accSvc.CleanupExpired(); err != nil {
 				applog.Warnf("cleanup", "account cleanup error: %v", err)
 			}

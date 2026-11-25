@@ -781,7 +781,7 @@ abstract class PlayerBase with PlayerStreamControllersMixin implements Player {
       if (type == 'audio') {
         final rawExternalFilename = track['external-filename'];
         final externalFilename = rawExternalFilename is String ? rawExternalFilename : null;
-        final externalMetadata = externalFilename == null ? null : _externalSubtitleMetadataByUri[externalFilename];
+        final externalMetadata = _lookupExternalSubtitleMetadata(externalFilename);
         // Container sidecars are opened only to expose their subtitle tracks.
         // Do not let their audio streams participate in normal track matching.
         if (externalMetadata?.any((metadata) => metadata.isContainer) == true) continue;
@@ -818,7 +818,7 @@ abstract class PlayerBase with PlayerStreamControllersMixin implements Player {
         final rawLanguage = track['lang'];
         final rawExternalFilename = track['external-filename'];
         final externalFilename = rawExternalFilename is String ? rawExternalFilename : null;
-        final externalMetadata = externalFilename == null ? null : _externalSubtitleMetadataByUri[externalFilename];
+        final externalMetadata = _lookupExternalSubtitleMetadata(externalFilename);
         final isContainer =
             track['container'] == true || externalMetadata?.any((metadata) => metadata.isContainer) == true;
         SubtitleTrack? matchedMetadata;
@@ -933,6 +933,40 @@ abstract class PlayerBase with PlayerStreamControllersMixin implements Player {
       }
     }
     _externalSubtitleMetadataByUri = metadataByUri;
+  }
+
+  static String _normalizeSubtitlePathKey(String uri) {
+    final trimmed = uri.trim();
+    if (trimmed.startsWith('file://')) {
+      try {
+        return Uri.parse(trimmed).toFilePath().replaceAll('\\', '/').toLowerCase();
+      } catch (_) {}
+    }
+    return trimmed.replaceAll('\\', '/').toLowerCase();
+  }
+
+  List<SubtitleTrack>? _lookupExternalSubtitleMetadata(String? externalFilename) {
+    if (externalFilename == null || externalFilename.isEmpty) return null;
+    final direct = _externalSubtitleMetadataByUri[externalFilename];
+    if (direct != null) return direct;
+    final targetKey = _normalizeSubtitlePathKey(externalFilename);
+    for (final entry in _externalSubtitleMetadataByUri.entries) {
+      if (_normalizeSubtitlePathKey(entry.key) == targetKey) {
+        return entry.value;
+      }
+    }
+    return null;
+  }
+
+  @override
+  void registerExternalSubtitleMetadata(SubtitleTrack track) {
+    final uri = track.uri;
+    if (uri == null || uri.isEmpty) return;
+    final next = <String, List<SubtitleTrack>>{
+      for (final entry in _externalSubtitleMetadataByUri.entries) entry.key: List<SubtitleTrack>.of(entry.value),
+    };
+    (next[uri] ??= <SubtitleTrack>[]).add(track);
+    _externalSubtitleMetadataByUri = next;
   }
 
   @protected

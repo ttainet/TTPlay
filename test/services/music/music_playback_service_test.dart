@@ -259,6 +259,9 @@ class FakePlayer implements Player {
   String get playerType => 'fake';
 
   @override
+  void registerExternalSubtitleMetadata(SubtitleTrack track) {}
+
+  @override
   Future<void> open(
     Media media, {
     bool play = true,

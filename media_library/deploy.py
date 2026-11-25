@@ -27,7 +27,7 @@ REMOTE_BIN_TMP = "/tmp/media-library.new"
 REMOTE_WEB_ROOT = "/opt/media-library/web"
 REMOTE_WEB_TAR_TMP = "/tmp/web_dist.tar.gz"
 SERVICE_NAME = "media-library"
-HEALTH_URL = "http://127.0.0.1:8090/api/v1/health"
+DEFAULT_PORT = 8090
 
 
 def run_local(cmd: list[str] | str, *, cwd: Path, env: dict[str, str] | None = None, shell: bool = False) -> None:
@@ -122,6 +122,7 @@ def deploy_remote(
     deploy_backend: bool,
     deploy_web: bool,
     local_tar_path: Path | None,
+    port: int = DEFAULT_PORT,
 ) -> None:
     """Upload artifacts over SFTP, perform atomic remote swap, and verify health."""
     sftp = client.open_sftp()
@@ -172,10 +173,11 @@ def deploy_remote(
             f"Service {SERVICE_NAME} not active ({active_state}): {active_err.strip()}\n{log_out}"
         )
 
+    health_url = f"http://127.0.0.1:{port}/api/v1/health"
     health_body = ""
     deadline = time.monotonic() + 10.0
     while time.monotonic() < deadline:
-        h_code, h_out, _ = exec_remote(client, f"curl -sf {HEALTH_URL}")
+        h_code, h_out, _ = exec_remote(client, f"curl -sf {health_url}")
         if h_code == 0 and '"status":"ok"' in h_out:
             health_body = h_out.strip()
             break
@@ -187,7 +189,7 @@ def deploy_remote(
 
     _, js_out, _ = exec_remote(
         client,
-        r"curl -s http://127.0.0.1:8090/ | grep -o 'index-[A-Za-z0-9_-]*\.js' | head -n 1",
+        rf"curl -s http://127.0.0.1:{port}/ | grep -o 'index-[A-Za-z0-9_-]*\.js' | head -n 1",
     )
     print(f"[verify] web bundle: {js_out.strip()}")
 
@@ -202,6 +204,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument("--web-only", action="store_true", help="Deploy only media_library/web/dist (no service restart)")
     parser.add_argument("--backend-only", action="store_true", help="Deploy only Linux Go binary")
     parser.add_argument("--cred-file", default=r"E:\SSH\47.76.108.192.txt", help="Path to SSH credential file")
+    parser.add_argument("--port", type=int, default=DEFAULT_PORT, help="Remote media-library HTTP port for health verification")
     parser.add_argument("--proxy", default="127.0.0.1:7897", help="Local SOCKS5/HTTP proxy host:port")
     args = parser.parse_args(argv)
     if args.web_only and args.backend_only:
@@ -237,6 +240,7 @@ def main(argv: list[str] | None = None) -> int:
             deploy_backend=include_backend,
             deploy_web=include_web,
             local_tar_path=tar_path,
+            port=args.port,
         )
         print("[done] Deployment succeeded.")
         return 0

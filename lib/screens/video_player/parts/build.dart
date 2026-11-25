@@ -287,10 +287,9 @@ extension _VideoPlayerBuildMethods on VideoPlayerScreenState {
                         sourceSubtitleSidecars: sourceSubtitleSidecars,
                         sourcePartId: _currentMediaInfo?.partId,
                         onPlaybackSourceChanged: _switchPlaybackSource,
-                        onRemoteHandoff:
-                            (!widget.isLive && !_isOfflinePlayback && _hasCompanionRemoteProvider())
-                                ? _handoffToRemoteDevice
-                                : null,
+                        onRemoteHandoff: (!widget.isLive && !_isOfflinePlayback && _hasCompanionRemoteProvider())
+                            ? _handoffToRemoteDevice
+                            : null,
                         onTogglePIPMode: _togglePIPMode,
                         boxFitMode: _videoFilterManager?.boxFitMode ?? 0,
                         videoZoomScale: _videoFilterManager?.zoomScale ?? 1.0,
@@ -304,6 +303,7 @@ extension _VideoPlayerBuildMethods on VideoPlayerScreenState {
                         onAudioTrackChanged: _onAudioTrackChanged,
                         onSubtitleTrackChanged: _onSubtitleTrackChanged,
                         onSecondarySubtitleTrackChanged: _onSecondarySubtitleTrackChanged,
+                        onOnlineSubtitleApplied: _applyOnlineSubtitle,
                         onSeekRequested: _seekPlayback,
                         onRateRequested: _setPlaybackRate,
                         onPlayPauseRequested: _handleControlsTransport,

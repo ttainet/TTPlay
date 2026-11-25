@@ -86,6 +86,23 @@ type ServerSettings struct {
 	TvdbPinSet                 bool    `json:"tvdb_pin_set"`
 	TvdbPinMasked              string  `json:"tvdb_pin_masked"`
 	TvdbPin                    string  `json:"-"`
+	XunleiSubEnabled           bool    `json:"xunlei_sub_enabled"`
+	XunleiSubAPIBase           string  `json:"xunlei_sub_api_base"`
+	AssrtEnabled               bool    `json:"assrt_enabled"`
+	AssrtAPIBase               string  `json:"assrt_api_base"`
+	AssrtTokenSet              bool    `json:"assrt_token_set"`
+	AssrtTokenMasked           string  `json:"assrt_token_masked"`
+	AssrtToken                 string  `json:"-"`
+	SubDLEnabled               bool    `json:"subdl_enabled"`
+	SubDLAPIBase               string  `json:"subdl_api_base"`
+	SubDLAPIKeySet             bool    `json:"subdl_api_key_set"`
+	SubDLAPIKeyMasked          string  `json:"subdl_api_key_masked"`
+	SubDLAPIKey                string  `json:"-"`
+	OpenSubtitlesEnabled       bool    `json:"opensubtitles_enabled"`
+	OpenSubtitlesAPIBase       string  `json:"opensubtitles_api_base"`
+	OpenSubtitlesAPIKeySet     bool    `json:"opensubtitles_api_key_set"`
+	OpenSubtitlesAPIKeyMasked  string  `json:"opensubtitles_api_key_masked"`
+	OpenSubtitlesAPIKey        string  `json:"-"`
 	AllowPublicMetadata        bool    `json:"allow_public_metadata"`
 	AllowFallbackMetadata      bool    `json:"allow_fallback_metadata"`
 	CustomRecognitionWords     string  `json:"custom_recognition_words"`
@@ -125,6 +142,20 @@ type ServerSettingsUpdate struct {
 	ClearTvdbAPIKey            bool     `json:"clear_tvdb_api_key,omitempty"`
 	TvdbPin                    *string  `json:"tvdb_pin,omitempty"`
 	ClearTvdbPin               bool     `json:"clear_tvdb_pin,omitempty"`
+	XunleiSubEnabled           *bool    `json:"xunlei_sub_enabled,omitempty"`
+	XunleiSubAPIBase           *string  `json:"xunlei_sub_api_base,omitempty"`
+	AssrtEnabled               *bool    `json:"assrt_enabled,omitempty"`
+	AssrtAPIBase               *string  `json:"assrt_api_base,omitempty"`
+	AssrtToken                 *string  `json:"assrt_token,omitempty"`
+	ClearAssrtToken            bool     `json:"clear_assrt_token,omitempty"`
+	SubDLEnabled               *bool    `json:"subdl_enabled,omitempty"`
+	SubDLAPIBase               *string  `json:"subdl_api_base,omitempty"`
+	SubDLAPIKey                *string  `json:"subdl_api_key,omitempty"`
+	ClearSubDLAPIKey           bool     `json:"clear_subdl_api_key,omitempty"`
+	OpenSubtitlesEnabled       *bool    `json:"opensubtitles_enabled,omitempty"`
+	OpenSubtitlesAPIBase       *string  `json:"opensubtitles_api_base,omitempty"`
+	OpenSubtitlesAPIKey        *string  `json:"opensubtitles_api_key,omitempty"`
+	ClearOpenSubtitlesAPIKey   bool     `json:"clear_opensubtitles_api_key,omitempty"`
 	AllowPublicMetadata        *bool    `json:"allow_public_metadata,omitempty"`
 	AllowFallbackMetadata      *bool    `json:"allow_fallback_metadata,omitempty"`
 	CustomRecognitionWords     *string  `json:"custom_recognition_words,omitempty"`

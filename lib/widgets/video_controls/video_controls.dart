@@ -23,9 +23,11 @@ import 'package:flutter/services.dart'
     show LogicalKeyboardKey, PhysicalKeyboardKey, KeyEvent, KeyDownEvent, KeyUpEvent, KeyRepeatEvent, HardwareKeyboard;
 import '../../services/fullscreen_state_manager.dart';
 import '../../services/macos_window_service.dart';
+import '../../services/online_subtitle_store.dart';
 import '../../services/pip_service.dart';
 import '../../services/playback_initialization_types.dart';
 import '../../services/playback_subtitle_resolver.dart';
+import '../../services/subtitle_search/online_subtitle_service.dart';
 import 'package:window_manager/window_manager.dart';
 
 import '../../mixins/listenable_bindings_mixin.dart';
@@ -38,7 +40,6 @@ import '../../focus/transport_keys.dart';
 
 import '../../database/app_database.dart';
 import '../../library/local_library_client.dart';
-import '../../media/media_backend.dart';
 import '../../media/media_item.dart';
 import '../../media/stepped_seek.dart';
 import '../../models/livetv_capture_buffer.dart';
@@ -604,6 +605,7 @@ class PlexVideoControls extends StatefulWidget {
   final Function(AudioTrack)? onAudioTrackChanged;
   final Function(SubtitleTrack)? onSubtitleTrackChanged;
   final Function(SubtitleTrack)? onSecondarySubtitleTrackChanged;
+  final Future<SubtitleDownloadApplyOutcome> Function(CachedOnlineSubtitle subtitle)? onOnlineSubtitleApplied;
 
   /// Called for app-level seek requests so the owning screen can coordinate
   /// playback state around the native player seek.
@@ -756,6 +758,7 @@ class PlexVideoControls extends StatefulWidget {
     this.onAudioTrackChanged,
     this.onSubtitleTrackChanged,
     this.onSecondarySubtitleTrackChanged,
+    this.onOnlineSubtitleApplied,
     this.onSeekRequested,
     this.onRateRequested,
     this.onPlayPauseRequested,

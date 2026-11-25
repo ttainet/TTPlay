@@ -2560,6 +2560,30 @@ class Translations$videoControls$en {
 	/// en: 'The subtitle didn't appear in time. The download may have failed'
 	String get subtitleDownloadTimedOut => 'The subtitle didn\'t appear in time. The download may have failed';
 
+	/// en: 'All'
+	String get subtitleProviderAll => 'All';
+
+	/// en: 'Xunlei'
+	String get subtitleProviderXunlei => 'Xunlei';
+
+	/// en: 'Assrt'
+	String get subtitleProviderAssrt => 'Assrt';
+
+	/// en: 'SubDL'
+	String get subtitleProviderSubdl => 'SubDL';
+
+	/// en: 'OpenSubtitles'
+	String get subtitleProviderOpenSubtitles => 'OpenSubtitles';
+
+	/// en: 'Cached'
+	String get subtitleCached => 'Cached';
+
+	/// en: 'No subtitle providers enabled on server'
+	String get subtitleNoProvidersConfigured => 'No subtitle providers enabled on server';
+
+	/// en: 'Online subtitle server is not configured'
+	String get subtitleServerUnavailable => 'Online subtitle server is not configured';
+
 	/// en: 'Search languages...'
 	String get searchLanguages => 'Search languages...';
 
@@ -10738,6 +10762,14 @@ extension on Translations {
 			'videoControls.subtitleDownloadedNotApplied' => 'Subtitle downloaded, but it could not be selected',
 			'videoControls.subtitleDownloadFailed' => 'Failed to download subtitle',
 			'videoControls.subtitleDownloadTimedOut' => 'The subtitle didn\'t appear in time. The download may have failed',
+			'videoControls.subtitleProviderAll' => 'All',
+			'videoControls.subtitleProviderXunlei' => 'Xunlei',
+			'videoControls.subtitleProviderAssrt' => 'Assrt',
+			'videoControls.subtitleProviderSubdl' => 'SubDL',
+			'videoControls.subtitleProviderOpenSubtitles' => 'OpenSubtitles',
+			'videoControls.subtitleCached' => 'Cached',
+			'videoControls.subtitleNoProvidersConfigured' => 'No subtitle providers enabled on server',
+			'videoControls.subtitleServerUnavailable' => 'Online subtitle server is not configured',
 			'videoControls.searchLanguages' => 'Search languages...',
 			'videoControls.skipIntro' => 'Skip Intro',
 			'videoControls.skipCredits' => 'Skip Credits',
@@ -10897,6 +10929,8 @@ extension on Translations {
 			'profiles.add' => 'Add',
 			'profiles.deleteProfileButton' => 'Delete profile',
 			'profiles.noConnectionsHint' => 'No connections — add one to use this profile.',
+			_ => null,
+		} ?? switch (path) {
 			'profiles.noConnections' => 'No connections',
 			'profiles.plexHomeAccount' => 'Plex Home account',
 			'profiles.plexAccountChip' => ({required Object account}) => 'Plex account: ${account}',
@@ -10905,8 +10939,6 @@ extension on Translations {
 			'profiles.connectionAs' => ({required Object displayName}) => 'as ${displayName}',
 			'profiles.makeDefault' => 'Make default',
 			'profiles.removeConnection' => 'Remove',
-			_ => null,
-		} ?? switch (path) {
 			'profiles.profileRenamed' => 'Profile renamed.',
 			'profiles.borrowAddTo' => ({required Object displayName}) => 'Add to ${displayName}',
 			'profiles.borrowExplain' => 'Borrow another profile\'s connection. PIN-protected profiles require a PIN.',
@@ -11411,6 +11443,8 @@ extension on Translations {
 			'liveTv.recordings' => 'Recordings',
 			'liveTv.scheduledRecordings' => 'Scheduled',
 			'liveTv.recordingRules' => 'Recording Rules',
+			_ => null,
+		} ?? switch (path) {
 			'liveTv.noScheduledRecordings' => 'Nothing scheduled to record',
 			'liveTv.manageRecording' => 'Manage recording',
 			'liveTv.cancelRecording' => 'Cancel recording',
@@ -11419,8 +11453,6 @@ extension on Translations {
 			'liveTv.deleteRule' => 'Delete rule',
 			'liveTv.deleteRuleTitle' => 'Delete recording rule?',
 			'liveTv.deleteRuleMessage' => ({required Object title}) => 'Future episodes of ${title} will not be recorded.',
-			_ => null,
-		} ?? switch (path) {
 			'liveTv.recordingScheduled' => 'Recording scheduled',
 			'liveTv.alreadyScheduled' => 'This program is already scheduled',
 			'liveTv.dvrAdminRequired' => 'DVR settings require an admin account',
@@ -11925,6 +11957,8 @@ extension on Translations {
 			'companionRemote.remote.audio' => 'Audio',
 			'companionRemote.remote.searchHint' => 'Search on desktop...',
 			'companionRemote.errors.noNetworkInterface' => 'No network interface found',
+			_ => null,
+		} ?? switch (path) {
 			'companionRemote.errors.authenticationFailed' => 'Authentication failed',
 			'companionRemote.errors.serverStartFailed' => ({required Object error}) => 'Failed to start remote server: ${error}',
 			'companionRemote.errors.commandFailed' => ({required Object error}) => 'Failed to send remote command: ${error}',
@@ -11933,8 +11967,6 @@ extension on Translations {
 			'companionRemote.errors.connectionLostAfterAttempts' => ({required Object attempts}) => 'Connection lost after ${attempts} attempts',
 			'companionRemote.errors.connectionLost' => 'Connection lost',
 			'companionRemote.closedBeforeAuth' => 'The connection closed before authentication',
-			_ => null,
-		} ?? switch (path) {
 			'videoSettings.playbackSpeed' => 'Playback Speed',
 			'videoSettings.normalSpeed' => 'Normal',
 			'videoSettings.sleepTimerActive' => ({required Object duration}) => 'Active (${duration})',
@@ -12439,6 +12471,8 @@ extension on Translations {
 			'storage.bangumiForAnimeHelp' => 'Anime is looked up on Bangumi first, then TMDB',
 			'storage.metadataProxy' => 'HTTP proxy',
 			'storage.metadataProxyHelp' => 'host:port, used for metadata requests only. Leave empty to connect directly.',
+			_ => null,
+		} ?? switch (path) {
 			'storage.tmdbApiBase' => 'TMDB API address',
 			'storage.tmdbImageBase' => 'TMDB image address',
 			'storage.manualMatch' => 'Match manually',
@@ -12447,8 +12481,6 @@ extension on Translations {
 			'storage.scraperSettingsDescription' => 'Official metadata service & language preference',
 			'storage.metadataServiceTitle' => 'Official Metadata Service',
 			'storage.metadataServiceOfficial' => 'Connected to TTPlay Official Metadata Service',
-			_ => null,
-		} ?? switch (path) {
 			'storage.metadataServiceSelfHosted' => 'Connected to Server Metadata Service',
 			'storage.metadataServiceManagedHint' => 'TMDB, Douban, Bangumi, proxy, and artwork relay are managed centrally by the official metadata server.',
 			'storage.metadataServerTest' => 'Test server connection',

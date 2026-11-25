@@ -1,21 +1,112 @@
-import 'package:drift/native.dart';
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
-import 'package:ttplay/database/app_database.dart';
+import 'package:http/testing.dart';
 import 'package:ttplay/i18n/strings.g.dart';
-import 'package:ttplay/media/ids.dart';
-import 'package:ttplay/providers/multi_server_provider.dart';
-import 'package:ttplay/services/plex_api_cache.dart';
+import 'package:ttplay/media/media_item.dart';
+import 'package:ttplay/media/media_kind.dart';
+import 'package:ttplay/services/online_subtitle_store.dart';
+import 'package:ttplay/services/subtitle_search/online_subtitle_models.dart';
+import 'package:ttplay/services/subtitle_search/online_subtitle_service.dart';
 import 'package:ttplay/utils/platform_detector.dart';
 import 'package:ttplay/widgets/overlay_sheet.dart';
 import 'package:ttplay/widgets/video_controls/models/track_controls_state.dart';
 import 'package:ttplay/widgets/video_controls/sheets/subtitle_search_sheet.dart';
-import 'package:provider/provider.dart';
 
-import '../test_helpers/backend_client_fixtures.dart';
-import '../test_helpers/multi_server_fixtures.dart';
 import '../test_helpers/theme.dart';
+
+class _InMemoryOnlineSubtitleStore implements OnlineSubtitleStore {
+  final List<CachedOnlineSubtitle> _rows = [];
+  int _nextId = 1;
+
+  @override
+  Future<CachedOnlineSubtitle> saveAndSelect({
+    required String itemGlobalKey,
+    String? mediaSourceId,
+    required String provider,
+    required String remoteId,
+    required String title,
+    String? language,
+    required String format,
+    required String sha256,
+    required String contentUtf8,
+  }) async {
+    for (var i = 0; i < _rows.length; i++) {
+      if (_rows[i].itemGlobalKey == itemGlobalKey) {
+        _rows[i] = _copyWithSelected(_rows[i], false);
+      }
+    }
+    final created = CachedOnlineSubtitle(
+      id: _nextId++,
+      itemGlobalKey: itemGlobalKey,
+      mediaSourceId: mediaSourceId,
+      provider: provider,
+      remoteId: remoteId,
+      title: title,
+      language: language,
+      format: format,
+      relativePath: '$sha256.$format',
+      absPath: '/tmp/online_subtitles/$sha256.$format',
+      sha256: sha256,
+      isSelected: true,
+      createdAt: DateTime.now().millisecondsSinceEpoch,
+    );
+    _rows.add(created);
+    return created;
+  }
+
+  @override
+  Future<List<CachedOnlineSubtitle>> listForItem(String itemGlobalKey, {String? mediaSourceId}) async {
+    return _rows.where((r) => r.itemGlobalKey == itemGlobalKey).toList();
+  }
+
+  @override
+  Future<Map<String, CachedOnlineSubtitle>> findCachedRemoteIds(String itemGlobalKey, {String? mediaSourceId}) async {
+    final items = await listForItem(itemGlobalKey, mediaSourceId: mediaSourceId);
+    return {for (final item in items) item.cacheIdentity: item};
+  }
+
+  @override
+  Future<void> markSelected(int rowId, {required String itemGlobalKey, String? mediaSourceId}) async {
+    for (var i = 0; i < _rows.length; i++) {
+      if (_rows[i].itemGlobalKey == itemGlobalKey) {
+        _rows[i] = _copyWithSelected(_rows[i], _rows[i].id == rowId);
+      }
+    }
+  }
+
+  @override
+  Future<void> clearSelection(String itemGlobalKey, {String? mediaSourceId}) async {
+    for (var i = 0; i < _rows.length; i++) {
+      if (_rows[i].itemGlobalKey == itemGlobalKey) {
+        _rows[i] = _copyWithSelected(_rows[i], false);
+      }
+    }
+  }
+
+  @override
+  Future<void> delete(int rowId) async {
+    _rows.removeWhere((r) => r.id == rowId);
+  }
+
+  static CachedOnlineSubtitle _copyWithSelected(CachedOnlineSubtitle s, bool selected) => CachedOnlineSubtitle(
+    id: s.id,
+    itemGlobalKey: s.itemGlobalKey,
+    mediaSourceId: s.mediaSourceId,
+    provider: s.provider,
+    remoteId: s.remoteId,
+    title: s.title,
+    language: s.language,
+    format: s.format,
+    relativePath: s.relativePath,
+    absPath: s.absPath,
+    sha256: s.sha256,
+    isSelected: selected,
+    createdAt: s.createdAt,
+  );
+}
 
 void main() {
   group('resolveSubtitleSearchLanguageCode', () {
@@ -58,8 +149,6 @@ void main() {
 
       await _pumpSearchSheet(tester);
 
-      // No MultiServerProvider, so the search resolves to no client and the
-      // results area is empty. A shrink-wrapping body would collapse here.
       final emptyHeight = _sheetHeight(tester);
       final fieldTop = tester.getTopLeft(find.byType(TextField)).dy;
       expect(emptyHeight, 720, reason: 'search surface fills the windowed height ceiling');
@@ -78,55 +167,140 @@ void main() {
     });
   });
 
-  group('search error contract', () {
-    late AppDatabase database;
+  group('online search & cache contract', () {
+    late _InMemoryOnlineSubtitleStore store;
 
     setUp(() {
       LocaleSettings.setLocaleSync(AppLocale.en);
-      database = AppDatabase.forTesting(NativeDatabase.memory());
-      PlexApiCache.initialize(database);
+      store = _InMemoryOnlineSubtitleStore();
     });
 
-    tearDown(() => database.close());
+    testWidgets('HTTP 500 from search shows the sheet error state, not "no subtitles found"', (tester) async {
+      final service = OnlineSubtitleService(client: MockClient((_) async => http.Response('{}', 500)));
 
-    testWidgets('HTTP 500 from searchSubtitles shows the sheet error state, not "no subtitles found"', (tester) async {
-      final client = testPlexClient(serverId: ServerId('server'), handler: (_) async => http.Response('{}', 500));
-      final provider = testMultiServer(clients: [client]).provider;
+      await _pumpSearchSheet(
+        tester,
+        service: service,
+        store: store,
+        serverConfig: const OnlineSubtitleServerConfig(serverUrl: 'https://lib.example.com'),
+      );
 
-      await _pumpSearchSheet(tester, multiServer: provider);
-
-      // [PlexClient._wrapListApiCall] rethrows HTTP failures; the sheet's
-      // catch must render its error text instead of an empty-result state,
-      // and that text is the localized reason, never the raw exception.
       expect(find.text(t.errors.searchFailed(error: t.errors.reasonServerError)), findsOneWidget);
       expect(find.textContaining('HTTP 500'), findsNothing);
       expect(find.text(t.videoControls.noSubtitlesFound), findsNothing);
       expect(find.byType(CircularProgressIndicator), findsNothing);
     });
 
-    testWidgets('a download that never appears says it may have failed, not that it downloaded', (tester) async {
-      final client = testPlexClient(
-        serverId: ServerId('server'),
-        handler: (request) async => http.Response(
-          request.method == 'GET'
-              ? '{"MediaContainer":{"Stream":[{"id":1,"key":"/sub/1","title":"Film.2024.srt","displayTitle":"English"}]}}'
-              : '{}',
-          200,
-          headers: {'content-type': 'application/json'},
-        ),
+    testWidgets('download failure to apply surfaces timedOut error text', (tester) async {
+      final service = OnlineSubtitleService(
+        client: MockClient((request) async {
+          if (request.url.path.endsWith('/subtitles/search')) {
+            return http.Response(
+              jsonEncode({
+                'code': 0,
+                'enabled_providers': ['xunlei'],
+                'candidates': [
+                  {
+                    'id': '1',
+                    'provider': 'xunlei',
+                    'title': 'Film.2024.srt',
+                    'language': 'en',
+                    'format': 'srt',
+                    'download_token': 'tok-1',
+                  },
+                ],
+              }),
+              200,
+            );
+          }
+          return http.Response(
+            jsonEncode({
+              'code': 0,
+              'provider': 'xunlei',
+              'filename': 'Film.2024.srt',
+              'format': 'srt',
+              'language': 'en',
+              'sha256': 'f' * 64,
+              'content': '1\n00:00:01,000 --> 00:00:02,000\nHi\n',
+            }),
+            200,
+          );
+        }),
       );
-      final provider = testMultiServer(clients: [client]).provider;
 
       await _pumpSearchSheet(
         tester,
-        multiServer: provider,
-        onSubtitleDownloaded: ({required serverId, required ratingKey}) async => SubtitleDownloadApplyOutcome.timedOut,
+        service: service,
+        store: store,
+        serverConfig: const OnlineSubtitleServerConfig(serverUrl: 'https://lib.example.com'),
+        onOnlineSubtitleApplied: (_) async => SubtitleDownloadApplyOutcome.timedOut,
       );
+
       await tester.tap(find.text('Film.2024.srt'));
       await tester.pumpAndSettle();
 
       expect(find.text(t.videoControls.subtitleDownloadTimedOut), findsOneWidget);
       expect(find.text(t.videoControls.subtitleDownloadedNotApplied), findsNothing);
+    });
+
+    testWidgets('cached candidate skips /download and applies immediately', (tester) async {
+      await store.saveAndSelect(
+        itemGlobalKey: 'local-library:7',
+        provider: 'subdl',
+        remoteId: 'cached-99',
+        title: 'Cached.2024.ass',
+        language: 'en',
+        format: 'ass',
+        sha256: '1' * 64,
+        contentUtf8: '[Script Info]\nTitle: Cached',
+      );
+
+      var downloadCalls = 0;
+      final service = OnlineSubtitleService(
+        client: MockClient((request) async {
+          if (request.url.path.endsWith('/subtitles/download')) {
+            downloadCalls++;
+          }
+          return http.Response(
+            jsonEncode({
+              'code': 0,
+              'enabled_providers': ['subdl'],
+              'candidates': [
+                {
+                  'id': 'cached-99',
+                  'provider': 'subdl',
+                  'title': 'Cached.2024.ass',
+                  'language': 'en',
+                  'format': 'ass',
+                  'download_token': 'tok-99',
+                },
+              ],
+            }),
+            200,
+          );
+        }),
+      );
+
+      CachedOnlineSubtitle? applied;
+      await _pumpSearchSheet(
+        tester,
+        metadata: MediaItem.jellyfin(id: '7', kind: MediaKind.movie, title: 'Cached Movie', serverId: 'local-library'),
+        service: service,
+        store: store,
+        serverConfig: const OnlineSubtitleServerConfig(serverUrl: 'https://lib.example.com'),
+        onOnlineSubtitleApplied: (sub) async {
+          applied = sub;
+          return SubtitleDownloadApplyOutcome.applied;
+        },
+      );
+
+      expect(find.text(t.videoControls.subtitleCached), findsOneWidget);
+      await tester.tap(find.text('Cached.2024.ass'));
+      await tester.pumpAndSettle();
+
+      expect(downloadCalls, 0);
+      expect(applied?.remoteId, 'cached-99');
+      expect(find.text(t.videoControls.subtitleDownloaded), findsOneWidget);
     });
   });
 }
@@ -138,9 +312,11 @@ double _sheetHeight(WidgetTester tester) {
 
 Future<void> _pumpSearchSheet(
   WidgetTester tester, {
-  MultiServerProvider? multiServer,
-  Future<SubtitleDownloadApplyOutcome> Function({required String serverId, required String ratingKey})?
-  onSubtitleDownloaded,
+  MediaItem? metadata,
+  OnlineSubtitleService? service,
+  OnlineSubtitleStore? store,
+  OnlineSubtitleServerConfig? serverConfig,
+  Future<SubtitleDownloadApplyOutcome> Function(CachedOnlineSubtitle subtitle)? onOnlineSubtitleApplied,
 }) async {
   final app = MaterialApp(
     theme: ThemeData(extensions: const [testMonoTokens]),
@@ -149,8 +325,14 @@ Future<void> _pumpSearchSheet(
         builder: (context) => Scaffold(
           body: ElevatedButton(
             onPressed: () => OverlaySheetController.of(context).show<void>(
-              builder: (_) =>
-                  SubtitleSearchSheet(ratingKey: '1', serverId: 'server', onSubtitleDownloaded: onSubtitleDownloaded),
+              builder: (_) => SubtitleSearchSheet(
+                metadata: metadata,
+                mediaTitle: metadata?.title ?? 'Film',
+                subtitleService: service,
+                subtitleStore: store,
+                serverConfig: serverConfig,
+                onOnlineSubtitleApplied: onOnlineSubtitleApplied,
+              ),
             ),
             child: const Text('Open'),
           ),
@@ -158,9 +340,7 @@ Future<void> _pumpSearchSheet(
       ),
     ),
   );
-  await tester.pumpWidget(
-    multiServer == null ? app : ChangeNotifierProvider<MultiServerProvider>.value(value: multiServer, child: app),
-  );
+  await tester.pumpWidget(app);
   await tester.tap(find.text('Open'));
   await tester.pumpAndSettle();
 }

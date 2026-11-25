@@ -19,6 +19,10 @@ const (
 	DefaultAniListAPIBase             = "https://graphql.anilist.co"
 	DefaultImdbAPIBase                = "https://api.imdbapi.dev"
 	DefaultTvdbAPIBase                = "https://api4.thetvdb.com/v4"
+	DefaultXunleiSubAPIBase           = "https://api-shoulei-ssl.xunlei.com/oracle/subtitle"
+	DefaultAssrtAPIBase               = "https://api.assrt.net/v1"
+	DefaultSubDLAPIBase               = "https://api.subdl.com/api/v1"
+	DefaultOpenSubtitlesAPIBase       = "https://api.opensubtitles.com/api/v1"
 	DefaultScraperLang                = "zh-CN"
 	DefaultWatchedThreshold           = 0.9
 	DefaultAccentTheme                = "glacier"
@@ -234,6 +238,9 @@ func (s *Store) buildServerSettings() ServerSettings {
 	doubanCookie := s.getSecretSetting("douban_cookie_enc", "")
 	tvdbKey := s.getSecretSetting("tvdb_api_key_enc", "")
 	tvdbPin := s.getSecretSetting("tvdb_pin_enc", "")
+	assrtToken := s.getSecretSetting("assrt_token_enc", "")
+	subdlKey := s.getSecretSetting("subdl_api_key_enc", "")
+	openSubtitlesKey := s.getSecretSetting("opensubtitles_api_key_enc", "")
 
 	threshold := DefaultWatchedThreshold
 	if raw := strings.TrimSpace(s.GetSetting("watched_threshold", "")); raw != "" {
@@ -313,6 +320,23 @@ func (s *Store) buildServerSettings() ServerSettings {
 		TvdbPinSet:                 tvdbPin != "",
 		TvdbPinMasked:              MaskSecret(tvdbPin),
 		TvdbPin:                    tvdbPin,
+		XunleiSubEnabled:           s.GetSettingBool("xunlei_sub_enabled", true),
+		XunleiSubAPIBase:           NormalizeBaseURL(s.GetSetting("xunlei_sub_api_base", DefaultXunleiSubAPIBase), DefaultXunleiSubAPIBase),
+		AssrtEnabled:               s.GetSettingBool("assrt_enabled", true),
+		AssrtAPIBase:               NormalizeBaseURL(s.GetSetting("assrt_api_base", DefaultAssrtAPIBase), DefaultAssrtAPIBase),
+		AssrtTokenSet:              assrtToken != "",
+		AssrtTokenMasked:           MaskSecret(assrtToken),
+		AssrtToken:                 assrtToken,
+		SubDLEnabled:               s.GetSettingBool("subdl_enabled", true),
+		SubDLAPIBase:               NormalizeBaseURL(s.GetSetting("subdl_api_base", DefaultSubDLAPIBase), DefaultSubDLAPIBase),
+		SubDLAPIKeySet:             subdlKey != "",
+		SubDLAPIKeyMasked:          MaskSecret(subdlKey),
+		SubDLAPIKey:                subdlKey,
+		OpenSubtitlesEnabled:       s.GetSettingBool("opensubtitles_enabled", true),
+		OpenSubtitlesAPIBase:       NormalizeBaseURL(s.GetSetting("opensubtitles_api_base", DefaultOpenSubtitlesAPIBase), DefaultOpenSubtitlesAPIBase),
+		OpenSubtitlesAPIKeySet:     openSubtitlesKey != "",
+		OpenSubtitlesAPIKeyMasked:  MaskSecret(openSubtitlesKey),
+		OpenSubtitlesAPIKey:        openSubtitlesKey,
 		AllowPublicMetadata:        s.GetSettingBool("allow_public_metadata", true),
 		AllowFallbackMetadata:      s.GetSettingBool("allow_fallback_metadata", true),
 		CustomRecognitionWords:     s.GetSetting("custom_recognition_words", ""),
@@ -422,6 +446,55 @@ func (s *Store) UpdateServerSettings(req ServerSettingsUpdate) (ServerSettings, 
 		return ServerSettings{}, err
 	}
 	if err := s.setSecretSetting("tvdb_pin_enc", "", req.TvdbPin, req.ClearTvdbPin); err != nil {
+		return ServerSettings{}, err
+	}
+	if req.XunleiSubEnabled != nil {
+		if err := s.SetSettingBool("xunlei_sub_enabled", *req.XunleiSubEnabled); err != nil {
+			return ServerSettings{}, err
+		}
+	}
+	if req.XunleiSubAPIBase != nil {
+		if err := s.SetSetting("xunlei_sub_api_base", NormalizeBaseURL(*req.XunleiSubAPIBase, DefaultXunleiSubAPIBase)); err != nil {
+			return ServerSettings{}, err
+		}
+	}
+	if req.AssrtEnabled != nil {
+		if err := s.SetSettingBool("assrt_enabled", *req.AssrtEnabled); err != nil {
+			return ServerSettings{}, err
+		}
+	}
+	if req.AssrtAPIBase != nil {
+		if err := s.SetSetting("assrt_api_base", NormalizeBaseURL(*req.AssrtAPIBase, DefaultAssrtAPIBase)); err != nil {
+			return ServerSettings{}, err
+		}
+	}
+	if err := s.setSecretSetting("assrt_token_enc", "", req.AssrtToken, req.ClearAssrtToken); err != nil {
+		return ServerSettings{}, err
+	}
+	if req.SubDLEnabled != nil {
+		if err := s.SetSettingBool("subdl_enabled", *req.SubDLEnabled); err != nil {
+			return ServerSettings{}, err
+		}
+	}
+	if req.SubDLAPIBase != nil {
+		if err := s.SetSetting("subdl_api_base", NormalizeBaseURL(*req.SubDLAPIBase, DefaultSubDLAPIBase)); err != nil {
+			return ServerSettings{}, err
+		}
+	}
+	if err := s.setSecretSetting("subdl_api_key_enc", "", req.SubDLAPIKey, req.ClearSubDLAPIKey); err != nil {
+		return ServerSettings{}, err
+	}
+	if req.OpenSubtitlesEnabled != nil {
+		if err := s.SetSettingBool("opensubtitles_enabled", *req.OpenSubtitlesEnabled); err != nil {
+			return ServerSettings{}, err
+		}
+	}
+	if req.OpenSubtitlesAPIBase != nil {
+		if err := s.SetSetting("opensubtitles_api_base", NormalizeBaseURL(*req.OpenSubtitlesAPIBase, DefaultOpenSubtitlesAPIBase)); err != nil {
+			return ServerSettings{}, err
+		}
+	}
+	if err := s.setSecretSetting("opensubtitles_api_key_enc", "", req.OpenSubtitlesAPIKey, req.ClearOpenSubtitlesAPIKey); err != nil {
 		return ServerSettings{}, err
 	}
 	if req.AllowPublicMetadata != nil {

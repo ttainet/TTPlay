@@ -1,27 +1,34 @@
 import 'dart:async';
-import '../../../media/ids.dart';
 
 import 'package:flutter/material.dart';
 import 'package:material_symbols_icons/symbols.dart';
+import 'package:provider/provider.dart';
 
+import '../../../database/app_database.dart';
 import '../../../focus/focusable_button.dart';
 import '../../../focus/focusable_text_field.dart';
 import '../../../focus/input_mode_tracker.dart';
 import '../../../i18n/strings.g.dart';
+import '../../../media/ids.dart';
+import '../../../media/media_item.dart';
+import '../../../media/media_kind.dart';
+import '../../../media/media_server_client.dart';
 import '../../../mixins/controller_disposer_mixin.dart';
-import '../../../models/plex/plex_subtitle_search_result.dart';
+import '../../../providers/multi_server_provider.dart';
+import '../../../services/online_subtitle_store.dart';
 import '../../../services/settings_service.dart';
+import '../../../services/subtitle_search/online_subtitle_models.dart';
+import '../../../services/subtitle_search/online_subtitle_service.dart';
 import '../../../utils/error_message_utils.dart';
 import '../../../utils/language_codes.dart';
-import '../../../utils/provider_extensions.dart';
 import '../../../utils/snackbar_helper.dart';
 import '../../../widgets/app_icon.dart';
 import '../../../widgets/focusable_list_tile.dart';
 import '../../../widgets/overlay_sheet.dart';
 import '../../../widgets/pill_input_decoration.dart';
-import 'base_video_control_sheet.dart';
 import '../../loading_indicator_box.dart';
 import '../models/track_controls_state.dart';
+import 'base_video_control_sheet.dart';
 
 @visibleForTesting
 String resolveSubtitleSearchLanguageCode({String? savedLanguageCode, required Locale systemLocale}) {
@@ -31,18 +38,27 @@ String resolveSubtitleSearchLanguageCode({String? savedLanguageCode, required Lo
 }
 
 class SubtitleSearchSheet extends StatefulWidget {
-  final String ratingKey;
-  final String serverId;
+  final MediaItem? metadata;
   final String? mediaTitle;
-  final Future<SubtitleDownloadApplyOutcome> Function({required String serverId, required String ratingKey})?
-  onSubtitleDownloaded;
+  final String? mediaSourceId;
+  final String? filePath;
+  final Future<SubtitleDownloadApplyOutcome> Function(CachedOnlineSubtitle subtitle)? onOnlineSubtitleApplied;
+
+  /// Optional overrides for unit/widget tests.
+  final OnlineSubtitleService? subtitleService;
+  final OnlineSubtitleStore? subtitleStore;
+  final OnlineSubtitleServerConfig? serverConfig;
 
   const SubtitleSearchSheet({
     super.key,
-    required this.ratingKey,
-    required this.serverId,
+    this.metadata,
     this.mediaTitle,
-    this.onSubtitleDownloaded,
+    this.mediaSourceId,
+    this.filePath,
+    this.onOnlineSubtitleApplied,
+    this.subtitleService,
+    this.subtitleStore,
+    this.serverConfig,
   });
 
   @override
@@ -52,13 +68,19 @@ class SubtitleSearchSheet extends StatefulWidget {
 class _SubtitleSearchSheetState extends State<SubtitleSearchSheet> with ControllerDisposerMixin {
   String _languageCode = 'en';
   String _languageName = 'English';
+  String _selectedProvider = 'all';
   late final _titleController = createTextEditingController();
   final _languageFocusNode = FocusNode(debugLabel: 'SubtitleSearch_language');
   final _titleFocusNode = FocusNode(debugLabel: 'SubtitleSearch_title');
   final _firstResultFocusNode = FocusNode(debugLabel: 'SubtitleSearch_firstResult');
   Timer? _debounceTimer;
 
-  List<PlexSubtitleSearchResult>? _results;
+  OnlineSubtitleService? _ownedService;
+  OnlineSubtitleService get _service => widget.subtitleService ?? (_ownedService ??= OnlineSubtitleService());
+
+  List<OnlineSubtitleCandidate>? _results;
+  List<String> _enabledProviders = const [];
+  Map<String, CachedOnlineSubtitle> _cachedByKey = const {};
   bool _isSearching = false;
   String? _error;
   String? _downloadingKey;
@@ -88,10 +110,57 @@ class _SubtitleSearchSheetState extends State<SubtitleSearchSheet> with Controll
   void dispose() {
     ++_searchGeneration;
     _debounceTimer?.cancel();
+    _ownedService?.close();
     _languageFocusNode.dispose();
     _titleFocusNode.dispose();
     _firstResultFocusNode.dispose();
     super.dispose();
+  }
+
+  MultiServerProvider? _tryMultiServer() {
+    try {
+      return Provider.of<MultiServerProvider?>(context, listen: false);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  OnlineSubtitleStore? _trySubtitleStore() {
+    if (widget.subtitleStore != null) return widget.subtitleStore;
+    try {
+      final db = Provider.of<AppDatabase?>(context, listen: false);
+      return db == null ? null : OnlineSubtitleStore(db);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  OnlineSubtitleServerConfig? _resolveEndpoint() {
+    if (widget.serverConfig != null) return widget.serverConfig;
+    return OnlineSubtitleService.resolveEndpoint(_tryMultiServer());
+  }
+
+  MediaServerClient? _resolveMediaClient(MultiServerProvider? multiServer) {
+    final serverId = widget.metadata?.serverId;
+    if (multiServer == null || serverId == null || serverId.isEmpty) return null;
+    return multiServer.serverManager.getClient(ServerId(serverId));
+  }
+
+  String get _effectiveItemGlobalKey {
+    final gk = widget.metadata?.globalKey;
+    if (gk != null && gk.isNotEmpty) return gk;
+    final title = widget.mediaTitle?.trim();
+    return (title != null && title.isNotEmpty) ? 'title:$title' : 'unknown';
+  }
+
+  Future<void> _refreshCachedIndex(OnlineSubtitleStore? store) async {
+    if (store == null) return;
+    try {
+      final cached = await store.findCachedRemoteIds(_effectiveItemGlobalKey, mediaSourceId: widget.mediaSourceId);
+      if (mounted) {
+        setState(() => _cachedByKey = cached);
+      }
+    } catch (_) {}
   }
 
   Future<void> _search() async {
@@ -102,23 +171,55 @@ class _SubtitleSearchSheetState extends State<SubtitleSearchSheet> with Controll
       _error = null;
     });
 
-    try {
-      final client = context.tryGetPlexClientForServer(ServerId(widget.serverId));
-      if (client == null) {
-        if (!mounted || generation != _searchGeneration) return;
-        setState(() => _isSearching = false);
-        return;
-      }
-      final title = _titleController.text.trim();
-      final language = _languageCode;
-      final results = await client.searchSubtitles(
-        widget.ratingKey,
-        language: language,
-        title: title.isEmpty ? null : title,
-      );
+    final endpoint = _resolveEndpoint();
+    if (endpoint == null) {
       if (!mounted || generation != _searchGeneration) return;
       setState(() {
-        _results = results;
+        _isSearching = false;
+        _error = t.videoControls.subtitleServerUnavailable;
+      });
+      return;
+    }
+
+    try {
+      final multiServer = _tryMultiServer();
+      final mediaClient = _resolveMediaClient(multiServer);
+      final store = _trySubtitleStore();
+      unawaited(_refreshCachedIndex(store));
+
+      final manual = _titleController.text.trim();
+      final metadata = widget.metadata;
+      final OnlineSubtitleQuery query;
+      if (metadata != null) {
+        query = await OnlineSubtitleService.buildQuery(
+          metadata: metadata,
+          client: mediaClient,
+          mediaSourceId: widget.mediaSourceId,
+          activeFilePath: widget.filePath,
+          language: _languageCode,
+          manualQuery: manual.isEmpty ? null : manual,
+        );
+      } else {
+        query = OnlineSubtitleQuery(
+          itemGlobalKey: _effectiveItemGlobalKey,
+          mediaSourceId: widget.mediaSourceId,
+          title: widget.mediaTitle,
+          kind: 'movie',
+          language: _languageCode,
+          manualQuery: manual.isEmpty ? null : manual,
+        );
+      }
+
+      if (!mounted || generation != _searchGeneration) return;
+      final response = await _service.search(endpoint, query);
+      if (!mounted || generation != _searchGeneration) return;
+
+      setState(() {
+        _results = response.candidates;
+        _enabledProviders = response.enabledProviders;
+        if (_selectedProvider != 'all' && !response.candidates.any((c) => c.provider == _selectedProvider)) {
+          _selectedProvider = 'all';
+        }
         _isSearching = false;
       });
     } catch (e) {
@@ -129,6 +230,31 @@ class _SubtitleSearchSheetState extends State<SubtitleSearchSheet> with Controll
       });
     }
   }
+
+  List<OnlineSubtitleCandidate> get _filteredResults {
+    final all = _results;
+    if (all == null) return const [];
+    if (_selectedProvider == 'all') return all;
+    return all.where((c) => c.provider == _selectedProvider).toList(growable: false);
+  }
+
+  List<String> get _presentProviders {
+    final all = _results;
+    if (all == null || all.isEmpty) return const [];
+    final seen = <String>{};
+    for (final c in all) {
+      if (c.provider.isNotEmpty) seen.add(c.provider);
+    }
+    return seen.toList(growable: false);
+  }
+
+  String _providerDisplayName(String provider) => switch (provider) {
+    'xunlei' => t.videoControls.subtitleProviderXunlei,
+    'assrt' => t.videoControls.subtitleProviderAssrt,
+    'subdl' => t.videoControls.subtitleProviderSubdl,
+    'opensubtitles' => t.videoControls.subtitleProviderOpenSubtitles,
+    _ => provider,
+  };
 
   void _onTitleChanged(String _) {
     _debounceTimer?.cancel();
@@ -148,7 +274,7 @@ class _SubtitleSearchSheetState extends State<SubtitleSearchSheet> with Controll
   }
 
   void _focusFirstResult() {
-    if (_results != null && _results!.isNotEmpty && !_isSearching && _error == null) {
+    if (_filteredResults.isNotEmpty && !_isSearching && _error == null) {
       _firstResultFocusNode.requestFocus();
     }
   }
@@ -179,48 +305,58 @@ class _SubtitleSearchSheetState extends State<SubtitleSearchSheet> with Controll
     _search();
   }
 
-  Future<void> _downloadSubtitle(PlexSubtitleSearchResult result) async {
+  Future<void> _selectCandidate(OnlineSubtitleCandidate candidate) async {
     if (_downloadingKey != null) return;
-    setState(() => _downloadingKey = result.key);
+    setState(() => _downloadingKey = candidate.cacheIdentity);
 
     try {
-      final client = context.tryGetPlexClientForServer(ServerId(widget.serverId));
-      if (client == null) {
-        if (!mounted) return;
-        setState(() => _downloadingKey = null);
-        return;
+      final store = _trySubtitleStore();
+      var cached = _cachedByKey[candidate.cacheIdentity];
+      if (cached != null && store != null) {
+        await store.markSelected(
+          cached.id,
+          itemGlobalKey: _effectiveItemGlobalKey,
+          mediaSourceId: widget.mediaSourceId,
+        );
+      } else {
+        final endpoint = _resolveEndpoint();
+        if (endpoint == null || store == null) {
+          if (!mounted) return;
+          showErrorSnackBar(context, t.videoControls.subtitleDownloadFailed);
+          setState(() => _downloadingKey = null);
+          return;
+        }
+        final isEpisode = widget.metadata?.kind == MediaKind.episode;
+        cached = await _service.downloadAndCache(
+          endpoint,
+          candidate: candidate,
+          itemGlobalKey: _effectiveItemGlobalKey,
+          mediaSourceId: widget.mediaSourceId,
+          season: isEpisode ? widget.metadata?.parentIndex : null,
+          episode: isEpisode ? widget.metadata?.index : null,
+          store: store,
+        );
+        if (mounted) {
+          setState(() {
+            _cachedByKey = {..._cachedByKey, candidate.cacheIdentity: cached!};
+          });
+        }
       }
-      final success = await client.downloadSubtitle(
-        widget.ratingKey,
-        key: result.key,
-        codec: result.codec ?? 'srt',
-        language: result.languageCode ?? _languageCode,
-        hearingImpaired: result.hearingImpaired,
-        forced: result.forced,
-        providerTitle: result.providerTitle ?? '',
-      );
 
       if (!mounted) return;
 
-      if (success) {
-        final outcome =
-            await widget.onSubtitleDownloaded?.call(serverId: widget.serverId, ratingKey: widget.ratingKey) ??
-            SubtitleDownloadApplyOutcome.unavailable;
-        if (!mounted) return;
-        if (outcome == SubtitleDownloadApplyOutcome.applied) {
-          showSuccessSnackBar(context, t.videoControls.subtitleDownloaded);
-          OverlaySheetController.of(context).close();
-        } else {
-          showErrorSnackBar(
-            context,
-            outcome == SubtitleDownloadApplyOutcome.timedOut
-                ? t.videoControls.subtitleDownloadTimedOut
-                : t.videoControls.subtitleDownloadedNotApplied,
-          );
-          setState(() => _downloadingKey = null);
-        }
+      final outcome = await widget.onOnlineSubtitleApplied?.call(cached) ?? SubtitleDownloadApplyOutcome.unavailable;
+      if (!mounted) return;
+      if (outcome == SubtitleDownloadApplyOutcome.applied) {
+        showSuccessSnackBar(context, t.videoControls.subtitleDownloaded);
+        OverlaySheetController.of(context).close();
       } else {
-        showErrorSnackBar(context, t.videoControls.subtitleDownloadFailed);
+        showErrorSnackBar(
+          context,
+          outcome == SubtitleDownloadApplyOutcome.timedOut
+              ? t.videoControls.subtitleDownloadTimedOut
+              : t.videoControls.subtitleDownloadedNotApplied,
+        );
         setState(() => _downloadingKey = null);
       }
     } catch (e) {
@@ -241,7 +377,9 @@ class _SubtitleSearchSheetState extends State<SubtitleSearchSheet> with Controll
     }
 
     final fillColor = Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.08);
-    final hasResults = _results != null && _results!.isNotEmpty && !_isSearching && _error == null;
+    final visibleResults = _filteredResults;
+    final hasResults = visibleResults.isNotEmpty && !_isSearching && _error == null;
+    final presentProviders = _presentProviders;
 
     return BaseVideoControlSheet(
       title: t.videoControls.searchSubtitles,
@@ -250,8 +388,7 @@ class _SubtitleSearchSheetState extends State<SubtitleSearchSheet> with Controll
       // Deliberately fills the sheet's height cap instead of hugging content.
       // Overlay sheets are bottom-anchored, so a content-driven height would
       // move the search field on every state transition — spinner, results,
-      // error, empty — while the user is still typing in it. A search surface
-      // needs a stable frame; the results list normally fills it anyway.
+      // error, empty — while the user is still typing in it.
       child: Column(
         children: [
           Padding(
@@ -274,7 +411,7 @@ class _SubtitleSearchSheetState extends State<SubtitleSearchSheet> with Controll
                       child: Padding(
                         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                         child: Row(
-                          mainAxisSize: .min,
+                          mainAxisSize: MainAxisSize.min,
                           children: [
                             Text(_languageName),
                             const SizedBox(width: 2),
@@ -293,7 +430,7 @@ class _SubtitleSearchSheetState extends State<SubtitleSearchSheet> with Controll
                     tvTextInputPresentation: TvTextInputPresentation.flutterOverlay,
                     decoration: pillInputDecoration(
                       context,
-                      hintText: widget.mediaTitle ?? t.metadataEdit.title,
+                      hintText: widget.mediaTitle ?? widget.metadata?.title ?? t.metadataEdit.title,
                       prefixIcon: const AppIcon(Symbols.search_rounded, size: 20),
                     ),
                     onChanged: _onTitleChanged,
@@ -307,13 +444,54 @@ class _SubtitleSearchSheetState extends State<SubtitleSearchSheet> with Controll
               ],
             ),
           ),
-          Expanded(child: _buildResults()),
+          if (presentProviders.length > 1 && !_isSearching && _error == null)
+            SizedBox(
+              height: 40,
+              child: ListView(
+                scrollDirection: Axis.horizontal,
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.only(right: 8),
+                    child: ChoiceChip(
+                      label: Text(t.videoControls.subtitleProviderAll),
+                      selected: _selectedProvider == 'all',
+                      onSelected: (_) => setState(() => _selectedProvider = 'all'),
+                    ),
+                  ),
+                  for (final prov in presentProviders)
+                    Padding(
+                      padding: const EdgeInsets.only(right: 8),
+                      child: ChoiceChip(
+                        label: Text(_providerDisplayName(prov)),
+                        selected: _selectedProvider == prov,
+                        onSelected: (_) => setState(() => _selectedProvider = prov),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          Expanded(child: _buildResults(visibleResults)),
         ],
       ),
     );
   }
 
-  Widget _buildResults() {
+  String _buildCandidateSubtitle(OnlineSubtitleCandidate candidate) {
+    final parts = <String>[
+      _providerDisplayName(candidate.provider),
+      candidate.format.toUpperCase(),
+      if (candidate.hearingImpaired) 'HI',
+      if (candidate.forced) 'Forced',
+      if (candidate.releaseName != null &&
+          candidate.releaseName!.trim().isNotEmpty &&
+          candidate.releaseName!.trim() != candidate.title.trim())
+        candidate.releaseName!.trim(),
+    ];
+    return parts.join(' · ');
+  }
+
+  Widget _buildResults(List<OnlineSubtitleCandidate> visibleResults) {
     if (_isSearching) {
       return const Center(child: CircularProgressIndicator());
     }
@@ -331,7 +509,16 @@ class _SubtitleSearchSheetState extends State<SubtitleSearchSheet> with Controll
       return const SizedBox.shrink();
     }
 
-    if (_results!.isEmpty) {
+    if (_results!.isEmpty && _enabledProviders.isEmpty) {
+      return Center(
+        child: Text(
+          t.videoControls.subtitleNoProvidersConfigured,
+          style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
+        ),
+      );
+    }
+
+    if (visibleResults.isEmpty) {
       return Center(
         child: Text(
           t.videoControls.noSubtitlesFound,
@@ -341,10 +528,11 @@ class _SubtitleSearchSheetState extends State<SubtitleSearchSheet> with Controll
     }
 
     return ListView.builder(
-      itemCount: _results!.length,
+      itemCount: visibleResults.length,
       itemBuilder: (context, index) {
-        final result = _results![index];
-        final isDownloading = _downloadingKey == result.key;
+        final candidate = visibleResults[index];
+        final isDownloading = _downloadingKey == candidate.cacheIdentity;
+        final isCached = _cachedByKey.containsKey(candidate.cacheIdentity);
         final colorScheme = Theme.of(context).colorScheme;
 
         Widget? trailing;
@@ -352,33 +540,53 @@ class _SubtitleSearchSheetState extends State<SubtitleSearchSheet> with Controll
           trailing = const LoadingIndicatorBox(size: 20);
         } else {
           final trailingChildren = <Widget>[];
-          if (result.perfectMatch) {
+          if (isCached) {
+            trailingChildren.add(
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                decoration: BoxDecoration(color: colorScheme.primaryContainer, borderRadius: BorderRadius.circular(6)),
+                child: Text(
+                  t.videoControls.subtitleCached,
+                  style: TextStyle(fontSize: 11, color: colorScheme.onPrimaryContainer, fontWeight: FontWeight.w600),
+                ),
+              ),
+            );
+          }
+          if (candidate.perfectMatch) {
             trailingChildren.add(const AppIcon(Symbols.star_rounded, fill: 1, color: Color(0xFFCC7B19), size: 16));
           }
-          if (result.score != null) {
+          if (candidate.downloads > 0) {
+            trailingChildren.add(
+              Text('${candidate.downloads}', style: TextStyle(fontSize: 12, color: colorScheme.onSurfaceVariant)),
+            );
+          } else if (candidate.score != null) {
             trailingChildren.add(
               Text(
-                result.score!.toInt().toString(),
+                candidate.score!.toInt().toString(),
                 style: TextStyle(fontSize: 12, color: colorScheme.onSurfaceVariant),
               ),
             );
           }
           if (trailingChildren.isNotEmpty) {
-            trailing = Row(mainAxisSize: .min, spacing: 4, children: trailingChildren);
+            trailing = Row(mainAxisSize: MainAxisSize.min, spacing: 6, children: trailingChildren);
           }
         }
 
         return FocusableListTile(
           focusNode: index == 0 ? _firstResultFocusNode : null,
-          title: Text(result.title ?? result.displayTitle ?? t.common.unknown, maxLines: 1, overflow: .ellipsis),
-          subtitle: Text(
-            result.displayTitle ?? '',
+          title: Text(
+            candidate.title.trim().isNotEmpty ? candidate.title : (candidate.releaseName ?? t.common.unknown),
             maxLines: 1,
-            overflow: .ellipsis,
+            overflow: TextOverflow.ellipsis,
+          ),
+          subtitle: Text(
+            _buildCandidateSubtitle(candidate),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
             style: TextStyle(color: colorScheme.onSurfaceVariant),
           ),
           trailing: trailing,
-          onTap: isDownloading ? null : () => _downloadSubtitle(result),
+          onTap: isDownloading ? null : () => _selectCandidate(candidate),
         );
       },
     );
@@ -451,9 +659,6 @@ class _LanguagePickerViewState extends State<_LanguagePickerView> with Controlle
       title: t.videoControls.language,
       icon: Symbols.language_rounded,
       onBack: widget.onBack,
-      // Fills the height cap for the same reason as the search body: the filter
-      // field is autofocused and refilters on every keystroke, so a
-      // content-driven height would slide the field the user is typing in.
       child: Column(
         children: [
           Padding(

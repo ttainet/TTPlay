@@ -120,13 +120,49 @@ extension _VideoPlayerOpenMethods on VideoPlayerScreenState {
     await _waitForProfileSettingsIfNeeded();
     if (!mounted) return const PlaybackSubtitleSelection.off();
 
+    final mergedSidecars = <PlaybackSubtitleSidecar>[...result.subtitleSidecars];
+    var effectivePreferredSubtitleTrack = preferredSubtitleTrack;
+
+    final store = _tryOnlineSubtitleStore();
+    if (store != null) {
+      try {
+        final effectiveSourceId =
+            result.selectedMediaSourceId ?? result.mediaInfo?.mediaSourceId ?? _requestedMediaSourceId;
+        final cached = await store.listForItem(metadata.globalKey, mediaSourceId: effectiveSourceId);
+        if (!mounted) return const PlaybackSubtitleSelection.off();
+        final forExo = player?.playerType == 'exoplayer';
+        final existingUriKeys = <String>{
+          for (final s in mergedSidecars)
+            if (s.track.uri != null && s.track.uri!.isNotEmpty)
+              VideoPlayerScreenState._normalizeOnlineSubtitleUriKey(s.track.uri!),
+        };
+        SubtitleTrack? selectedCachedTrack;
+        for (final item in cached) {
+          final uri = item.playableUri(forExoPlayer: forExo);
+          final track = SubtitleTrack.uri(uri, title: item.title, language: item.language, codec: item.format);
+          if (item.isSelected && selectedCachedTrack == null) {
+            selectedCachedTrack = track;
+          }
+          final uriKey = VideoPlayerScreenState._normalizeOnlineSubtitleUriKey(uri);
+          if (existingUriKeys.add(uriKey)) {
+            mergedSidecars.add(PlaybackSubtitleSidecar(sourceStreamId: null, track: track, preload: true));
+          }
+        }
+        if (effectivePreferredSubtitleTrack == null && selectedCachedTrack != null) {
+          effectivePreferredSubtitleTrack = SubtitlePreference.track(selectedCachedTrack);
+        }
+      } catch (e) {
+        appLogger.d('Failed loading cached online subtitles for open', error: e);
+      }
+    }
+
     return PlaybackSubtitleResolver.resolve(
       metadata: metadata,
       mediaInfo: result.mediaInfo,
-      sidecars: result.subtitleSidecars,
+      sidecars: mergedSidecars,
       profileSettings: context.read<AccountPreferencesController>().activePreferences,
       preferredAudioTrack: preferredAudioTrack,
-      preferredSubtitleTrack: preferredSubtitleTrack,
+      preferredSubtitleTrack: effectivePreferredSubtitleTrack,
       preferredSecondarySubtitleTrack: preferredSecondarySubtitleTrack,
       preserveSourceIdentity: preserveSubtitleSourceIdentity,
       isTranscoding: result.isTranscoding,
@@ -1170,11 +1206,8 @@ extension _VideoPlayerOpenMethods on VideoPlayerScreenState {
       isCurrent: isCurrent,
       // Paused opens use the same no-resume branch: no new play intent is
       // manufactured.
-      resumeAfterStartupGate: (reason) => _finishPlaybackAfterStartupGate(
-        currentPlayer: currentPlayer,
-        reason: reason,
-        shouldResume: shouldAutoStart,
-      ),
+      resumeAfterStartupGate: (reason) =>
+          _finishPlaybackAfterStartupGate(currentPlayer: currentPlayer, reason: reason, shouldResume: shouldAutoStart),
     );
 
     return true;

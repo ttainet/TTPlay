@@ -13,7 +13,7 @@ import { api } from '../api/client';
 import { CustomSelect, RadioCardGroup } from '../components/CustomSelect';
 import { CardListSkeleton } from '../components/Skeletons';
 import { useApp } from '../contexts/AppContext';
-import type { AccentTheme, MetadataProvider, ServerSettings } from '../types';
+import type { AccentTheme, MetadataProvider, ServerSettings, SubtitleProvider } from '../types';
 
 const LANG_OPTIONS = [
   { value: 'zh-CN', label: '简体中文 (zh-CN)', description: '优先拉取中文标题、简介与海报' },
@@ -41,7 +41,7 @@ export const SettingsPage: React.FC = () => {
   const [saving, setSaving] = useState(false);
 
   const [testingTmdb, setTestingTmdb] = useState(false);
-  const [testingProvider, setTestingProvider] = useState<MetadataProvider | ''>('');
+  const [testingProvider, setTestingProvider] = useState<MetadataProvider | SubtitleProvider | ''>('');
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
 
   // Basic & TMDB
@@ -75,6 +75,19 @@ export const SettingsPage: React.FC = () => {
   const [tvdbBase, setTvdbBase] = useState('');
   const [tvdbKey, setTvdbKey] = useState('');
   const [tvdbPin, setTvdbPin] = useState('');
+
+  // Subtitle providers
+  const [xunleiSub, setXunleiSub] = useState(true);
+  const [xunleiSubBase, setXunleiSubBase] = useState('');
+  const [assrt, setAssrt] = useState(true);
+  const [assrtBase, setAssrtBase] = useState('');
+  const [assrtToken, setAssrtToken] = useState('');
+  const [subdl, setSubdl] = useState(true);
+  const [subdlBase, setSubdlBase] = useState('');
+  const [subdlKey, setSubdlKey] = useState('');
+  const [openSub, setOpenSub] = useState(true);
+  const [openSubBase, setOpenSubBase] = useState('');
+  const [openSubKey, setOpenSubKey] = useState('');
 
   const [customWords, setCustomWords] = useState('');
 
@@ -115,6 +128,17 @@ export const SettingsPage: React.FC = () => {
       setTvdbBase(s.tvdb_api_base || '');
       setTvdbKey('');
       setTvdbPin('');
+      setXunleiSub(s.xunlei_sub_enabled !== false);
+      setXunleiSubBase(s.xunlei_sub_api_base || '');
+      setAssrt(s.assrt_enabled !== false);
+      setAssrtBase(s.assrt_api_base || '');
+      setAssrtToken('');
+      setSubdl(s.subdl_enabled !== false);
+      setSubdlBase(s.subdl_api_base || '');
+      setSubdlKey('');
+      setOpenSub(s.opensubtitles_enabled !== false);
+      setOpenSubBase(s.opensubtitles_api_base || '');
+      setOpenSubKey('');
       setCustomWords(s.custom_recognition_words || '');
     },
     [setAccentTheme]
@@ -163,6 +187,14 @@ export const SettingsPage: React.FC = () => {
         imdb_api_base: imdbBase.trim(),
         tvdb_enabled: tvdb,
         tvdb_api_base: tvdbBase.trim(),
+        xunlei_sub_enabled: xunleiSub,
+        xunlei_sub_api_base: xunleiSubBase.trim(),
+        assrt_enabled: assrt,
+        assrt_api_base: assrtBase.trim(),
+        subdl_enabled: subdl,
+        subdl_api_base: subdlBase.trim(),
+        opensubtitles_enabled: openSub,
+        opensubtitles_api_base: openSubBase.trim(),
         custom_recognition_words: customWords,
       };
       if (tmdbKey.trim()) patch.tmdb_api_key = tmdbKey.trim();
@@ -170,6 +202,9 @@ export const SettingsPage: React.FC = () => {
       if (doubanCookie.trim()) patch.douban_cookie = doubanCookie.trim();
       if (tvdbKey.trim()) patch.tvdb_api_key = tvdbKey.trim();
       if (tvdbPin.trim()) patch.tvdb_pin = tvdbPin.trim();
+      if (assrtToken.trim()) patch.assrt_token = assrtToken.trim();
+      if (subdlKey.trim()) patch.subdl_api_key = subdlKey.trim();
+      if (openSubKey.trim()) patch.opensubtitles_api_key = openSubKey.trim();
       const res = await api.updateSettings(patch);
       apply(res.settings);
       if (res.settings.server_name) {
@@ -200,7 +235,7 @@ export const SettingsPage: React.FC = () => {
     }
   };
 
-  const testProv = async (provider: MetadataProvider) => {
+  const testProv = async (provider: MetadataProvider | SubtitleProvider) => {
     if (testingProvider) return;
     setTestingProvider(provider);
     try {
@@ -218,13 +253,33 @@ export const SettingsPage: React.FC = () => {
             ? imdbBase.trim() || undefined
             : provider === 'tvdb'
             ? tvdbBase.trim() || undefined
+            : provider === 'xunlei'
+            ? xunleiSubBase.trim() || undefined
+            : provider === 'assrt'
+            ? assrtBase.trim() || undefined
+            : provider === 'subdl'
+            ? subdlBase.trim() || undefined
+            : provider === 'opensubtitles'
+            ? openSubBase.trim() || undefined
             : undefined,
-        token: provider === 'bangumi' ? bangumiToken.trim() || undefined : undefined,
+        token:
+          provider === 'bangumi'
+            ? bangumiToken.trim() || undefined
+            : provider === 'assrt'
+            ? assrtToken.trim() || undefined
+            : undefined,
         cookie: provider === 'douban' ? doubanCookie.trim() || undefined : undefined,
-        api_key: provider === 'tvdb' ? tvdbKey.trim() || undefined : undefined,
+        api_key:
+          provider === 'tvdb'
+            ? tvdbKey.trim() || undefined
+            : provider === 'subdl'
+            ? subdlKey.trim() || undefined
+            : provider === 'opensubtitles'
+            ? openSubKey.trim() || undefined
+            : undefined,
         pin: provider === 'tvdb' ? tvdbPin.trim() || undefined : undefined,
       });
-      toast(`${provider.toUpperCase()} 连通正常（${res.latency_ms} ms）`, 'success');
+      toast(res.message || `${provider.toUpperCase()} 连通正常（${res.latency_ms} ms）`, 'success');
     } catch (err) {
       toast(`${provider.toUpperCase()} 测试失败：${(err as Error).message}`, 'error');
     } finally {
@@ -338,6 +393,107 @@ export const SettingsPage: React.FC = () => {
               onChange={(e) => setTvdbPin(e.target.value)}
             />
           </div>
+        </div>
+      ),
+    },
+  ];
+
+  const subtitleProviders: Array<{
+    key: SubtitleProvider;
+    title: string;
+    badge: string;
+    desc: string;
+    enabled: boolean;
+    setEnabled: (v: boolean) => void;
+    apiBase: string;
+    setApiBase: (v: string) => void;
+    extra?: React.ReactNode;
+  }> = [
+    {
+      key: 'xunlei',
+      title: '迅雷字幕 (Xunlei)',
+      badge: '免 Key · 中文主力',
+      desc: '无需密钥开箱即用，对中文片名与原文件名匹配率极高，直接返回 SRT/ASS 字幕。',
+      enabled: xunleiSub,
+      setEnabled: setXunleiSub,
+      apiBase: xunleiSubBase,
+      setApiBase: setXunleiSubBase,
+    },
+    {
+      key: 'assrt',
+      title: '射手网(伪) Assrt',
+      badge: settings?.assrt_token_set ? '已配置 Token' : '中文精校 ASS',
+      desc: '字幕组精校中文字幕与双语特效 ASS 主力源，需在 assrt.net 免费注册获取 Token。',
+      enabled: assrt,
+      setEnabled: setAssrt,
+      apiBase: assrtBase,
+      setApiBase: setAssrtBase,
+      extra: (
+        <div className="field">
+          <label>Assrt API Token</label>
+          <input
+            className="input"
+            type="password"
+            placeholder={
+              settings?.assrt_token_set
+                ? `已配置 (${settings.assrt_token_masked || '****'})，留空保持不变`
+                : '填写 Assrt 个人 Token'
+            }
+            value={assrtToken}
+            onChange={(e) => setAssrtToken(e.target.value)}
+          />
+        </div>
+      ),
+    },
+    {
+      key: 'subdl',
+      title: 'SubDL',
+      badge: settings?.subdl_api_key_set ? '已配置 Key' : 'TMDB 精准',
+      desc: '支持 TMDB / IMDb 编号与季集号精准匹配，服务端自动解压 ZIP 并转为 UTF-8。',
+      enabled: subdl,
+      setEnabled: setSubdl,
+      apiBase: subdlBase,
+      setApiBase: setSubdlBase,
+      extra: (
+        <div className="field">
+          <label>SubDL API Key</label>
+          <input
+            className="input"
+            type="password"
+            placeholder={
+              settings?.subdl_api_key_set
+                ? `已配置 (${settings.subdl_api_key_masked || '****'})，留空保持不变`
+                : '填写 SubDL API Key'
+            }
+            value={subdlKey}
+            onChange={(e) => setSubdlKey(e.target.value)}
+          />
+        </div>
+      ),
+    },
+    {
+      key: 'opensubtitles',
+      title: 'OpenSubtitles v1',
+      badge: settings?.opensubtitles_api_key_set ? '已配置 Key' : '全球多语种',
+      desc: '全球最大多语种字幕库，英文字幕与冷门语种最全，服务端缓存可大幅节省每日配额。',
+      enabled: openSub,
+      setEnabled: setOpenSub,
+      apiBase: openSubBase,
+      setApiBase: setOpenSubBase,
+      extra: (
+        <div className="field">
+          <label>OpenSubtitles API Key</label>
+          <input
+            className="input"
+            type="password"
+            placeholder={
+              settings?.opensubtitles_api_key_set
+                ? `已配置 (${settings.opensubtitles_api_key_masked || '****'})，留空保持不变`
+                : '填写 OpenSubtitles REST API Key'
+            }
+            value={openSubKey}
+            onChange={(e) => setOpenSubKey(e.target.value)}
+          />
         </div>
       ),
     },
@@ -517,6 +673,75 @@ export const SettingsPage: React.FC = () => {
                             type="button"
                             className="btn btn-sm"
                             onClick={() => setExpanded((prev) => ({ ...prev, [p.key]: !prev[p.key] }))}
+                          >
+                            {isOpen ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
+                            高级配置
+                          </button>
+                        </div>
+
+                        {isOpen && (
+                          <div className="module-config-drawer">
+                            <div className="field">
+                              <label>自定义 API 地址（留空使用官方默认）</label>
+                              <input
+                                className="input"
+                                placeholder="https://..."
+                                value={p.apiBase}
+                                onChange={(e) => p.setApiBase(e.target.value)}
+                              />
+                            </div>
+                            {p.extra}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Online Subtitle Providers Grid */}
+              <div className="card-box" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+                <div className="card-title-row" style={{ marginBottom: 0 }}>
+                  <div>
+                    <h3 className="card-title">在线字幕聚合源</h3>
+                    <div className="muted-sm" style={{ marginTop: 4 }}>
+                      为播放器提供多源在线字幕搜索、服务端缓存与自动 UTF-8 转码（复用上方网络代理）
+                    </div>
+                  </div>
+                </div>
+
+                <div className="module-grid">
+                  {subtitleProviders.map((p) => {
+                    const drawerKey = `sub:${p.key}`;
+                    const isOpen = Boolean(expanded[drawerKey]);
+                    const isTesting = testingProvider === p.key;
+                    return (
+                      <div key={p.key} className={`module-card ${p.enabled ? 'active' : ''}`}>
+                        <div className="module-card-head">
+                          <div style={{ minWidth: 0 }}>
+                            <div className="module-card-title">
+                              <span>{p.title}</span>
+                              <span className="tag accent">{p.badge}</span>
+                            </div>
+                            <div className="module-card-desc">{p.desc}</div>
+                          </div>
+                          <ToggleSwitch checked={p.enabled} onChange={p.setEnabled} />
+                        </div>
+
+                        <div className="module-card-actions">
+                          <button
+                            type="button"
+                            className="btn btn-sm"
+                            disabled={isTesting}
+                            onClick={() => void testProv(p.key)}
+                          >
+                            {isTesting ? <Loader2 size={12} className="spin" /> : <Wifi size={12} />}
+                            测试连通
+                          </button>
+                          <button
+                            type="button"
+                            className="btn btn-sm"
+                            onClick={() => setExpanded((prev) => ({ ...prev, [drawerKey]: !prev[drawerKey] }))}
                           >
                             {isOpen ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
                             高级配置
