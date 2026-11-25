@@ -242,6 +242,17 @@ class _Translations$update$zh_Hant extends Translations$update$zh {
 	@override String get viewRelease => '查看版本詳情';
 	@override String get latestVersion => '已安裝的版本為最新版本';
 	@override String get checkFailed => '無法檢查更新';
+	@override String get downloadAndInstall => '下載並安裝';
+	@override String get downloading => '正在下載更新...';
+	@override String get extracting => '正在解壓縮安裝檔...';
+	@override String get installing => '準備安裝';
+	@override String get installNow => '立即安裝';
+	@override String get downloadCancelled => '已取消下載';
+	@override String downloadFailed({required Object error}) => '下載失敗：${error}';
+	@override String get installFailed => '無法啟動安裝程式';
+	@override String get installPermissionRequired => '請在系統設定中允許 TTPlay 安裝未知應用程式，授權後返回此處即可繼續安裝。';
+	@override String get openSettings => '前往設定';
+	@override String get retry => '重試';
 }
 
 // Path: supporter
@@ -3816,6 +3827,17 @@ extension on TranslationsZhHant {
 			'update.viewRelease' => '查看版本詳情',
 			'update.latestVersion' => '已安裝的版本為最新版本',
 			'update.checkFailed' => '無法檢查更新',
+			'update.downloadAndInstall' => '下載並安裝',
+			'update.downloading' => '正在下載更新...',
+			'update.extracting' => '正在解壓縮安裝檔...',
+			'update.installing' => '準備安裝',
+			'update.installNow' => '立即安裝',
+			'update.downloadCancelled' => '已取消下載',
+			'update.downloadFailed' => ({required Object error}) => '下載失敗：${error}',
+			'update.installFailed' => '無法啟動安裝程式',
+			'update.installPermissionRequired' => '請在系統設定中允許 TTPlay 安裝未知應用程式，授權後返回此處即可繼續安裝。',
+			'update.openSettings' => '前往設定',
+			'update.retry' => '重試',
 			'supporter.title' => '主題與圖示包',
 			'supporter.intro' => '可選的一次性購買，提供外觀加值項目：',
 			'supporter.presetThemes' => '精選主題',
@@ -4182,6 +4204,8 @@ extension on TranslationsZhHant {
 			'settings.playerScopeLibrary' => '依媒體庫',
 			'settings.playerScopeTitle' => '依影集或電影',
 			'settings.exportDialogTitle' => '匯出 TTPlay 設定',
+			_ => null,
+		} ?? switch (path) {
 			'themeEditor.builtIn' => '內建',
 			'themeEditor.presets' => '精選',
 			'themeEditor.custom' => '自訂',
@@ -4193,8 +4217,6 @@ extension on TranslationsZhHant {
 			'themeEditor.title' => '自訂主題',
 			'themeEditor.startFrom' => '從現有主題開始',
 			'themeEditor.startFromDescription' => '從其他主題複製所有顏色',
-			_ => null,
-		} ?? switch (path) {
 			'themeEditor.colors' => '顏色',
 			'themeEditor.preview' => '預覽',
 			'themeEditor.slots.bg' => '背景',
@@ -4696,6 +4718,8 @@ extension on TranslationsZhHant {
 			'profiles.profileRenamed' => '使用者設定檔已重新命名。',
 			'profiles.borrowAddTo' => ({required Object displayName}) => '新增至 ${displayName}',
 			'profiles.borrowExplain' => '共用另一個使用者設定檔的連線資訊。受 PIN 碼保護的設定檔需輸入 PIN 碼。',
+			_ => null,
+		} ?? switch (path) {
 			'profiles.borrowEmpty' => '目前沒有可共用的連線。',
 			'profiles.borrowEmptySubtitle' => '請先將 Plex、Jellyfin 或 Emby 連線至另一個使用者設定檔。',
 			'profiles.borrowLoadFailed' => '無法載入可用的連線。請重試。',
@@ -4707,8 +4731,6 @@ extension on TranslationsZhHant {
 			'profiles.sourceProfileMissingParentAccount' => '來源使用者設定檔缺少其父帳戶資訊。',
 			'profiles.failedToLoadHomeUsers' => '無法載入您的 Plex Home 使用者。請檢查網路連線後重試。',
 			'profiles.failedToVerifyPin' => '無法驗證 PIN 碼。',
-			_ => null,
-		} ?? switch (path) {
 			'profiles.newProfile' => '建立使用者設定檔',
 			'profiles.profileNameHint' => '例如：訪客、兒童、客廳',
 			'profiles.pinProtectionOptional' => 'PIN 碼保護（選填）',
@@ -5210,6 +5232,8 @@ extension on TranslationsZhHant {
 			'liveTv.recordingTargetMissing' => '無法確定錄製媒體庫',
 			'liveTv.recordNotAvailable' => '此節目無法錄製',
 			'liveTv.recordingCancelled' => '錄製已取消',
+			_ => null,
+		} ?? switch (path) {
 			'liveTv.recordingRuleDeleted' => '錄製規則已刪除',
 			'liveTv.processRecordingRules' => '重新評估規則',
 			'liveTv.recordingInProgress' => '正在錄製',
@@ -5221,8 +5245,6 @@ extension on TranslationsZhHant {
 			'liveTv.guideReloadFailed' => '無法重新載入節目表指南',
 			'liveTv.rulesProcessRequested' => '已要求重新評估規則',
 			'liveTv.rulesProcessFailed' => '無法重新評估錄影規則',
-			_ => null,
-		} ?? switch (path) {
 			'liveTv.recordShow' => '錄製節目',
 			'liveTv.recordSettings.startEarly' => '提早開始（秒）',
 			'liveTv.recordSettings.endLate' => '延後結束（秒）',
@@ -5724,6 +5746,8 @@ extension on TranslationsZhHant {
 			'performanceOverlay.renderFps' => '渲染 FPS',
 			'performanceOverlay.displayFps' => '螢幕 FPS',
 			'performanceOverlay.avSync' => '影音同步（A/V Sync）',
+			_ => null,
+		} ?? switch (path) {
 			'performanceOverlay.dropped' => '丟格數（Dropped）',
 			'performanceOverlay.dvRpus' => 'DV RPU 數',
 			'performanceOverlay.dvRpuAverage' => 'DV RPU 平均',
@@ -5735,8 +5759,6 @@ extension on TranslationsZhHant {
 			'performanceOverlay.cacheUsed' => '已用快取',
 			'performanceOverlay.cacheLimit' => '快取上限',
 			'performanceOverlay.speed' => '速度',
-			_ => null,
-		} ?? switch (path) {
 			'performanceOverlay.player' => '播放器',
 			'performanceOverlay.memory' => '記憶體',
 			'performanceOverlay.uiFps' => '介面 FPS',

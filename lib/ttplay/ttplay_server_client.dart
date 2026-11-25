@@ -3,6 +3,7 @@ import 'dart:async';
 import '../exceptions/media_server_exceptions.dart';
 import '../i18n/strings.g.dart';
 import '../library/local_library_client.dart';
+import '../library/scrapers/tmdb_image_url.dart';
 import '../media/artist_discography.dart';
 import '../media/download_resolution.dart';
 import '../media/ids.dart';
@@ -1293,16 +1294,6 @@ class TtplayServerClient implements MediaServerClient, StreamQualityClient {
 
   // ─── Artwork ───────────────────────────────────────────────────────────
 
-  static String _tmdbSizeFor(int? width, bool cover) {
-    if (!cover && (width == null || width >= 1000)) return 'original';
-    if (width == null) return 'w500';
-    if (width <= 200) return 'w185';
-    if (width <= 400) return 'w342';
-    if (width <= 700) return 'w500';
-    if (width <= 1000) return 'w780';
-    return 'w1280';
-  }
-
   @override
   String thumbnailUrl(String? path, {int? width, int? height, bool cover = true}) {
     if (path == null) return '';
@@ -1319,9 +1310,10 @@ class TtplayServerClient implements MediaServerClient, StreamQualityClient {
           '?path=${Uri.encodeQueryComponent(filePath)}$tok';
     }
     if (trimmed.startsWith('/api/v1/')) {
-      return api.resolveAbsoluteUrl(trimmed, appendToken: true);
+      final abs = api.resolveAbsoluteUrl(trimmed, appendToken: true);
+      return TmdbImageUrl.rewriteProxyArtworkSize(abs, width: width, cover: cover);
     }
-    final size = _tmdbSizeFor(width, cover);
+    final size = TmdbImageUrl.sizeForWidth(width, path: trimmed, cover: cover);
     final tok = api.accessToken.isEmpty ? '' : '&token=${Uri.encodeQueryComponent(api.accessToken)}';
     return '${api.baseUrl}/api/v1/artwork/remote?src=${Uri.encodeQueryComponent(trimmed)}&size=$size$tok';
   }

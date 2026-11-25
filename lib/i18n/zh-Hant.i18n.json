@@ -150,7 +150,18 @@
     "skipVersion": "跳過此版本",
     "viewRelease": "查看版本詳情",
     "latestVersion": "已安裝的版本為最新版本",
-    "checkFailed": "無法檢查更新"
+    "checkFailed": "無法檢查更新",
+    "downloadAndInstall": "下載並安裝",
+    "downloading": "正在下載更新...",
+    "extracting": "正在解壓縮安裝檔...",
+    "installing": "準備安裝",
+    "installNow": "立即安裝",
+    "downloadCancelled": "已取消下載",
+    "downloadFailed": "下載失敗：${error}",
+    "installFailed": "無法啟動安裝程式",
+    "installPermissionRequired": "請在系統設定中允許 TTPlay 安裝未知應用程式，授權後返回此處即可繼續安裝。",
+    "openSettings": "前往設定",
+    "retry": "重試"
   },
   "supporter": {
     "title": "主題與圖示包",

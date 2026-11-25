@@ -693,7 +693,7 @@ void main() {
     }
   });
 
-  testWidgets('Sync mode SettingsScreen on TV shows read-only IPTV without local mounts or admin tiles', (
+  testWidgets('Sync mode SettingsScreen on TV hides local mounts, IPTV, and admin tiles', (
     tester,
   ) async {
     TvDetectionService.debugSetAppleTVOverride(true);
@@ -732,7 +732,8 @@ void main() {
         ttplayBinder: binder,
       );
 
-      expect(find.text('IPTV 直播源'), findsOneWidget);
+      expect(find.text(t.storage.mediaSources), findsNothing);
+      expect(find.text('IPTV 直播源'), findsNothing);
       expect(find.text('云端媒体源'), findsNothing);
       expect(find.text('云端待匹配中心'), findsNothing);
       expect(find.text(t.storage.title), findsNothing);

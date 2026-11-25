@@ -422,6 +422,39 @@ class Translations$update$en {
 
 	/// en: 'Failed to check for updates'
 	String get checkFailed => 'Failed to check for updates';
+
+	/// en: 'Download & Install'
+	String get downloadAndInstall => 'Download & Install';
+
+	/// en: 'Downloading update...'
+	String get downloading => 'Downloading update...';
+
+	/// en: 'Extracting installer...'
+	String get extracting => 'Extracting installer...';
+
+	/// en: 'Ready to install'
+	String get installing => 'Ready to install';
+
+	/// en: 'Install'
+	String get installNow => 'Install';
+
+	/// en: 'Download cancelled'
+	String get downloadCancelled => 'Download cancelled';
+
+	/// en: 'Download failed: ${error}'
+	String downloadFailed({required Object error}) => 'Download failed: ${error}';
+
+	/// en: 'Could not start installer'
+	String get installFailed => 'Could not start installer';
+
+	/// en: 'Allow TTPlay to install updates in system settings, then return here to continue.'
+	String get installPermissionRequired => 'Allow TTPlay to install updates in system settings, then return here to continue.';
+
+	/// en: 'Open Settings'
+	String get openSettings => 'Open Settings';
+
+	/// en: 'Retry'
+	String get retry => 'Retry';
 }
 
 // Path: supporter
@@ -9981,6 +10014,17 @@ extension on Translations {
 			'update.viewRelease' => 'View Release',
 			'update.latestVersion' => 'You are on the latest version',
 			'update.checkFailed' => 'Failed to check for updates',
+			'update.downloadAndInstall' => 'Download & Install',
+			'update.downloading' => 'Downloading update...',
+			'update.extracting' => 'Extracting installer...',
+			'update.installing' => 'Ready to install',
+			'update.installNow' => 'Install',
+			'update.downloadCancelled' => 'Download cancelled',
+			'update.downloadFailed' => ({required Object error}) => 'Download failed: ${error}',
+			'update.installFailed' => 'Could not start installer',
+			'update.installPermissionRequired' => 'Allow TTPlay to install updates in system settings, then return here to continue.',
+			'update.openSettings' => 'Open Settings',
+			'update.retry' => 'Retry',
 			'supporter.title' => 'Theme & Icon Pack',
 			'supporter.intro' => 'An optional one-time purchase that adds cosmetic extras:',
 			'supporter.presetThemes' => 'Preset themes',
@@ -10347,6 +10391,8 @@ extension on Translations {
 			'settings.playerScopeLibrary' => 'Per library',
 			'settings.playerScopeTitle' => 'Per show or movie',
 			'settings.exportDialogTitle' => 'Export TTPlay settings',
+			_ => null,
+		} ?? switch (path) {
 			'themeEditor.builtIn' => 'Built-in',
 			'themeEditor.presets' => 'Presets',
 			'themeEditor.custom' => 'Custom',
@@ -10358,8 +10404,6 @@ extension on Translations {
 			'themeEditor.title' => 'Custom Theme',
 			'themeEditor.startFrom' => 'Start from',
 			'themeEditor.startFromDescription' => 'Copy all colors from another theme',
-			_ => null,
-		} ?? switch (path) {
 			'themeEditor.colors' => 'Colors',
 			'themeEditor.preview' => 'Preview',
 			'themeEditor.slots.bg' => 'Background',
@@ -10861,6 +10905,8 @@ extension on Translations {
 			'profiles.connectionAs' => ({required Object displayName}) => 'as ${displayName}',
 			'profiles.makeDefault' => 'Make default',
 			'profiles.removeConnection' => 'Remove',
+			_ => null,
+		} ?? switch (path) {
 			'profiles.profileRenamed' => 'Profile renamed.',
 			'profiles.borrowAddTo' => ({required Object displayName}) => 'Add to ${displayName}',
 			'profiles.borrowExplain' => 'Borrow another profile\'s connection. PIN-protected profiles require a PIN.',
@@ -10872,8 +10918,6 @@ extension on Translations {
 			'profiles.borrowFailed' => 'Failed to borrow connection.',
 			'profiles.incorrectPin' => 'Incorrect PIN.',
 			'profiles.incorrectPinTryAgain' => 'Incorrect PIN. Please try again.',
-			_ => null,
-		} ?? switch (path) {
 			'profiles.sourceProfileMissingParentAccount' => 'Source profile is missing its parent account.',
 			'profiles.failedToLoadHomeUsers' => 'Could not load your Plex Home users. Check your connection and try again.',
 			'profiles.failedToVerifyPin' => 'Failed to verify PIN.',
@@ -11375,6 +11419,8 @@ extension on Translations {
 			'liveTv.deleteRule' => 'Delete rule',
 			'liveTv.deleteRuleTitle' => 'Delete recording rule?',
 			'liveTv.deleteRuleMessage' => ({required Object title}) => 'Future episodes of ${title} will not be recorded.',
+			_ => null,
+		} ?? switch (path) {
 			'liveTv.recordingScheduled' => 'Recording scheduled',
 			'liveTv.alreadyScheduled' => 'This program is already scheduled',
 			'liveTv.dvrAdminRequired' => 'DVR settings require an admin account',
@@ -11386,8 +11432,6 @@ extension on Translations {
 			'liveTv.processRecordingRules' => 'Re-evaluate rules',
 			'liveTv.recordingInProgress' => 'Recording now',
 			'liveTv.recordingsCount' => ({required Object count}) => '${count} scheduled',
-			_ => null,
-		} ?? switch (path) {
 			'liveTv.editRule' => 'Edit rule',
 			'liveTv.editRuleAction' => 'Edit',
 			'liveTv.recordingRuleUpdated' => 'Recording rule updated',
@@ -11889,6 +11933,8 @@ extension on Translations {
 			'companionRemote.errors.connectionLostAfterAttempts' => ({required Object attempts}) => 'Connection lost after ${attempts} attempts',
 			'companionRemote.errors.connectionLost' => 'Connection lost',
 			'companionRemote.closedBeforeAuth' => 'The connection closed before authentication',
+			_ => null,
+		} ?? switch (path) {
 			'videoSettings.playbackSpeed' => 'Playback Speed',
 			'videoSettings.normalSpeed' => 'Normal',
 			'videoSettings.sleepTimerActive' => ({required Object duration}) => 'Active (${duration})',
@@ -11900,8 +11946,6 @@ extension on Translations {
 			'videoSettings.hdrUnsupported' => 'HDR isn\'t available here — this desktop compositor or video output can\'t carry it.',
 			'videoSettings.hdrToneMapping' => 'HDR Tone Mapping',
 			'videoSettings.hdrToneMappingCompositor' => 'Compositor',
-			_ => null,
-		} ?? switch (path) {
 			'videoSettings.hdrToneMappingCompositorDescription' => 'Pass the source\'s HDR metadata through and let the desktop compositor map it.',
 			'videoSettings.hdrToneMappingPlayer' => 'Player',
 			'videoSettings.hdrToneMappingPlayerDescription' => 'Map to the display\'s peak brightness in the player, then tell the compositor the result.',
@@ -12403,6 +12447,8 @@ extension on Translations {
 			'storage.scraperSettingsDescription' => 'Official metadata service & language preference',
 			'storage.metadataServiceTitle' => 'Official Metadata Service',
 			'storage.metadataServiceOfficial' => 'Connected to TTPlay Official Metadata Service',
+			_ => null,
+		} ?? switch (path) {
 			'storage.metadataServiceSelfHosted' => 'Connected to Server Metadata Service',
 			'storage.metadataServiceManagedHint' => 'TMDB, Douban, Bangumi, proxy, and artwork relay are managed centrally by the official metadata server.',
 			'storage.metadataServerTest' => 'Test server connection',
@@ -12414,8 +12460,6 @@ extension on Translations {
 			'storage.smbFallbackHost' => 'Fallback server (optional)',
 			'storage.includePaths' => 'Included folders (optional)',
 			'storage.includePathsHelp' => 'One path per line or comma-separated (e.g. /Movies). Leave empty to scan the whole mount.',
-			_ => null,
-		} ?? switch (path) {
 			'storage.excludePaths' => 'Excluded folders (optional)',
 			'storage.excludePathsHelp' => 'Ignore folders such as backups or recordings (e.g. /Photos).',
 			'storage.statusOnline' => 'Online',

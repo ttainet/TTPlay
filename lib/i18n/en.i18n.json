@@ -150,7 +150,18 @@
     "skipVersion": "Skip This Version",
     "viewRelease": "View Release",
     "latestVersion": "You are on the latest version",
-    "checkFailed": "Failed to check for updates"
+    "checkFailed": "Failed to check for updates",
+    "downloadAndInstall": "Download & Install",
+    "downloading": "Downloading update...",
+    "extracting": "Extracting installer...",
+    "installing": "Ready to install",
+    "installNow": "Install",
+    "downloadCancelled": "Download cancelled",
+    "downloadFailed": "Download failed: ${error}",
+    "installFailed": "Could not start installer",
+    "installPermissionRequired": "Allow TTPlay to install updates in system settings, then return here to continue.",
+    "openSettings": "Open Settings",
+    "retry": "Retry"
   },
   "supporter": {
     "title": "Theme & Icon Pack",

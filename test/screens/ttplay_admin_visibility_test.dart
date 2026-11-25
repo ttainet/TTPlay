@@ -422,7 +422,7 @@ void main() {
     expect(find.text(t.sync.lanDevicesTitle), findsOneWidget);
   });
 
-  testWidgets('SettingsScreen hides cloud-admin tiles on TV in self-hosted mode while keeping read-only IPTV & LAN devices', (
+  testWidgets('SettingsScreen hides cloud-admin, local mounts, and IPTV tiles on TV in self-hosted mode while keeping LAN devices', (
     tester,
   ) async {
     tester.view.physicalSize = const Size(1800, 3200);
@@ -443,8 +443,8 @@ void main() {
     expect(find.text('云端待匹配中心'), findsNothing);
     expect(find.text(t.storage.title), findsNothing);
     expect(find.text(t.storage.scraperSettings), findsNothing);
-    expect(find.text(t.storage.mediaSources), findsOneWidget);
-    expect(find.text('IPTV 直播源'), findsOneWidget);
+    expect(find.text(t.storage.mediaSources), findsNothing);
+    expect(find.text('IPTV 直播源'), findsNothing);
     expect(find.text(t.sync.lanDevicesTitle), findsOneWidget);
   });
 

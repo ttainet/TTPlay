@@ -16,6 +16,7 @@ import '../../iptv/iptv_playback_session.dart';
 import '../../iptv/iptv_provider.dart';
 import '../../mixins/refreshable.dart';
 import '../../navigation/main_screen_scope.dart';
+import '../../utils/app_logger.dart';
 import '../../utils/desktop_window_padding.dart';
 import '../../utils/dialogs.dart';
 import '../../utils/platform_detector.dart';
@@ -24,6 +25,7 @@ import '../../widgets/dialog_action_button.dart';
 import '../../widgets/focusable_list_tile.dart';
 import '../../widgets/focusable_tab_chip.dart';
 import '../libraries/state_messages.dart';
+import '../ttplay_admin/ttplay_admin_guard.dart';
 import 'iptv_sources_screen.dart';
 
 /// Dedicated IPTV screen displaying grouped live channels, favorites, search, multi-line picker, and EPG info.
@@ -52,6 +54,7 @@ class _IptvScreenState extends State<IptvScreen> with FocusableTab, ManualRefres
   String? _selectedGroup;
   bool _searchVisible = false;
   String _searchQuery = '';
+  bool _isRefreshing = false;
 
   @override
   void didChangeDependencies() {
@@ -190,10 +193,35 @@ class _IptvScreenState extends State<IptvScreen> with FocusableTab, ManualRefres
 
   @override
   void manualRefresh() {
+    unawaited(_refreshFromToolbar());
+  }
+
+  Future<void> _refreshFromToolbar() async {
+    if (_isRefreshing) return;
     final provider = context.read<IptvProvider>();
-    final active = provider.activeSource;
-    if (active == null) return;
-    unawaited(provider.ensureLoaded(active, forceRefresh: true));
+    final appSession = maybeReadAppSession(context);
+    final binder = maybeReadTtplayBinder(context);
+    final isSelfHosted = (appSession?.isSelfHosted ?? false) || provider.isCloudMode;
+
+    setState(() => _isRefreshing = true);
+    try {
+      if (isSelfHosted && binder != null && binder.isMediaLibraryV1Active) {
+        try {
+          await binder.syncCloudProjection(full: false);
+        } catch (e) {
+          appLogger.w('IPTV cloud projection sync failed: $e');
+        }
+      }
+      if (!mounted) return;
+      final active = provider.activeSource;
+      if (active != null) {
+        await provider.ensureLoaded(active, forceRefresh: true);
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isRefreshing = false);
+      }
+    }
   }
 
   void _toggleSearch({bool restoreGroupFocus = false}) {
@@ -332,6 +360,11 @@ class _IptvScreenState extends State<IptvScreen> with FocusableTab, ManualRefres
     final hasSourceChips = !useSideNav && sources.length > 1;
     _syncSourceTabFocusNodes(hasSourceChips ? sources.length : 0);
     final activeSource = provider.activeSource;
+    final appSession = maybeWatchAppSession(context);
+    final isSelfHosted = (appSession?.isSelfHosted ?? false) || provider.isCloudMode;
+    final isTvSyncReadOnly = isSelfHosted && PlatformDetector.isTV();
+    final isRefreshing = _isRefreshing || (activeSource != null && provider.isLoading(activeSource.id));
+    final refreshTooltip = isSelfHosted ? '同步并刷新频道列表' : '刷新频道列表';
 
     return Scaffold(
       appBar: AppBar(
@@ -351,17 +384,31 @@ class _IptvScreenState extends State<IptvScreen> with FocusableTab, ManualRefres
                   tooltip: _searchVisible ? '收起搜索' : '搜索频道',
                   onPressed: () => _toggleSearch(),
                 ),
-              if (activeSource != null)
+              if (activeSource != null || isTvSyncReadOnly)
                 FocusableAction(
                   icon: Symbols.refresh_rounded,
-                  tooltip: '刷新频道列表',
-                  onPressed: manualRefresh,
+                  tooltip: refreshTooltip,
+                  onPressed: isRefreshing ? null : manualRefresh,
+                  child: isRefreshing
+                      ? IconButton(
+                          onPressed: null,
+                          tooltip: refreshTooltip,
+                          icon: SizedBox.square(
+                            dimension: 18,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: Theme.of(context).colorScheme.onSurface,
+                            ),
+                          ),
+                        )
+                      : null,
                 ),
-              FocusableAction(
-                icon: Symbols.tune_rounded,
-                tooltip: '管理 IPTV 源',
-                onPressed: _openManageSources,
-              ),
+              if (!isTvSyncReadOnly)
+                FocusableAction(
+                  icon: Symbols.tune_rounded,
+                  tooltip: '管理 IPTV 源',
+                  onPressed: _openManageSources,
+                ),
             ],
           ),
         ]),
@@ -373,18 +420,16 @@ class _IptvScreenState extends State<IptvScreen> with FocusableTab, ManualRefres
             ? EmptyStateWidget(
                 icon: Symbols.live_tv_rounded,
                 message: '暂无 IPTV 直播源',
-                subtitle: provider.isCloudMode && PlatformDetector.isTV()
+                subtitle: isTvSyncReadOnly
                     ? '请在手机或电脑端添加 IPTV 直播源，添加后将自动同步到此设备'
                     : '添加 M3U / M3U8 / TXT 订阅后即可在此浏览分组与观看直播',
-                actionLabel: '管理 IPTV 源',
-                actionIcon: provider.isCloudMode && PlatformDetector.isTV()
-                    ? Symbols.sync_rounded
-                    : Symbols.add_rounded,
+                actionLabel: isTvSyncReadOnly ? (isRefreshing ? '同步中...' : '立即同步') : '管理 IPTV 源',
+                actionIcon: isTvSyncReadOnly ? Symbols.sync_rounded : Symbols.add_rounded,
                 actionFocusNode: _firstContentFocusNode,
                 onActionNavigateLeft: _focusSidebar,
                 onActionNavigateUp: () => _focusAppBar(hasSourceChips: hasSourceChips),
                 onActionBack: _focusSidebar,
-                onAction: _openManageSources,
+                onAction: isTvSyncReadOnly ? manualRefresh : _openManageSources,
               )
             : _buildSourceBody(provider, activeSource, hasSourceChips: hasSourceChips),
       ),

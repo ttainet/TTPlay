@@ -911,6 +911,10 @@ class _MainScreenState extends State<MainScreen>
   Future<void> _checkForUpdatesOnStartup() async {
     if (!mounted) return;
 
+    if (Platform.isAndroid) {
+      unawaited(UpdateService.cleanupCachedUpdates());
+    }
+
     final settingsService = await SettingsService.getInstance();
     if (!settingsService.read(SettingsService.autoCheckUpdatesOnStartup)) return;
 

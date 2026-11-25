@@ -276,7 +276,7 @@ void main() {
     expect(candidates.single.posterUrl, contains('${server.baseUrl}$proxyPath?src='));
 
     final work = await provider.workFor(provider: 'tmdb', kind: 'movie', id: '603');
-    expect(work.posterSource, '${server.baseUrl}$proxyPath?src=%2Ff89U3ADr1oiB1s9GkdPOEpXUk5H.jpg&size=w500');
+    expect(work.posterSource, '${server.baseUrl}$proxyPath?src=%2Ff89U3ADr1oiB1s9GkdPOEpXUk5H.jpg&size=w780');
     expect(work.backdropSource, '${server.baseUrl}$proxyPath?src=%2FncEsesgOJDNrTUED89hYbA117wo.jpg&size=w1280');
     expect(work.credits.single.photoUrl, '${server.baseUrl}$proxyPath?src=%2F4D0PpNI0kmP58hgrwGC3wCjxhnm.jpg&size=w185');
   });

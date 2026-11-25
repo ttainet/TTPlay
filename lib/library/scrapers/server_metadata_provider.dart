@@ -545,7 +545,7 @@ class ServerMetadataProvider implements MetadataProvider {
           for (final g in genresRaw)
             if ('$g'.trim().isNotEmpty) '$g'.trim(),
       ],
-      posterSource: art(work.str('poster_path'), 'w500'),
+      posterSource: art(work.str('poster_path'), 'w780'),
       backdropSource: art(work.str('backdrop_path'), 'w1280'),
       logoSource: art(work.str('logo_path'), 'w500'),
       credits: [
@@ -600,7 +600,7 @@ class ServerMetadataProvider implements MetadataProvider {
         serverBaseUrl: serverBaseUrl,
         proxyImages: proxyImages,
         artworkProxyPath: artworkProxyPath,
-        size: 'w500',
+        size: 'w780',
       ),
       totalEpisodes: (totalEps ?? 0) > 0 ? totalEps : (episodes.isNotEmpty ? episodes.length : null),
       episodes: episodes,

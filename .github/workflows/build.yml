@@ -124,26 +124,26 @@ jobs:
 
       - name: Package APKs
         run: |
-          tar -czf ttplay-android-arm64-v8a.tar.gz -C build/app/outputs/flutter-apk app-arm64-v8a-release.apk --transform 's/app-arm64-v8a-release.apk/ttplay.apk/'
-          tar -czf ttplay-android-armeabi-v7a.tar.gz -C build/app/outputs/flutter-apk app-armeabi-v7a-release.apk --transform 's/app-armeabi-v7a-release.apk/ttplay.apk/'
-          tar -czf ttplay-android-x86_64.tar.gz -C build/app/outputs/flutter-apk app-x86_64-release.apk --transform 's/app-x86_64-release.apk/ttplay.apk/'
+          cp build/app/outputs/flutter-apk/app-arm64-v8a-release.apk ttplay-android-arm64-v8a.apk
+          cp build/app/outputs/flutter-apk/app-armeabi-v7a-release.apk ttplay-android-armeabi-v7a.apk
+          cp build/app/outputs/flutter-apk/app-x86_64-release.apk ttplay-android-x86_64.apk
 
       - name: Attest APKs
         uses: actions/attest-build-provenance@0f67c3f4856b2e3261c31976d6725780e5e4c373 # v4
         with:
           subject-path: |
-            ttplay-android-arm64-v8a.tar.gz
-            ttplay-android-armeabi-v7a.tar.gz
-            ttplay-android-x86_64.tar.gz
+            ttplay-android-arm64-v8a.apk
+            ttplay-android-armeabi-v7a.apk
+            ttplay-android-x86_64.apk
 
       - name: Upload APKs
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: android-apk
           path: |
-            ttplay-android-arm64-v8a.tar.gz
-            ttplay-android-armeabi-v7a.tar.gz
-            ttplay-android-x86_64.tar.gz
+            ttplay-android-arm64-v8a.apk
+            ttplay-android-armeabi-v7a.apk
+            ttplay-android-x86_64.apk
 
   build-ios:
     needs: validate-trusted-ref
@@ -1075,9 +1075,9 @@ jobs:
           {
             echo 'files<<EOF'
             if [ "${{ inputs.build_android }}" = "true" ]; then
-              echo artifacts/android-apk/ttplay-android-arm64-v8a.tar.gz
-              echo artifacts/android-apk/ttplay-android-armeabi-v7a.tar.gz
-              echo artifacts/android-apk/ttplay-android-x86_64.tar.gz
+              echo artifacts/android-apk/ttplay-android-arm64-v8a.apk
+              echo artifacts/android-apk/ttplay-android-armeabi-v7a.apk
+              echo artifacts/android-apk/ttplay-android-x86_64.apk
             fi
             if [ "${{ inputs.build_ios }}" = "true" ]; then
               echo artifacts/ios-ipa/ttplay-ios.ipa

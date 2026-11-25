@@ -247,6 +247,7 @@ class MediaServerHttpClient {
     Map<String, String>? headers,
     Duration? timeout,
     AbortController? abort,
+    void Function(int receivedBytes, int? totalBytes)? onProgress,
   }) {
     final tempFile = File('$filePath.download');
     return _perform<void>(
@@ -279,12 +280,25 @@ class MediaServerHttpClient {
         final file = File(filePath);
         await file.parent.create(recursive: true);
         if (await tempFile.exists()) await tempFile.delete();
+        final contentLength = streamed.contentLength;
+        final totalBytes = (contentLength != null && contentLength > 0) ? contentLength : null;
         final sink = tempFile.openWrite();
         try {
-          await scope.receive(streamed.stream.pipe(sink));
+          await scope.receive(() async {
+            var received = 0;
+            await for (final chunk in streamed.stream) {
+              abort?.throwIfAborted();
+              sink.add(chunk);
+              received += chunk.length;
+              onProgress?.call(received, totalBytes);
+            }
+            abort?.throwIfAborted();
+            await sink.flush();
+          }());
         } finally {
           await sink.close();
         }
+        abort?.throwIfAborted();
         if (await file.exists()) await file.delete();
         await tempFile.rename(filePath);
       },

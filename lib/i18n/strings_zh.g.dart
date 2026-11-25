@@ -244,6 +244,17 @@ class Translations$update$zh extends Translations$update$en {
 	@override String get viewRelease => '查看发布详情';
 	@override String get latestVersion => '当前已是最新版本';
 	@override String get checkFailed => '无法检查更新';
+	@override String get downloadAndInstall => '下载并安装';
+	@override String get downloading => '正在下载更新...';
+	@override String get extracting => '正在解压安装包...';
+	@override String get installing => '准备安装';
+	@override String get installNow => '立即安装';
+	@override String get downloadCancelled => '已取消下载';
+	@override String downloadFailed({required Object error}) => '下载失败：${error}';
+	@override String get installFailed => '无法启动安装程序';
+	@override String get installPermissionRequired => '请在系统设置中允许 TTPlay 安装未知应用，授权后返回此处即可继续安装。';
+	@override String get openSettings => '前往设置';
+	@override String get retry => '重试';
 }
 
 // Path: supporter
@@ -4184,6 +4195,17 @@ extension on TranslationsZh {
 			'update.viewRelease' => '查看发布详情',
 			'update.latestVersion' => '当前已是最新版本',
 			'update.checkFailed' => '无法检查更新',
+			'update.downloadAndInstall' => '下载并安装',
+			'update.downloading' => '正在下载更新...',
+			'update.extracting' => '正在解压安装包...',
+			'update.installing' => '准备安装',
+			'update.installNow' => '立即安装',
+			'update.downloadCancelled' => '已取消下载',
+			'update.downloadFailed' => ({required Object error}) => '下载失败：${error}',
+			'update.installFailed' => '无法启动安装程序',
+			'update.installPermissionRequired' => '请在系统设置中允许 TTPlay 安装未知应用，授权后返回此处即可继续安装。',
+			'update.openSettings' => '前往设置',
+			'update.retry' => '重试',
 			'supporter.title' => '主题与图标包',
 			'supporter.intro' => '可选的一次性购买，提供以下外观类附加内容：',
 			'supporter.presetThemes' => '预设主题',
@@ -4550,6 +4572,8 @@ extension on TranslationsZh {
 			'settings.playerScopeLibrary' => '按媒体库',
 			'settings.playerScopeTitle' => '按剧集或电影',
 			'settings.exportDialogTitle' => '导出 TTPlay 设置',
+			_ => null,
+		} ?? switch (path) {
 			'themeEditor.builtIn' => '内置',
 			'themeEditor.presets' => '预设',
 			'themeEditor.custom' => '自定义',
@@ -4561,8 +4585,6 @@ extension on TranslationsZh {
 			'themeEditor.title' => '自定义主题',
 			'themeEditor.startFrom' => '从现有主题开始',
 			'themeEditor.startFromDescription' => '从其他主题复制所有颜色',
-			_ => null,
-		} ?? switch (path) {
 			'themeEditor.colors' => '颜色',
 			'themeEditor.preview' => '预览',
 			'themeEditor.slots.bg' => '背景',
@@ -5064,6 +5086,8 @@ extension on TranslationsZh {
 			'profiles.profileRenamed' => '用户资料已重命名。',
 			'profiles.borrowAddTo' => ({required Object displayName}) => '添加到 ${displayName}',
 			'profiles.borrowExplain' => '使用另一个用户资料的连接。受 PIN 保护的用户资料需要输入 PIN。',
+			_ => null,
+		} ?? switch (path) {
 			'profiles.borrowEmpty' => '暂无可用连接。',
 			'profiles.borrowEmptySubtitle' => '请先将 Plex、Jellyfin 或 Emby 连接到另一个用户资料。',
 			'profiles.borrowLoadFailed' => '无法加载可用连接。请重试。',
@@ -5075,8 +5099,6 @@ extension on TranslationsZh {
 			'profiles.sourceProfileMissingParentAccount' => '源用户资料缺少关联的主账户。',
 			'profiles.failedToLoadHomeUsers' => '无法加载您的 Plex Home 用户。请检查网络连接后重试。',
 			'profiles.failedToVerifyPin' => '无法验证 PIN。',
-			_ => null,
-		} ?? switch (path) {
 			'profiles.newProfile' => '新建用户资料',
 			'profiles.profileNameHint' => '例如：访客、儿童、客厅',
 			'profiles.pinProtectionOptional' => 'PIN 保护（可选）',
@@ -5578,6 +5600,8 @@ extension on TranslationsZh {
 			'liveTv.recordingTargetMissing' => '无法确定录制库',
 			'liveTv.recordNotAvailable' => '此节目无法录制',
 			'liveTv.recordingCancelled' => '录制已取消',
+			_ => null,
+		} ?? switch (path) {
 			'liveTv.recordingRuleDeleted' => '录制规则已删除',
 			'liveTv.processRecordingRules' => '重新评估规则',
 			'liveTv.recordingInProgress' => '正在录制',
@@ -5589,8 +5613,6 @@ extension on TranslationsZh {
 			'liveTv.guideReloadFailed' => '无法刷新节目指南',
 			'liveTv.rulesProcessRequested' => '已请求重新评估规则',
 			'liveTv.rulesProcessFailed' => '无法重新评估录制规则',
-			_ => null,
-		} ?? switch (path) {
 			'liveTv.recordShow' => '录制节目',
 			'liveTv.recordSettings.startEarly' => '提前开始（秒）',
 			'liveTv.recordSettings.endLate' => '延后结束（秒）',
@@ -6092,6 +6114,8 @@ extension on TranslationsZh {
 			'videoSettings.sleepTimer' => '睡眠定时器',
 			'videoSettings.audioSync' => '音频同步',
 			'videoSettings.subtitleSync' => '字幕同步',
+			_ => null,
+		} ?? switch (path) {
 			'videoSettings.hdr' => 'HDR',
 			'videoSettings.hdrUnsupported' => '此处不支持 HDR——当前桌面合成器或视频输出无法传输 HDR。',
 			'videoSettings.hdrToneMapping' => 'HDR 色调映射',
@@ -6103,8 +6127,6 @@ extension on TranslationsZh {
 			'videoSettings.audioOutput' => '音频输出',
 			'videoSettings.performanceOverlay' => '性能监控',
 			'videoSettings.audioOutputDolbyAtmos' => 'Dolby Atmos',
-			_ => null,
-		} ?? switch (path) {
 			'videoSettings.audioOutputDolbyAudio' => 'Dolby Audio',
 			'videoSettings.audioOutputSurround' => '环绕声',
 			'videoSettings.audioOutputSpatial' => '空间音频',
@@ -6606,6 +6628,8 @@ extension on TranslationsZh {
 			'storage.metadataPreferencesHeading' => '客户端偏好',
 			'storage.fallbackUrl' => '备用地址（可选）',
 			'storage.fallbackUrlHelp' => '主地址不可达时自动切换（例如外出时使用的外网 DDNS 地址）。',
+			_ => null,
+		} ?? switch (path) {
 			'storage.smbFallbackHost' => '备用服务器（可选）',
 			'storage.includePaths' => '仅扫描目录（可选）',
 			'storage.includePathsHelp' => '每行或逗号分隔一个目录（如 /Movies），留空则扫描整个挂载。',
@@ -6617,8 +6641,6 @@ extension on TranslationsZh {
 			'storage.offlineMountsHidden' => ({required Object count}) => '已隐藏 ${count} 个离线挂载源',
 			'storage.offlineMountsShown' => ({required Object count}) => '已显示 ${count} 个离线挂载源',
 			'storage.showOffline' => '显示全部',
-			_ => null,
-		} ?? switch (path) {
 			'storage.hideOffline' => '隐藏离线',
 			'storage.duplicateMount' => ({required Object name}) => '该媒体来源已存在（“${name}”），请直接编辑已有来源。',
 			'storage.addScanFolder' => '添加目录',

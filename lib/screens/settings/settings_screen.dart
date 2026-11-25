@@ -269,9 +269,7 @@ class _SettingsScreenState extends State<SettingsScreen> with FocusableTab, Moun
                       ],
                     ),
                   ] else if (showSelfHostedAdmin)
-                    _buildSelfHostedAdminSection()
-                  else
-                    _buildSyncTvMediaSourcesSection(),
+                    _buildSelfHostedAdminSection(),
 
                   SettingsGroup(title: t.companionRemote.title, children: [_buildLanDevicesTile()]),
 
@@ -429,21 +427,6 @@ class _SettingsScreenState extends State<SettingsScreen> with FocusableTab, Moun
           title: '云端待匹配中心',
           subtitle: '查看未识别云端文件、手工匹配并管理自动目录规则',
           destinationBuilder: (_) => const CloudUnmatchedScreen(),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildSyncTvMediaSourcesSection() {
-    return SettingsGroup(
-      title: t.storage.mediaSources,
-      children: [
-        SettingNavigationTile(
-          focusNode: _focusTracker.get(_kIptvSources),
-          icon: Symbols.live_tv_rounded,
-          title: 'IPTV 直播源',
-          subtitle: '查看与刷新已同步的 IPTV 直播源',
-          destinationBuilder: (_) => const IptvSourcesScreen(),
         ),
       ],
     );
@@ -1008,6 +991,8 @@ class _SettingsScreenState extends State<SettingsScreen> with FocusableTab, Moun
 
         if (updateInfo == null || updateInfo['hasUpdate'] != true) {
           showAppSnackBar(context, t.update.latestVersion);
+        } else {
+          _showUpdateDialog();
         }
       }
     } catch (e) {

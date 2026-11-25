@@ -1164,6 +1164,32 @@ class LocalLibraryClient implements MediaServerClient, StreamQualityClient {
 
   // ─── Artwork ───────────────────────────────────────────────────────────
 
+  static bool _isArtworkProxyUrl(String value) =>
+      value.contains('/api/v1/metadata/artwork') || value.contains('/api/v1/public/metadata/artwork');
+
+  String _rewriteMetadataArtworkUrl(
+    String resolvedUrl, {
+    required String serverBase,
+    required String? token,
+    int? width,
+    bool cover = true,
+  }) {
+    final sizedUrl = TmdbImageUrl.rewriteProxyArtworkSize(resolvedUrl, width: width, cover: cover);
+    final uri = Uri.tryParse(sizedUrl);
+    if (uri == null) return sizedUrl;
+    final isAuthArtwork = uri.path == '/api/v1/metadata/artwork' || uri.path.endsWith('/api/v1/metadata/artwork');
+    final sameOrigin = !uri.hasAuthority || (serverBase.isNotEmpty && sizedUrl.startsWith('$serverBase/'));
+    if (isAuthArtwork &&
+        token != null &&
+        token.isNotEmpty &&
+        !uri.queryParameters.containsKey('token') &&
+        sameOrigin) {
+      final params = Map<String, String>.from(uri.queryParameters)..['token'] = token;
+      return uri.replace(queryParameters: params).toString();
+    }
+    return sizedUrl;
+  }
+
   /// Resolves an artwork source to something an image widget can load:
   /// - `mount:<mountId>:<path>` -> local StreamProxy URL
   /// - Server artwork paths (`/api/v1/...`) -> active `media_library` server
@@ -1177,32 +1203,51 @@ class LocalLibraryClient implements MediaServerClient, StreamQualityClient {
       final serverBase = metadataServerUrl.trim().replaceAll(RegExp(r'/+$'), '');
       final token = metadataAccessToken?.trim();
       final hasToken = token != null && token.isNotEmpty;
-      final size = TmdbImageUrl.sizeForWidth(width, path: trimmed);
 
       // Already pointing at our server's artwork endpoint (relative or full).
       if (trimmed.startsWith('/api/v1/')) {
-        if (serverBase.isEmpty) return trimmed;
-        final resolved = '$serverBase$trimmed';
-        if (hasToken && trimmed.startsWith('/api/v1/metadata/artwork') && !trimmed.contains('token=')) {
-          final sep = resolved.contains('?') ? '&' : '?';
-          return '$resolved${sep}token=${Uri.encodeQueryComponent(token)}';
-        }
-        return resolved;
+        final resolved = serverBase.isEmpty ? trimmed : '$serverBase$trimmed';
+        return _rewriteMetadataArtworkUrl(
+          resolved,
+          serverBase: serverBase,
+          token: token,
+          width: width,
+          cover: cover,
+        );
       }
       if (serverBase.isNotEmpty && trimmed.startsWith('$serverBase/api/v1/')) {
-        if (hasToken && trimmed.contains('/api/v1/metadata/artwork') && !trimmed.contains('token=')) {
-          final sep = trimmed.contains('?') ? '&' : '?';
-          return '$trimmed${sep}token=${Uri.encodeQueryComponent(token)}';
-        }
-        return trimmed;
+        return _rewriteMetadataArtworkUrl(
+          trimmed,
+          serverBase: serverBase,
+          token: token,
+          width: width,
+          cover: cover,
+        );
       }
 
       // Proxy relative TMDB paths and remote artwork through our media_library server.
-      if (serverBase.isNotEmpty &&
-          (trimmed.startsWith('/') || trimmed.startsWith('http://') || trimmed.startsWith('https://'))) {
-        final proxyPath = hasToken ? '/api/v1/metadata/artwork' : ServerMetadataProvider.defaultArtworkProxyPath;
-        final tokenPart = hasToken ? '&token=${Uri.encodeQueryComponent(token)}' : '';
-        return '$serverBase$proxyPath?src=${Uri.encodeQueryComponent(trimmed)}&size=${Uri.encodeQueryComponent(size)}$tokenPart';
+      if (trimmed.startsWith('/') || trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
+        if (_isArtworkProxyUrl(trimmed)) {
+          return _rewriteMetadataArtworkUrl(
+            trimmed,
+            serverBase: serverBase,
+            token: token,
+            width: width,
+            cover: cover,
+          );
+        }
+        final sizedSource = width != null
+            ? TmdbImageUrl.replaceSize(trimmed, TmdbImageUrl.sizeForWidth(width, path: trimmed, cover: cover))
+            : trimmed;
+        if (serverBase.isNotEmpty) {
+          final proxyPath = hasToken ? '/api/v1/metadata/artwork' : ServerMetadataProvider.defaultArtworkProxyPath;
+          final sizePart = TmdbImageUrl.isRelativePath(sizedSource)
+              ? '&size=${Uri.encodeQueryComponent(TmdbImageUrl.sizeForWidth(width, path: sizedSource, cover: cover))}'
+              : '';
+          final tokenPart = hasToken ? '&token=${Uri.encodeQueryComponent(token)}' : '';
+          return '$serverBase$proxyPath?src=${Uri.encodeQueryComponent(sizedSource)}$sizePart$tokenPart';
+        }
+        return sizedSource;
       }
 
       return trimmed;
@@ -1223,7 +1268,25 @@ class LocalLibraryClient implements MediaServerClient, StreamQualityClient {
   }
 
   @override
-  String externalImageUrl(String url, {int? width, int? height, bool cover = true}) => url;
+  String externalImageUrl(String url, {int? width, int? height, bool cover = true}) {
+    final trimmed = url.trim();
+    if (trimmed.isEmpty) return '';
+    if (_isArtworkProxyUrl(trimmed)) {
+      final serverBase = metadataServerUrl.trim().replaceAll(RegExp(r'/+$'), '');
+      final token = metadataAccessToken?.trim();
+      return _rewriteMetadataArtworkUrl(
+        trimmed,
+        serverBase: serverBase,
+        token: token,
+        width: width,
+        cover: cover,
+      );
+    }
+    if (width != null && TmdbImageUrl.toRelativePath(trimmed) != trimmed) {
+      return TmdbImageUrl.replaceSize(trimmed, TmdbImageUrl.sizeForWidth(width, path: trimmed, cover: cover));
+    }
+    return url;
+  }
 
   // ─── Playback ──────────────────────────────────────────────────────────
 
