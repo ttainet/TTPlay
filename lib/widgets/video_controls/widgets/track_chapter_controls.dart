@@ -192,7 +192,7 @@ class TrackChapterControls extends StatelessWidget {
               child: Padding(
                 padding: const EdgeInsets.only(right: 4),
                 child: Container(
-                  height: 32,
+                  height: 36,
                   padding: const EdgeInsets.symmetric(horizontal: 3),
                   decoration: BoxDecoration(
                     color: Colors.white.withValues(alpha: 0.10),
@@ -213,15 +213,15 @@ class TrackChapterControls extends StatelessWidget {
                             checked: enabled,
                             tooltip: enabled ? t.danmaku.toggleOff : t.danmaku.toggleOn,
                             semanticLabel: enabled ? t.danmaku.toggleOff : t.danmaku.toggleOn,
-                            constraints: const BoxConstraints(minWidth: 34, minHeight: 28),
+                            constraints: const BoxConstraints(minWidth: 36, minHeight: 34),
                             padding: EdgeInsets.zero,
-                            focusBorderRadius: const BorderRadius.all(Radius.circular(14)),
+                            focusBorderRadius: const BorderRadius.all(Radius.circular(17)),
                             getTotalButtons: () => totalFocusable,
                             onPressed: () => danmakuController.toggleEnabled(),
                           );
                         },
                       ),
-                      Container(width: 1, height: 14, color: Colors.white.withValues(alpha: 0.18)),
+                      Container(width: 1, height: 16, color: Colors.white.withValues(alpha: 0.18)),
                       _buildTrackButton(
                         buttonIndex: settingsIndex,
                         icon: Symbols.tune_rounded,
@@ -230,9 +230,9 @@ class TrackChapterControls extends StatelessWidget {
                         iconWeight: 700,
                         tooltip: t.danmaku.settings,
                         semanticLabel: t.danmaku.settings,
-                        constraints: const BoxConstraints(minWidth: 32, minHeight: 28),
+                        constraints: const BoxConstraints(minWidth: 34, minHeight: 34),
                         padding: EdgeInsets.zero,
-                        focusBorderRadius: const BorderRadius.all(Radius.circular(14)),
+                        focusBorderRadius: const BorderRadius.all(Radius.circular(17)),
                         getTotalButtons: () => totalFocusable,
                         onPressed: () {
                           state.onCancelAutoHide?.call();
