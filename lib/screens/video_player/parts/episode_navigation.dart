@@ -26,10 +26,10 @@ extension _VideoPlayerEpisodeNavigationMethods on VideoPlayerScreenState {
   /// One answer for every entry point — the on-screen buttons, the OS media
   /// session and the companion remote — so no surface can advertise a step
   /// another refuses. Live TV steps through the channel list, and each
-  /// direction is answered by its own list adjacency. Off live, `next` needs
-  /// a loaded next item, while `previous` always has a target:
-  /// [_restartOrPlayPrevious] restarts the current item — a movie as much as
-  /// an episode — when nothing earlier is loaded.
+  /// Off live, `next` needs a loaded next item, while `previous` always has a
+  /// target: [_restartOrPlayPrevious] jumps to the loaded previous item when
+  /// available, or restarts the current item — a movie as much as episode 1 —
+  /// when nothing earlier is loaded.
   bool get _hasNextItem => widget.isLive ? _hasNextChannel : _episode.next != null;
 
   bool get _hasPreviousItem => !widget.isLive || _hasPreviousChannel;
@@ -87,7 +87,7 @@ extension _VideoPlayerEpisodeNavigationMethods on VideoPlayerScreenState {
     final currentPlayer = player;
     if (!mounted || currentPlayer == null || _episode.isLoadingPrevious) return;
 
-    if (!shouldRestartBeforePreviousItem(currentPlayer.state.position) && _episode.previous != null) {
+    if (_episode.previous != null) {
       await _playPrevious();
       return;
     }
@@ -103,7 +103,7 @@ extension _VideoPlayerEpisodeNavigationMethods on VideoPlayerScreenState {
     });
 
     final target = clampSeekPosition(currentPlayer, Duration.zero);
-    await _seekPlayback(target);
+    await _seekPlayback(target, suppressSkip: true);
     if (!mounted || currentPlayer != player) return;
 
     _mediaControls.pushPlaybackState();

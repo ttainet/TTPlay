@@ -5,6 +5,7 @@ import 'package:drift/drift.dart';
 import '../database/app_database.dart';
 import '../library/deterministic_keys.dart';
 import '../library/library_repository.dart';
+import '../library/library_watch_state_store.dart';
 import '../models/sync_config_entry.dart';
 import '../services/sync_config_store.dart';
 import '../storage/storage_path.dart';
@@ -895,23 +896,37 @@ class CloudProjectionEngine {
       }
     }
 
-    final tmdbId = _nonEmptyString(raw['tmdb_id']);
-    final imdbId = _nonEmptyString(raw['imdb_id']);
+    var tmdbId = _nonEmptyString(raw['tmdb_id']);
+    var imdbId = _nonEmptyString(raw['imdb_id']);
+    var tvdbId = _nonEmptyString(raw['tvdb_id']);
     String? bangumiId;
     String? doubanId;
     if (kind == LibraryKinds.movie || kind == LibraryKinds.show) {
       final wkParts = workKey.split(':');
       if (wkParts.length >= 3) {
-        if (wkParts[0] == 'bangumi' && wkParts[2].trim().isNotEmpty) {
-          bangumiId = wkParts[2].trim();
-        } else if (wkParts[0] == 'douban' && wkParts[2].trim().isNotEmpty) {
-          doubanId = wkParts[2].trim();
+        final wkProvider = wkParts[0].trim().toLowerCase();
+        final wkExtId = wkParts[2].trim();
+        if (wkExtId.isNotEmpty) {
+          switch (wkProvider) {
+            case 'tmdb':
+              tmdbId ??= wkExtId;
+            case 'imdb':
+              imdbId ??= wkExtId;
+            case 'tvdb':
+              tvdbId ??= wkExtId;
+            case 'bangumi':
+              bangumiId = wkExtId;
+            case 'douban':
+              doubanId = wkExtId;
+          }
         }
       }
     }
     final metadataSource = tmdbId != null
         ? 'tmdb'
-        : (bangumiId != null ? 'bangumi' : (doubanId != null ? 'douban' : null));
+        : (imdbId != null
+              ? 'imdb'
+              : (tvdbId != null ? 'tvdb' : (bangumiId != null ? 'bangumi' : (doubanId != null ? 'douban' : null))));
 
     final poster = _nonEmptyString(raw['poster_url']) ?? _nonEmptyString(raw['poster_source']);
     final backdrop = _nonEmptyString(raw['backdrop_url']) ?? _nonEmptyString(raw['backdrop_source']);
@@ -961,6 +976,7 @@ class CloudProjectionEngine {
       logoSource: logo != null ? Value(logo) : const Value.absent(),
       tmdbId: tmdbId != null ? Value(tmdbId) : const Value.absent(),
       imdbId: imdbId != null ? Value(imdbId) : const Value.absent(),
+      tvdbId: tvdbId != null ? Value(tvdbId) : const Value.absent(),
       bangumiId: bangumiId != null ? Value(bangumiId) : const Value.absent(),
       doubanId: doubanId != null ? Value(doubanId) : const Value.absent(),
       metadataSource: metadataSource != null ? Value(metadataSource) : const Value.absent(),
@@ -1477,6 +1493,7 @@ class CloudProjectionEngine {
             DeterministicKeys.canonicalizeWorkKey(f['work_key'] as String),
       };
 
+      final watchStates = LibraryWatchStateStore(db);
       await db.transaction(() async {
         final nowMs = DateTime.now().millisecondsSinceEpoch;
         for (final p in progressList) {
@@ -1514,47 +1531,23 @@ class CloudProjectionEngine {
           }
           if (item == null) continue;
 
-          final durMs = (p['duration_ms'] as num?)?.toInt();
-          await db
-              .into(db.libraryUserStates)
-              .insertOnConflictUpdate(
-                LibraryUserStatesCompanion(
-                  itemId: Value(item.id),
-                  positionMs: Value((p['position_ms'] as num?)?.toInt() ?? 0),
-                  durationMs: durMs != null ? Value(durMs) : const Value.absent(),
-                  watched: Value(p['watched'] == true),
-                  playCount: Value((p['play_count'] as num?)?.toInt() ?? 0),
-                  lastPlayedAt: Value((p['last_played_at'] as num?)?.toInt()),
-                  favorite: Value(!isEpisodeProgress && wk.isNotEmpty && favKeys.contains(wk)),
-                  hiddenFromContinue: Value(p['hidden_from_continue'] == true),
-                  updatedAt: Value((p['updated_at'] as num?)?.toInt() ?? nowMs),
-                ),
-              );
+          await watchStates.applyRemoteProgress(
+            item: item,
+            positionMs: (p['position_ms'] as num?)?.toInt() ?? 0,
+            durationMs: (p['duration_ms'] as num?)?.toInt(),
+            watched: p['watched'] == true,
+            playCount: (p['play_count'] as num?)?.toInt() ?? 0,
+            lastPlayedAt: (p['last_played_at'] as num?)?.toInt(),
+            favorite: !isEpisodeProgress && wk.isNotEmpty && favKeys.contains(wk),
+            hiddenFromContinue: p['hidden_from_continue'] == true,
+            updatedAt: (p['updated_at'] as num?)?.toInt() ?? nowMs,
+          );
         }
 
         for (final favWk in favKeys) {
           final item = await (db.select(db.libraryItems)..where((t) => t.workKey.equals(favWk))).getSingleOrNull();
           if (item == null) continue;
-          final existingState = await (db.select(
-            db.libraryUserStates,
-          )..where((s) => s.itemId.equals(item.id))).getSingleOrNull();
-          if (existingState != null) {
-            if (!existingState.favorite) {
-              await (db.update(
-                db.libraryUserStates,
-              )..where((s) => s.itemId.equals(item.id))).write(const LibraryUserStatesCompanion(favorite: Value(true)));
-            }
-          } else {
-            await db
-                .into(db.libraryUserStates)
-                .insert(
-                  LibraryUserStatesCompanion(
-                    itemId: Value(item.id),
-                    favorite: const Value(true),
-                    updatedAt: Value(nowMs),
-                  ),
-                );
-          }
+          await watchStates.applyRemoteFavorite(item: item, favorite: true, updatedAt: nowMs);
         }
       });
 

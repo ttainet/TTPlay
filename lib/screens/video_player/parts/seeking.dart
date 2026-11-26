@@ -1,11 +1,18 @@
 part of '../../video_player_screen.dart';
 
 extension _VideoPlayerSeekingMethods on VideoPlayerScreenState {
-  Future<void> _seekPlayback(Duration position) async {
+  Future<void> _seekPlayback(Duration position, {bool suppressSkip = false}) async {
     final currentPlayer = player;
     if (!mounted || _shuttingDown || currentPlayer == null) return;
     final target = clampSeekPosition(currentPlayer, position);
-    await _performSeekPlayback(target);
+    final suppressionGen = suppressSkip ? _videoControlsKey.currentState?.beginManualSeekSuppression(target) : null;
+    try {
+      await _performSeekPlayback(target);
+    } finally {
+      if (suppressionGen != null) {
+        _videoControlsKey.currentState?.endManualSeekSuppression(suppressionGen);
+      }
+    }
   }
 
   Future<void> _performSeekPlayback(Duration position, {bool Function()? isCurrent}) async {

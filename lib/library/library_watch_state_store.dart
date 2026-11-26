@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:drift/drift.dart';
 
 import '../database/app_database.dart';
@@ -30,6 +32,7 @@ class LibraryWatchStateStore {
       kind: work.kind,
       tmdbId: work.tmdbId,
       imdbId: work.imdbId,
+      tvdbId: work.tvdbId,
       bangumiId: work.bangumiId,
       doubanId: work.doubanId,
     );
@@ -61,6 +64,7 @@ class LibraryWatchStateStore {
       kind: work.kind,
       tmdbId: work.tmdbId,
       imdbId: work.imdbId,
+      tvdbId: work.tvdbId,
       bangumiId: work.bangumiId,
       doubanId: work.doubanId,
     );
@@ -217,4 +221,156 @@ class LibraryWatchStateStore {
           updatedAt: state.updatedAt,
         ),
       );
+
+  /// Merges a remote watch progress row into the durable [workWatchStates]
+  /// SSOT (when resolvable) and projects it onto [libraryUserStates].
+  /// Returns `false` if a newer local mutation already exists.
+  Future<bool> applyRemoteProgress({
+    required LibraryItemRow item,
+    required int positionMs,
+    int? durationMs,
+    required bool watched,
+    required int playCount,
+    int? lastPlayedAt,
+    required bool favorite,
+    required bool hiddenFromContinue,
+    required int updatedAt,
+  }) async {
+    final identity = await _identity(item);
+    if (identity == null) {
+      final existing = await (db.select(
+        db.libraryUserStates,
+      )..where((t) => t.itemId.equals(item.id))).getSingleOrNull();
+      if (existing != null && existing.updatedAt > updatedAt) {
+        return false;
+      }
+      await db
+          .into(db.libraryUserStates)
+          .insertOnConflictUpdate(
+            LibraryUserStatesCompanion(
+              itemId: Value(item.id),
+              positionMs: Value(positionMs),
+              durationMs: durationMs != null ? Value(durationMs) : const Value.absent(),
+              watched: Value(watched),
+              playCount: Value(playCount),
+              lastPlayedAt: Value(lastPlayedAt),
+              favorite: Value(favorite),
+              hiddenFromContinue: Value(hiddenFromContinue),
+              updatedAt: Value(updatedAt),
+            ),
+          );
+      return true;
+    }
+
+    final key = identity.work.stateKey(season: identity.season, episode: identity.episode);
+    final existing = await read(key);
+    await db
+        .into(db.libraryWorkBindings)
+        .insertOnConflictUpdate(LibraryWorkBindingsCompanion.insert(itemId: Value(item.id), stateKey: key));
+    if (existing != null && existing.updatedAt > updatedAt) {
+      await _project(item.id, existing);
+      return false;
+    }
+
+    await db
+        .into(db.workWatchStates)
+        .insertOnConflictUpdate(
+          WorkWatchStatesCompanion.insert(
+            stateKey: key,
+            source: identity.work.source,
+            kind: identity.work.kind,
+            provider: identity.work.provider,
+            externalId: identity.work.externalId,
+            seasonNumber: Value(identity.season),
+            episodeNumber: Value(identity.episode),
+            positionMs: Value(positionMs),
+            durationMs: Value(durationMs ?? existing?.durationMs),
+            watched: Value(watched),
+            playCount: Value(playCount),
+            lastPlayedAt: Value(lastPlayedAt),
+            favorite: Value(favorite),
+            hiddenFromContinue: Value(hiddenFromContinue),
+            updatedAt: updatedAt,
+          ),
+        );
+
+    final saved = (await read(key))!;
+    final bindings = await (db.select(db.libraryWorkBindings)..where((t) => t.stateKey.equals(key))).get();
+    final projectedIds = <int>{item.id, for (final b in bindings) b.itemId};
+    for (final id in projectedIds) {
+      await _project(id, saved);
+    }
+    return true;
+  }
+
+  /// Merges a remote favorite flag into the durable [workWatchStates] SSOT (when
+  /// resolvable) and projects it onto [libraryUserStates].
+  Future<bool> applyRemoteFavorite({
+    required LibraryItemRow item,
+    required bool favorite,
+    required int updatedAt,
+  }) async {
+    final identity = await _identity(item);
+    if (identity == null) {
+      final existingState = await (db.select(
+        db.libraryUserStates,
+      )..where((s) => s.itemId.equals(item.id))).getSingleOrNull();
+      if (existingState != null) {
+        if (existingState.favorite == favorite) return false;
+        await (db.update(
+          db.libraryUserStates,
+        )..where((s) => s.itemId.equals(item.id))).write(LibraryUserStatesCompanion(favorite: Value(favorite)));
+      } else {
+        await db
+            .into(db.libraryUserStates)
+            .insert(
+              LibraryUserStatesCompanion(
+                itemId: Value(item.id),
+                favorite: Value(favorite),
+                updatedAt: Value(updatedAt),
+              ),
+            );
+      }
+      return true;
+    }
+
+    final key = identity.work.stateKey(season: identity.season, episode: identity.episode);
+    final existing = await read(key);
+    await db
+        .into(db.libraryWorkBindings)
+        .insertOnConflictUpdate(LibraryWorkBindingsCompanion.insert(itemId: Value(item.id), stateKey: key));
+    if (existing != null) {
+      if (existing.favorite == favorite) {
+        await _project(item.id, existing);
+        return false;
+      }
+      await (db.update(db.workWatchStates)..where((t) => t.stateKey.equals(key))).write(
+        WorkWatchStatesCompanion(favorite: Value(favorite), updatedAt: Value(math.max(existing.updatedAt, updatedAt))),
+      );
+    } else {
+      await db
+          .into(db.workWatchStates)
+          .insert(
+            WorkWatchStatesCompanion.insert(
+              stateKey: key,
+              source: identity.work.source,
+              kind: identity.work.kind,
+              provider: identity.work.provider,
+              externalId: identity.work.externalId,
+              seasonNumber: Value(identity.season),
+              episodeNumber: Value(identity.episode),
+              favorite: Value(favorite),
+              updatedAt: updatedAt,
+            ),
+          );
+    }
+
+    final saved = (await read(key))!;
+    final bindings = await (db.select(db.libraryWorkBindings)..where((t) => t.stateKey.equals(key))).get();
+    final projectedIds = <int>{item.id, for (final b in bindings) b.itemId};
+    for (final id in projectedIds) {
+      await _project(id, saved);
+    }
+    return true;
+  }
 }

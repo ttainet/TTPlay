@@ -1,6 +1,6 @@
 part of '../video_controls.dart';
 
-extension _PlexVideoControlsPlaybackExtrasMethods on _PlexVideoControlsState {
+extension _PlexVideoControlsPlaybackExtrasMethods on PlexVideoControlsState {
   Future<void> _loadPlaybackExtras({bool forceRefresh = false}) async {
     // Live TV metadata uses EPG rating keys, not library items
     if (widget.isLive) return;

@@ -1,6 +1,6 @@
 part of '../video_controls.dart';
 
-extension _PlexVideoControlsKeyEventMethods on _PlexVideoControlsState {
+extension _PlexVideoControlsKeyEventMethods on PlexVideoControlsState {
   Future<void> _persistKeyboardSpeedPreference(double rate) async {
     var savedPerWork = false;
     if (widget.metadata.serverId == WorkIdentity.localSource) {

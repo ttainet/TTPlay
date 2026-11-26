@@ -2,7 +2,7 @@ part of '../video_controls.dart';
 
 final Expando<LatestAsyncWrite<String>> _subtitleVisibilityWrites = Expando<LatestAsyncWrite<String>>();
 
-extension _PlexVideoControlsTrackMethods on _PlexVideoControlsState {
+extension _PlexVideoControlsTrackMethods on PlexVideoControlsState {
   void _toggleSubtitles() {
     // Restoring always works: backends without a renderer-level visibility
     // switch hide subtitles by deselecting them, so the current track reads
@@ -230,6 +230,8 @@ extension _PlexVideoControlsTrackMethods on _PlexVideoControlsState {
       onOnlineSubtitleApplied: _handleOnlineSubtitleApplied,
       subtitleSearchSupported: _canSearchOnlineSubtitles(),
       onRefreshDirectorySubtitles: _buildRefreshDirectorySubtitlesCallback(),
+      danmakuController: widget.danmakuController,
+      danmakuSupported: !widget.isLive && widget.danmakuController != null,
     );
   }
 

@@ -17,6 +17,7 @@ class WorkIdentity {
     required String kind,
     String? tmdbId,
     String? imdbId,
+    String? tvdbId,
     String? bangumiId,
     String? doubanId,
   }) {
@@ -28,6 +29,10 @@ class WorkIdentity {
     final imdb = imdbId?.trim().toLowerCase();
     if (imdb != null && RegExp(r'^tt\d+$').hasMatch(imdb)) {
       return WorkIdentity(source: source, kind: kind, provider: 'imdb', externalId: imdb);
+    }
+    final tvdb = int.tryParse(tvdbId?.trim() ?? '');
+    if (tvdb != null && tvdb > 0) {
+      return WorkIdentity(source: source, kind: kind, provider: 'tvdb', externalId: '$tvdb');
     }
     final bgm = int.tryParse(bangumiId?.trim() ?? '');
     if (bgm != null && bgm > 0) {
@@ -67,6 +72,7 @@ class WorkIdentity {
       kind: kind,
       tmdbId: provider == 'tmdb' ? extId : null,
       imdbId: provider == 'imdb' ? extId : null,
+      tvdbId: provider == 'tvdb' ? extId : null,
       bangumiId: provider == 'bangumi' ? extId : null,
       doubanId: provider == 'douban' ? extId : null,
     );

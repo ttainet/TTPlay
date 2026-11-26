@@ -758,7 +758,7 @@ extension _VideoPlayerPlaybackServiceMethods on VideoPlayerScreenState {
         if (widget.isLive) return;
         final currentPlayer = player;
         if (currentPlayer != null) {
-          unawaited(_seekPlayback(clampSeekPosition(currentPlayer, position)));
+          unawaited(_seekPlayback(clampSeekPosition(currentPlayer, position), suppressSkip: true));
         }
       },
       // Next/previous mean what the on-screen buttons mean: a channel zap on

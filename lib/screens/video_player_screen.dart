@@ -81,6 +81,7 @@ import '../services/sleep_timer_service.dart';
 import '../services/subtitle_preference.dart';
 import '../services/sync_config_store.dart';
 import '../services/online_subtitle_store.dart';
+import '../services/danmaku/danmaku_controller.dart';
 import '../services/work_playback_prefs_store.dart';
 import '../services/work_track_prefs_store.dart';
 import '../services/track_manager.dart';
@@ -140,6 +141,7 @@ import 'video_player/tv_background_suspend_state.dart';
 import 'video_player/visual_effects_controller.dart';
 import 'video_player/widgets/player_prompt_overlays.dart';
 import '../widgets/overlay_sheet.dart';
+import '../widgets/danmaku/danmaku_overlay.dart';
 import '../widgets/video_controls/player_chrome_controller.dart';
 import '../widgets/video_controls/models/track_controls_state.dart';
 import '../widgets/video_controls/video_controls.dart';
@@ -884,10 +886,12 @@ class VideoPlayerScreenState extends State<VideoPlayerScreen>
   ///
   /// Short debounce: a lone lock-screen skip must still feel immediate, and
   /// every burst source repeats far faster than this.
+  final GlobalKey<PlexVideoControlsState> _videoControlsKey = GlobalKey<PlexVideoControlsState>();
+
   late final DebouncedSeekAccumulator _relativeSkip = DebouncedSeekAccumulator(
     currentPosition: () => player?.state.position ?? Duration.zero,
     duration: () => player?.state.duration ?? Duration.zero,
-    seek: (target) => unawaited(_seekPlayback(target)),
+    seek: (target) => unawaited(_seekPlayback(target, suppressSkip: true)),
     debounce: const Duration(milliseconds: 300),
   );
 
@@ -942,6 +946,7 @@ class VideoPlayerScreenState extends State<VideoPlayerScreen>
 
   // VLC-style in-player toast controller (rate changes, backend switch, etc.).
   final PlayerToastController _toastController = PlayerToastController();
+  late final DanmakuController _danmakuController = DanmakuController();
 
   late final VisualEffectsController _visualEffects = VisualEffectsController(
     player: () => player,
@@ -2509,6 +2514,7 @@ class VideoPlayerScreenState extends State<VideoPlayerScreen>
     _isExiting.dispose();
     _chromeController.dispose();
     _toastController.dispose();
+    _danmakuController.dispose();
 
     // The release sequence below mirrors _tearDownFailedPlayerAttempt but is
     // deliberately separate: dispose() cannot await, and it destroys the

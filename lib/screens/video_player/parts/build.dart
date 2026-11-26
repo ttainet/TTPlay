@@ -255,16 +255,33 @@ extension _VideoPlayerBuildMethods on VideoPlayerScreenState {
                     final onNext = _hasNextItem && !_episode.isLoadingNext && canNavigateItems
                         ? _navigateToNextItem
                         : null;
-                    final onPrevious = _hasPreviousItem && canNavigateItems ? _navigateToPreviousItem : null;
+                    final onPrevious = _hasPreviousItem && !_episode.isLoadingPrevious && canNavigateItems
+                        ? _navigateToPreviousItem
+                        : null;
 
                     final sourceAudioTracks = _currentMediaInfo?.audioTracks ?? const <MediaAudioTrack>[];
                     final sourceSubtitleSidecars = _sourceSubtitleSidecarsForControls();
                     final sourceSubtitleTracks = _sourceSubtitleTracksForControls();
+                    final activeVersion =
+                        (_effectiveSelectedMediaIndex >= 0 && _effectiveSelectedMediaIndex < _availableVersions.length)
+                        ? _availableVersions[_effectiveSelectedMediaIndex]
+                        : null;
+                    final activeFilePath =
+                        activeVersion?.parts.firstOrNull?.file ?? _currentMetadata.allPartFiles.firstOrNull;
 
                     return Video(
                       player: player!,
                       hasFirstFrame: _firstFrame.uiReady,
+                      overlay: !widget.isLive
+                          ? DanmakuOverlay(
+                              player: player!,
+                              controller: _danmakuController,
+                              metadata: _currentMetadata,
+                              activeFilePath: activeFilePath,
+                            )
+                          : null,
                       controls: (context) => PlexVideoControls(
+                        key: _videoControlsKey,
                         player: player!,
                         volumeController: _volumeController!,
                         metadata: _currentMetadata,
@@ -333,6 +350,7 @@ extension _VideoPlayerBuildMethods on VideoPlayerScreenState {
                         onToggleAmbientLighting: _ambientLightingService?.isSupported == true
                             ? _visualEffects.toggleAmbientLighting
                             : null,
+                        danmakuController: !widget.isLive ? _danmakuController : null,
                         toastController: _toastController,
                       ),
                     );

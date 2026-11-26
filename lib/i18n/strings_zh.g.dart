@@ -100,6 +100,7 @@ class TranslationsZh extends Translations with BaseTranslations<AppLocale, Trans
 	@override late final Translations$sync$zh sync = Translations$sync$zh.internal(_root);
 	@override late final Translations$session$zh session = Translations$session$zh.internal(_root);
 	@override late final Translations$serverAdmin$zh serverAdmin = Translations$serverAdmin$zh.internal(_root);
+	@override late final Translations$danmaku$zh danmaku = Translations$danmaku$zh.internal(_root);
 }
 
 // Path: app
@@ -3084,6 +3085,58 @@ class Translations$serverAdmin$zh extends Translations$serverAdmin$en {
 	@override String get fieldRating => '评分';
 	@override String get fieldLocked => '锁定元数据（自动重刮不覆盖）';
 	@override String get tvAdminUnsupported => '服务器管理功能仅支持电脑端与手机端。';
+}
+
+// Path: danmaku
+class Translations$danmaku$zh extends Translations$danmaku$en {
+	Translations$danmaku$zh.internal(TranslationsZh root) : this._root = root, super.internal(root);
+
+	final TranslationsZh _root; // ignore: unused_field
+
+	// Translations
+	@override String get title => '弹幕';
+	@override String get toggleOn => '开启弹幕';
+	@override String get toggleOff => '关闭弹幕';
+	@override String get settings => '弹幕设置';
+	@override String get tabDisplay => '显示设置';
+	@override String get tabFilter => '屏蔽过滤';
+	@override String get tabSource => '弹幕源';
+	@override String get enabled => '显示弹幕';
+	@override String get autoMatch => '播放时自动匹配弹幕';
+	@override String get fontSize => '字体大小';
+	@override String get opacity => '不透明度';
+	@override String get scrollSpeed => '滚屏时长（速度）';
+	@override String get faster => '更快';
+	@override String get slower => '更慢';
+	@override String get displayArea => '显示区域';
+	@override String get areaQuarter => '1/4 屏';
+	@override String get areaHalf => '1/2 屏';
+	@override String get areaThreeQuarters => '3/4 屏';
+	@override String get areaFull => '全屏';
+	@override String get strokeWidth => '描边粗细';
+	@override String get mergeDuplicates => '合并重复弹幕 (×N)';
+	@override String get allowStacking => '拥挤时允许重叠';
+	@override String get timeOffset => '时间偏移';
+	@override String get reset => '重置';
+	@override String get blockScroll => '屏蔽滚动弹幕';
+	@override String get blockTop => '屏蔽顶部弹幕';
+	@override String get blockBottom => '屏蔽底部弹幕';
+	@override String get blockColor => '屏蔽彩色弹幕';
+	@override String get blockedKeywords => '屏蔽关键词';
+	@override String get keywordHint => '输入要屏蔽的关键词';
+	@override String get addKeyword => '添加';
+	@override String get noKeywords => '暂无屏蔽关键词';
+	@override String get currentMatch => '当前弹幕源';
+	@override String get notMatched => '尚未匹配弹幕';
+	@override String get loading => '正在加载弹幕…';
+	@override String get serverUnavailable => '未连接到媒体库后端服务';
+	@override String get rematch => '重新自动匹配';
+	@override String get searchHint => '输入剧名或粘贴原站播放链接';
+	@override String get searchButton => '搜索';
+	@override String get episodes => '分集列表';
+	@override String get noResults => '未找到匹配结果';
+	@override String loadedSummary({required Object count, required Object totalCount}) => '已加载 ${count} 条（共 ${totalCount} 条）';
+	@override String get backToResults => '返回搜索结果';
 }
 
 // Path: appIcon.names
@@ -6963,6 +7016,49 @@ extension on TranslationsZh {
 			'serverAdmin.fieldRating' => '评分',
 			'serverAdmin.fieldLocked' => '锁定元数据（自动重刮不覆盖）',
 			'serverAdmin.tvAdminUnsupported' => '服务器管理功能仅支持电脑端与手机端。',
+			'danmaku.title' => '弹幕',
+			'danmaku.toggleOn' => '开启弹幕',
+			'danmaku.toggleOff' => '关闭弹幕',
+			'danmaku.settings' => '弹幕设置',
+			'danmaku.tabDisplay' => '显示设置',
+			'danmaku.tabFilter' => '屏蔽过滤',
+			'danmaku.tabSource' => '弹幕源',
+			'danmaku.enabled' => '显示弹幕',
+			'danmaku.autoMatch' => '播放时自动匹配弹幕',
+			'danmaku.fontSize' => '字体大小',
+			'danmaku.opacity' => '不透明度',
+			'danmaku.scrollSpeed' => '滚屏时长（速度）',
+			'danmaku.faster' => '更快',
+			'danmaku.slower' => '更慢',
+			'danmaku.displayArea' => '显示区域',
+			'danmaku.areaQuarter' => '1/4 屏',
+			'danmaku.areaHalf' => '1/2 屏',
+			'danmaku.areaThreeQuarters' => '3/4 屏',
+			'danmaku.areaFull' => '全屏',
+			'danmaku.strokeWidth' => '描边粗细',
+			'danmaku.mergeDuplicates' => '合并重复弹幕 (×N)',
+			'danmaku.allowStacking' => '拥挤时允许重叠',
+			'danmaku.timeOffset' => '时间偏移',
+			'danmaku.reset' => '重置',
+			'danmaku.blockScroll' => '屏蔽滚动弹幕',
+			'danmaku.blockTop' => '屏蔽顶部弹幕',
+			'danmaku.blockBottom' => '屏蔽底部弹幕',
+			'danmaku.blockColor' => '屏蔽彩色弹幕',
+			'danmaku.blockedKeywords' => '屏蔽关键词',
+			'danmaku.keywordHint' => '输入要屏蔽的关键词',
+			'danmaku.addKeyword' => '添加',
+			'danmaku.noKeywords' => '暂无屏蔽关键词',
+			'danmaku.currentMatch' => '当前弹幕源',
+			'danmaku.notMatched' => '尚未匹配弹幕',
+			'danmaku.loading' => '正在加载弹幕…',
+			'danmaku.serverUnavailable' => '未连接到媒体库后端服务',
+			'danmaku.rematch' => '重新自动匹配',
+			'danmaku.searchHint' => '输入剧名或粘贴原站播放链接',
+			'danmaku.searchButton' => '搜索',
+			'danmaku.episodes' => '分集列表',
+			'danmaku.noResults' => '未找到匹配结果',
+			'danmaku.loadedSummary' => ({required Object count, required Object totalCount}) => '已加载 ${count} 条（共 ${totalCount} 条）',
+			'danmaku.backToResults' => '返回搜索结果',
 			_ => null,
 		};
 	}

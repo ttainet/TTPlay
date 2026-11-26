@@ -77,7 +77,7 @@ extension _VideoPlayerCompanionRemoteMethods on VideoPlayerScreenState {
 
   void _remoteSeekTo(Duration position) {
     unawaited(
-      _seekPlayback(position).whenComplete(() {
+      _seekPlayback(position, suppressSkip: true).whenComplete(() {
         if (mounted && !_shuttingDown) _pushRemotePlayerSnapshot();
       }),
     );

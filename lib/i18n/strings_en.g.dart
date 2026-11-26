@@ -101,6 +101,7 @@ class Translations with BaseTranslations<AppLocale, Translations> {
 	late final Translations$sync$en sync = Translations$sync$en.internal(_root);
 	late final Translations$session$en session = Translations$session$en.internal(_root);
 	late final Translations$serverAdmin$en serverAdmin = Translations$serverAdmin$en.internal(_root);
+	late final Translations$danmaku$en danmaku = Translations$danmaku$en.internal(_root);
 }
 
 // Path: app
@@ -7876,6 +7877,144 @@ class Translations$serverAdmin$en {
 	String get tvAdminUnsupported => 'Server administration is only available on PC and mobile devices.';
 }
 
+// Path: danmaku
+class Translations$danmaku$en {
+	Translations$danmaku$en.internal(this._root);
+
+	final Translations _root; // ignore: unused_field
+
+	// Translations
+
+	/// en: 'Danmaku'
+	String get title => 'Danmaku';
+
+	/// en: 'Turn on danmaku'
+	String get toggleOn => 'Turn on danmaku';
+
+	/// en: 'Turn off danmaku'
+	String get toggleOff => 'Turn off danmaku';
+
+	/// en: 'Danmaku settings'
+	String get settings => 'Danmaku settings';
+
+	/// en: 'Display'
+	String get tabDisplay => 'Display';
+
+	/// en: 'Filters'
+	String get tabFilter => 'Filters';
+
+	/// en: 'Source'
+	String get tabSource => 'Source';
+
+	/// en: 'Show danmaku'
+	String get enabled => 'Show danmaku';
+
+	/// en: 'Auto-match danmaku on playback'
+	String get autoMatch => 'Auto-match danmaku on playback';
+
+	/// en: 'Font size'
+	String get fontSize => 'Font size';
+
+	/// en: 'Opacity'
+	String get opacity => 'Opacity';
+
+	/// en: 'Scroll duration'
+	String get scrollSpeed => 'Scroll duration';
+
+	/// en: 'Faster'
+	String get faster => 'Faster';
+
+	/// en: 'Slower'
+	String get slower => 'Slower';
+
+	/// en: 'Display area'
+	String get displayArea => 'Display area';
+
+	/// en: '1/4'
+	String get areaQuarter => '1/4';
+
+	/// en: '1/2'
+	String get areaHalf => '1/2';
+
+	/// en: '3/4'
+	String get areaThreeQuarters => '3/4';
+
+	/// en: 'Full'
+	String get areaFull => 'Full';
+
+	/// en: 'Outline thickness'
+	String get strokeWidth => 'Outline thickness';
+
+	/// en: 'Merge duplicates (×N)'
+	String get mergeDuplicates => 'Merge duplicates (×N)';
+
+	/// en: 'Allow overlap when crowded'
+	String get allowStacking => 'Allow overlap when crowded';
+
+	/// en: 'Time offset'
+	String get timeOffset => 'Time offset';
+
+	/// en: 'Reset'
+	String get reset => 'Reset';
+
+	/// en: 'Block scrolling danmaku'
+	String get blockScroll => 'Block scrolling danmaku';
+
+	/// en: 'Block top danmaku'
+	String get blockTop => 'Block top danmaku';
+
+	/// en: 'Block bottom danmaku'
+	String get blockBottom => 'Block bottom danmaku';
+
+	/// en: 'Block colored danmaku'
+	String get blockColor => 'Block colored danmaku';
+
+	/// en: 'Blocked keywords'
+	String get blockedKeywords => 'Blocked keywords';
+
+	/// en: 'Add blocked word or phrase'
+	String get keywordHint => 'Add blocked word or phrase';
+
+	/// en: 'Add'
+	String get addKeyword => 'Add';
+
+	/// en: 'No blocked keywords'
+	String get noKeywords => 'No blocked keywords';
+
+	/// en: 'Current source'
+	String get currentMatch => 'Current source';
+
+	/// en: 'No danmaku matched yet'
+	String get notMatched => 'No danmaku matched yet';
+
+	/// en: 'Loading danmaku...'
+	String get loading => 'Loading danmaku...';
+
+	/// en: 'Media library server is unavailable'
+	String get serverUnavailable => 'Media library server is unavailable';
+
+	/// en: 'Auto match'
+	String get rematch => 'Auto match';
+
+	/// en: 'Search title or paste video URL'
+	String get searchHint => 'Search title or paste video URL';
+
+	/// en: 'Search'
+	String get searchButton => 'Search';
+
+	/// en: 'Episodes'
+	String get episodes => 'Episodes';
+
+	/// en: 'No matching results'
+	String get noResults => 'No matching results';
+
+	/// en: '${count} loaded (${totalCount} total)'
+	String loadedSummary({required Object count, required Object totalCount}) => '${count} loaded (${totalCount} total)';
+
+	/// en: 'Back to results'
+	String get backToResults => 'Back to results';
+}
+
 // Path: appIcon.names
 class Translations$appIcon$names$en {
 	Translations$appIcon$names$en.internal(this._root);
@@ -12806,6 +12945,49 @@ extension on Translations {
 			'serverAdmin.fieldRating' => 'Rating',
 			'serverAdmin.fieldLocked' => 'Lock metadata against auto-rescrape',
 			'serverAdmin.tvAdminUnsupported' => 'Server administration is only available on PC and mobile devices.',
+			'danmaku.title' => 'Danmaku',
+			'danmaku.toggleOn' => 'Turn on danmaku',
+			'danmaku.toggleOff' => 'Turn off danmaku',
+			'danmaku.settings' => 'Danmaku settings',
+			'danmaku.tabDisplay' => 'Display',
+			'danmaku.tabFilter' => 'Filters',
+			'danmaku.tabSource' => 'Source',
+			'danmaku.enabled' => 'Show danmaku',
+			'danmaku.autoMatch' => 'Auto-match danmaku on playback',
+			'danmaku.fontSize' => 'Font size',
+			'danmaku.opacity' => 'Opacity',
+			'danmaku.scrollSpeed' => 'Scroll duration',
+			'danmaku.faster' => 'Faster',
+			'danmaku.slower' => 'Slower',
+			'danmaku.displayArea' => 'Display area',
+			'danmaku.areaQuarter' => '1/4',
+			'danmaku.areaHalf' => '1/2',
+			'danmaku.areaThreeQuarters' => '3/4',
+			'danmaku.areaFull' => 'Full',
+			'danmaku.strokeWidth' => 'Outline thickness',
+			'danmaku.mergeDuplicates' => 'Merge duplicates (×N)',
+			'danmaku.allowStacking' => 'Allow overlap when crowded',
+			'danmaku.timeOffset' => 'Time offset',
+			'danmaku.reset' => 'Reset',
+			'danmaku.blockScroll' => 'Block scrolling danmaku',
+			'danmaku.blockTop' => 'Block top danmaku',
+			'danmaku.blockBottom' => 'Block bottom danmaku',
+			'danmaku.blockColor' => 'Block colored danmaku',
+			'danmaku.blockedKeywords' => 'Blocked keywords',
+			'danmaku.keywordHint' => 'Add blocked word or phrase',
+			'danmaku.addKeyword' => 'Add',
+			'danmaku.noKeywords' => 'No blocked keywords',
+			'danmaku.currentMatch' => 'Current source',
+			'danmaku.notMatched' => 'No danmaku matched yet',
+			'danmaku.loading' => 'Loading danmaku...',
+			'danmaku.serverUnavailable' => 'Media library server is unavailable',
+			'danmaku.rematch' => 'Auto match',
+			'danmaku.searchHint' => 'Search title or paste video URL',
+			'danmaku.searchButton' => 'Search',
+			'danmaku.episodes' => 'Episodes',
+			'danmaku.noResults' => 'No matching results',
+			'danmaku.loadedSummary' => ({required Object count, required Object totalCount}) => '${count} loaded (${totalCount} total)',
+			'danmaku.backToResults' => 'Back to results',
 			_ => null,
 		};
 	}

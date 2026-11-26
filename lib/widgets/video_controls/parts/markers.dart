@@ -1,6 +1,6 @@
 part of '../video_controls.dart';
 
-extension _PlexVideoControlsMarkerMethods on _PlexVideoControlsState {
+extension _PlexVideoControlsMarkerMethods on PlexVideoControlsState {
   Future<void> _loadManualSkipSettings() async {
     if (widget.initialMarkers != null) {
       _markersLoaded = true;

@@ -60,6 +60,7 @@ import '../../services/scrub_preview_source.dart';
 import '../../services/player_sync_offsets.dart';
 import '../../services/scoped_player_prefs.dart';
 import '../../services/settings_service.dart';
+import '../../services/danmaku/danmaku_controller.dart';
 import '../../services/shortcut_action.dart';
 import '../../services/video_volume_controller.dart';
 import '../../utils/codec_utils.dart';
@@ -703,6 +704,8 @@ class PlexVideoControls extends StatefulWidget {
   /// Called to toggle ambient lighting (passed to settings sheet)
   final VoidCallback? onToggleAmbientLighting;
 
+  final DanmakuController? danmakuController;
+
   /// Toast controller for VLC-style in-player notifications (rate changes, backend switch).
   final PlayerToastController toastController;
 
@@ -788,13 +791,14 @@ class PlexVideoControls extends StatefulWidget {
     this.onJumpToLive,
     this.isAmbientLightingEnabled = false,
     this.onToggleAmbientLighting,
+    this.danmakuController,
   });
 
   @override
-  State<PlexVideoControls> createState() => _PlexVideoControlsState();
+  State<PlexVideoControls> createState() => PlexVideoControlsState();
 }
 
-class _PlexVideoControlsState extends State<PlexVideoControls>
+class PlexVideoControlsState extends State<PlexVideoControls>
     with WindowListener, ListenableBindingsMixin, MountedSetStateMixin {
   bool get _showControls => widget.chromeController.controlsVisible;
   bool get _hasRenderedFirstFrame => widget.hasFirstFrame?.value ?? true;
@@ -1580,5 +1584,20 @@ class _PlexVideoControlsState extends State<PlexVideoControls>
         );
       },
     );
+  }
+
+  /// Suppresses auto-skip for an externally initiated user seek toward
+  /// [target] until the matching [endManualSeekSuppression] call completes.
+  int beginManualSeekSuppression(Duration target) {
+    _suppressSkipForSeek(target);
+    return _manualSeekGeneration;
+  }
+
+  /// Ends manual-seek auto-skip suppression and re-evaluates markers at the
+  /// current playhead position when [generation] matches the latest seek.
+  void endManualSeekSuppression(int generation) {
+    if (!mounted || generation != _manualSeekGeneration) return;
+    _pendingSkipSeekMarkerId = null;
+    _syncCurrentMarkerForCurrentPosition();
   }
 }

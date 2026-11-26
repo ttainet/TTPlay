@@ -1,7 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 
-import 'package:drift/drift.dart' show driftRuntimeOptions;
+import 'package:drift/drift.dart' hide isNull, isNotNull;
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:ttplay/database/app_database.dart';
@@ -1647,6 +1647,422 @@ void main() {
       await engine.clearProjectedLists();
       expect(await localRepo.lists(LibraryListKinds.collection), isEmpty);
       expect((await localRepo.lists(LibraryListKinds.playlist)).single.title, 'Local Only Mix');
+    },
+  );
+
+  test('cloud-synced progress and favorites persist in work_watch_states across DB reopen without re-sync', () async {
+    resetSharedPreferencesForTest();
+    final prevOverrides = HttpOverrides.current;
+    HttpOverrides.global = null;
+    addTearDown(() => HttpOverrides.global = prevOverrides);
+
+    final dir = await Directory.systemTemp.createTemp('plezy_cloud_reopen_');
+    addTearDown(() async {
+      if (await dir.exists()) await dir.delete(recursive: true);
+    });
+    final dbFile = File('${dir.path}/library.db');
+    final db = AppDatabase.forTesting(NativeDatabase(dbFile));
+    var dbClosed = false;
+    addTearDown(() async {
+      if (!dbClosed) await db.close();
+    });
+
+    final hk = CloudKeyring.generateMasterKey();
+    final quarkCipher = await CloudKeyring.encryptCredentialJson(
+      masterKey: hk,
+      payload: {'cookie': 'uid=u123; pus=abc', 'root_id': '0'},
+    );
+    final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+    addTearDown(() => server.close(force: true));
+    server.listen((req) async {
+      final path = req.uri.path;
+      if (req.method == 'GET' && path == '/api/v1/sources') {
+        req.response.write(
+          jsonEncode({
+            'code': 0,
+            'sources': [
+              {
+                'id': 'src_reopen',
+                'kind': 'quark',
+                'name': 'NAS',
+                'identity_key': 'quark:u123',
+                'status': 'active',
+                'folders': [
+                  {'id': 'f1', 'source_id': 'src_reopen', 'path': '/TV'},
+                ],
+              },
+            ],
+          }),
+        );
+      } else if (req.method == 'GET' && path == '/api/v1/sources/src_reopen/credential') {
+        req.response.write(
+          jsonEncode({
+            'code': 0,
+            'credential': {
+              'source_id': 'src_reopen',
+              'ciphertext': quarkCipher,
+              'version': 1,
+              'key_epoch': 1,
+              'status': 'valid',
+            },
+          }),
+        );
+      } else if (req.method == 'GET' && path == '/api/v1/library/snapshot') {
+        final kind = req.uri.queryParameters['kind'];
+        final items = switch (kind) {
+          'show' => [
+            {
+              'id': 200,
+              'work_key': 'tmdb:show:9001',
+              'kind': 'show',
+              'library_type': 'show',
+              'title': 'Reopen Show',
+              'tmdb_id': '9001',
+              'updated_at': 1000,
+            },
+          ],
+          'season' => [
+            {
+              'id': 201,
+              'work_key': 'tmdb:show:9001:s1',
+              'kind': 'season',
+              'library_type': 'show',
+              'parent_id': 200,
+              'show_id': 200,
+              'title': 'Season 1',
+              'season_number': 1,
+              'updated_at': 1000,
+            },
+          ],
+          'episode' => [
+            {
+              'id': 202,
+              'work_key': 'tmdb:show:9001:s1:e1',
+              'kind': 'episode',
+              'library_type': 'show',
+              'parent_id': 201,
+              'show_id': 200,
+              'title': 'Ep 1',
+              'season_number': 1,
+              'episode_number': 1,
+              'runtime_ms': 2400000,
+              'updated_at': 1000,
+              'files': [
+                {
+                  'id': 1,
+                  'source_id': 'src_reopen',
+                  'path': '/TV/Reopen/S01E01.mkv',
+                  'role': 'video',
+                  'size': 1024,
+                  'added_at': 1000,
+                },
+              ],
+            },
+          ],
+          _ => <Map<String, dynamic>>[],
+        };
+        req.response.write(jsonEncode({'code': 0, 'snapshot_seq': 10, 'items': items, 'has_more': false}));
+      } else if (req.method == 'GET' && path == '/api/v1/progress') {
+        req.response.write(
+          jsonEncode({
+            'code': 0,
+            'items': [
+              {
+                'progress_key': 'tmdb:show:9001:s1:e1',
+                'work_key': 'tmdb:show:9001',
+                'season_number': 1,
+                'episode_number': 1,
+                'position_ms': 450000,
+                'duration_ms': 2400000,
+                'watched': false,
+                'last_played_at': 1700000500000,
+                'updated_at': 1700000500000,
+              },
+            ],
+          }),
+        );
+      } else if (req.method == 'GET' && path == '/api/v1/favorites') {
+        req.response.write(
+          jsonEncode({
+            'code': 0,
+            'items': [
+              {'work_key': 'tmdb:show:9001'},
+            ],
+          }),
+        );
+      } else if (req.method == 'GET' && path == '/api/v1/kv') {
+        req.response.write(jsonEncode({'code': 0, 'items': <Map<String, dynamic>>[]}));
+      } else if (req.method == 'GET' && path == '/api/v1/lists') {
+        req.response.write(jsonEncode({'code': 0, 'items': <Map<String, dynamic>>[]}));
+      } else {
+        req.response.statusCode = 404;
+      }
+      await req.response.close();
+    });
+
+    final api = CloudApiClient(baseUrl: 'http://127.0.0.1:${server.port}', accessToken: 'usr_reopen');
+    addTearDown(api.close);
+    final engine = CloudProjectionEngine(
+      db: db,
+      syncClient: CloudProjectionSyncClient(api),
+      mountMirror: CloudMountMirror(
+        sourceRepository: CloudSourceRepository(api: api, masterKeyProvider: () => hk),
+        mountRegistry: MountRegistry(db),
+      ),
+    );
+
+    await engine.syncFullSnapshot();
+    expect(await db.select(db.workWatchStates).get(), hasLength(2));
+    expect((await LibraryRepository(db).continueWatching()).single.state!.positionMs, 450000);
+
+    // Reopen DB (triggers beforeOpen -> LibraryWatchStateStore.restoreAll) without any cloud sync.
+    await db.close();
+    dbClosed = true;
+    final reopened = AppDatabase.forTesting(NativeDatabase(dbFile));
+    addTearDown(reopened.close);
+
+    final repoAfterReopen = LibraryRepository(reopened);
+    final cw = await repoAfterReopen.continueWatching();
+    expect(cw, hasLength(1));
+    expect(cw.single.item.title, 'Ep 1');
+    expect(cw.single.state!.positionMs, 450000);
+    final showRows = await (reopened.select(
+      reopened.libraryItems,
+    )..where((t) => t.kind.equals(LibraryKinds.show))).get();
+    expect((await repoAfterReopen.getItem(showRows.single.id))!.state!.favorite, isTrue);
+  });
+
+  test(
+    'projected tvdb and work_key-fallback tmdb shows accept local setProgress, survive older cloud sync, and reopen immediately',
+    () async {
+      resetSharedPreferencesForTest();
+      final prevOverrides = HttpOverrides.current;
+      HttpOverrides.global = null;
+      addTearDown(() => HttpOverrides.global = prevOverrides);
+
+      final dir = await Directory.systemTemp.createTemp('plezy_cloud_local_first_');
+      addTearDown(() async {
+        if (await dir.exists()) await dir.delete(recursive: true);
+      });
+      final dbFile = File('${dir.path}/library.db');
+      final db = AppDatabase.forTesting(NativeDatabase(dbFile));
+      var dbClosed = false;
+      addTearDown(() async {
+        if (!dbClosed) await db.close();
+      });
+
+      var serverProgressUpdatedAt = 1000;
+      var serverProgressPosMs = 50000;
+
+      final hk = CloudKeyring.generateMasterKey();
+      final quarkCipher = await CloudKeyring.encryptCredentialJson(
+        masterKey: hk,
+        payload: {'cookie': 'uid=u456; pus=def', 'root_id': '0'},
+      );
+      final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+      addTearDown(() => server.close(force: true));
+      server.listen((req) async {
+        final path = req.uri.path;
+        if (req.method == 'GET' && path == '/api/v1/sources') {
+          req.response.write(
+            jsonEncode({
+              'code': 0,
+              'sources': [
+                {
+                  'id': 'src_lf',
+                  'kind': 'quark',
+                  'name': 'NAS',
+                  'identity_key': 'quark:u456',
+                  'status': 'active',
+                  'folders': [
+                    {'id': 'f2', 'source_id': 'src_lf', 'path': '/TV'},
+                  ],
+                },
+              ],
+            }),
+          );
+        } else if (req.method == 'GET' && path == '/api/v1/sources/src_lf/credential') {
+          req.response.write(
+            jsonEncode({
+              'code': 0,
+              'credential': {
+                'source_id': 'src_lf',
+                'ciphertext': quarkCipher,
+                'version': 1,
+                'key_epoch': 1,
+                'status': 'valid',
+              },
+            }),
+          );
+        } else if (req.method == 'GET' && path == '/api/v1/library/snapshot') {
+          final kind = req.uri.queryParameters['kind'];
+          final items = switch (kind) {
+            'show' => [
+              {
+                'id': 300,
+                'work_key': 'tvdb:show:777',
+                'kind': 'show',
+                'library_type': 'show',
+                'title': 'TVDB Show',
+                'updated_at': 1000,
+              },
+              {
+                'id': 400,
+                'work_key': 'tmdb:show:888',
+                'kind': 'show',
+                'library_type': 'show',
+                'title': 'Fallback TMDB Show',
+                'updated_at': 1000,
+              },
+            ],
+            'season' => [
+              {
+                'id': 301,
+                'work_key': 'tvdb:show:777:s1',
+                'kind': 'season',
+                'library_type': 'show',
+                'parent_id': 300,
+                'show_id': 300,
+                'title': 'Season 1',
+                'season_number': 1,
+                'updated_at': 1000,
+              },
+              {
+                'id': 401,
+                'work_key': 'tmdb:show:888:s1',
+                'kind': 'season',
+                'library_type': 'show',
+                'parent_id': 400,
+                'show_id': 400,
+                'title': 'Season 1',
+                'season_number': 1,
+                'updated_at': 1000,
+              },
+            ],
+            'episode' => [
+              {
+                'id': 302,
+                'work_key': 'tvdb:show:777:s1:e1',
+                'kind': 'episode',
+                'library_type': 'show',
+                'parent_id': 301,
+                'show_id': 300,
+                'title': 'TVDB Ep 1',
+                'season_number': 1,
+                'episode_number': 1,
+                'runtime_ms': 2400000,
+                'updated_at': 1000,
+                'files': [
+                  {
+                    'id': 11,
+                    'source_id': 'src_lf',
+                    'path': '/TV/TVDB/S01E01.mkv',
+                    'role': 'video',
+                    'size': 1024,
+                    'added_at': 1000,
+                  },
+                ],
+              },
+              {
+                'id': 402,
+                'work_key': 'tmdb:show:888:s1:e1',
+                'kind': 'episode',
+                'library_type': 'show',
+                'parent_id': 401,
+                'show_id': 400,
+                'title': 'TMDB Ep 1',
+                'season_number': 1,
+                'episode_number': 1,
+                'runtime_ms': 2400000,
+                'updated_at': 1000,
+                'files': [
+                  {
+                    'id': 12,
+                    'source_id': 'src_lf',
+                    'path': '/TV/TMDB/S01E01.mkv',
+                    'role': 'video',
+                    'size': 1024,
+                    'added_at': 1000,
+                  },
+                ],
+              },
+            ],
+            _ => <Map<String, dynamic>>[],
+          };
+          req.response.write(jsonEncode({'code': 0, 'snapshot_seq': 20, 'items': items, 'has_more': false}));
+        } else if (req.method == 'GET' && path == '/api/v1/progress') {
+          req.response.write(
+            jsonEncode({
+              'code': 0,
+              'items': [
+                {
+                  'progress_key': 'tvdb:show:777:s1:e1',
+                  'work_key': 'tvdb:show:777',
+                  'season_number': 1,
+                  'episode_number': 1,
+                  'position_ms': serverProgressPosMs,
+                  'duration_ms': 2400000,
+                  'watched': false,
+                  'last_played_at': serverProgressUpdatedAt,
+                  'updated_at': serverProgressUpdatedAt,
+                },
+              ],
+            }),
+          );
+        } else if (req.method == 'GET' && path == '/api/v1/favorites') {
+          req.response.write(jsonEncode({'code': 0, 'items': <Map<String, dynamic>>[]}));
+        } else if (req.method == 'GET' && path == '/api/v1/kv') {
+          req.response.write(jsonEncode({'code': 0, 'items': <Map<String, dynamic>>[]}));
+        } else if (req.method == 'GET' && path == '/api/v1/lists') {
+          req.response.write(jsonEncode({'code': 0, 'items': <Map<String, dynamic>>[]}));
+        } else {
+          req.response.statusCode = 404;
+        }
+        await req.response.close();
+      });
+
+      final api = CloudApiClient(baseUrl: 'http://127.0.0.1:${server.port}', accessToken: 'usr_lf');
+      addTearDown(api.close);
+      final engine = CloudProjectionEngine(
+        db: db,
+        syncClient: CloudProjectionSyncClient(api),
+        mountMirror: CloudMountMirror(
+          sourceRepository: CloudSourceRepository(api: api, masterKeyProvider: () => hk),
+          mountRegistry: MountRegistry(db),
+        ),
+      );
+
+      await engine.syncFullSnapshot();
+      final repo = LibraryRepository(db);
+      final tvdbEp = (await (db.select(
+        db.libraryItems,
+      )..where((t) => t.workKey.equals('tvdb:show:777:s1:e1'))).getSingle());
+      final tmdbEp = (await (db.select(
+        db.libraryItems,
+      )..where((t) => t.workKey.equals('tmdb:show:888:s1:e1'))).getSingle());
+      final tmdbShow = (await (db.select(
+        db.libraryItems,
+      )..where((t) => t.workKey.equals('tmdb:show:888'))).getSingle());
+      expect(tmdbShow.tmdbId, '888');
+
+      // Local playback writes progress to both tvdb and fallback tmdb episodes.
+      await repo.setProgress(tvdbEp.id, positionMs: 900000, durationMs: 2400000);
+      await repo.setProgress(tmdbEp.id, positionMs: 600000, durationMs: 2400000);
+      expect(await repo.continueWatching(), hasLength(2));
+
+      // An older cloud progress snapshot must NOT overwrite newer local progress.
+      serverProgressUpdatedAt = 500;
+      serverProgressPosMs = 10000;
+      await engine.syncFullSnapshot();
+      expect((await repo.getItem(tvdbEp.id))!.state!.positionMs, 900000);
+
+      // Reopening DB immediately preserves both episodes in Continue Watching.
+      await db.close();
+      dbClosed = true;
+      final reopened = AppDatabase.forTesting(NativeDatabase(dbFile));
+      addTearDown(reopened.close);
+      final cw = await LibraryRepository(reopened).continueWatching();
+      expect(cw.map((e) => e.item.title).toSet(), {'TVDB Ep 1', 'TMDB Ep 1'});
     },
   );
 }

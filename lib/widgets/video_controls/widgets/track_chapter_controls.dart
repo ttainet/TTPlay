@@ -17,6 +17,7 @@ import '../../../widgets/overlay_sheet.dart';
 import '../models/track_controls_state.dart';
 import '../sheets/base_video_control_sheet.dart';
 import '../sheets/chapter_sheet.dart';
+import '../sheets/danmaku_sheet.dart';
 import '../sheets/queue_sheet.dart';
 import '../sheets/track_sheet.dart';
 import '../sheets/version_quality_sheet.dart';
@@ -151,6 +152,45 @@ class TrackChapterControls extends StatelessWidget {
         final buttons = <Widget>[];
         int buttonIndex = 0;
         final showText = !isMobile && MediaQuery.sizeOf(context).width >= 850;
+
+        final danmakuController = state.danmakuController;
+        if (state.danmakuSupported && danmakuController != null) {
+          final toggleIndex = buttonIndex++;
+          final settingsIndex = buttonIndex++;
+          buttons.add(
+            ListenableBuilder(
+              listenable: danmakuController,
+              builder: (context, _) {
+                final enabled = danmakuController.enabled;
+                return _buildTrackButton(
+                  buttonIndex: toggleIndex,
+                  icon: enabled ? Symbols.comment_rounded : Symbols.comments_disabled_rounded,
+                  isActive: enabled,
+                  checked: enabled,
+                  tooltip: enabled ? t.danmaku.toggleOff : t.danmaku.toggleOn,
+                  semanticLabel: enabled ? t.danmaku.toggleOff : t.danmaku.toggleOn,
+                  buttons: buttons,
+                  onPressed: () => danmakuController.toggleEnabled(),
+                );
+              },
+            ),
+          );
+          buttons.add(
+            _buildTrackButton(
+              buttonIndex: settingsIndex,
+              icon: Symbols.display_settings_rounded,
+              tooltip: t.danmaku.settings,
+              semanticLabel: t.danmaku.settings,
+              buttons: buttons,
+              onPressed: () {
+                state.onCancelAutoHide?.call();
+                OverlaySheetController.of(context)
+                    .show(builder: (_) => DanmakuSheet(controller: danmakuController))
+                    .whenComplete(() => state.onStartAutoHide?.call());
+              },
+            ),
+          );
+        }
 
         if (state.serverId == LocalLibraryClient.localServerId &&
             state.availableVersions.length > 1 &&
@@ -367,9 +407,7 @@ class TrackChapterControls extends StatelessWidget {
                 buttons: buttons,
                 onPressed: () {
                   state.onCancelAutoHide?.call();
-                  unawaited(
-                    state.onRemoteHandoff!(btnContext).whenComplete(() => state.onStartAutoHide?.call()),
-                  );
+                  unawaited(state.onRemoteHandoff!(btnContext).whenComplete(() => state.onStartAutoHide?.call()));
                 },
               ),
             ),

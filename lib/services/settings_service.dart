@@ -683,6 +683,20 @@ class SettingsService extends BaseSharedPreferencesService {
   /// widescreen video (#1730). ExoPlayer backend only; MPV uses
   /// [subtitleUseMargins] instead.
   static const subtitleAnchorToScreen = BoolPref('subtitle_anchor_to_screen');
+  static const danmakuEnabled = BoolPref('danmaku_enabled');
+  static const danmakuAutoMatch = BoolPref('danmaku_auto_match', defaultValue: true);
+  static const danmakuFontSize = DoublePref('danmaku_font_size', defaultValue: 22.0);
+  static const danmakuOpacity = DoublePref('danmaku_opacity', defaultValue: 0.85);
+  static const danmakuScrollDuration = DoublePref('danmaku_scroll_duration', defaultValue: 10.0);
+  static const danmakuDisplayArea = DoublePref('danmaku_display_area', defaultValue: 0.5);
+  static const danmakuStrokeWidth = DoublePref('danmaku_stroke_width', defaultValue: 1.5);
+  static const danmakuMergeDuplicates = BoolPref('danmaku_merge_duplicates', defaultValue: true);
+  static const danmakuAllowStacking = BoolPref('danmaku_allow_stacking');
+  static const danmakuBlockScroll = BoolPref('danmaku_block_scroll');
+  static const danmakuBlockTop = BoolPref('danmaku_block_top');
+  static const danmakuBlockBottom = BoolPref('danmaku_block_bottom');
+  static const danmakuBlockColor = BoolPref('danmaku_block_color');
+  static const danmakuBlockedKeywords = StringListPref('danmaku_blocked_keywords');
   static const cleanedOldImageCache = BoolPref('cleaned_old_image_cache');
 
   /// Last confirmed Supporter entitlement on this device. Runtime state owned
@@ -1006,8 +1020,7 @@ class SettingsService extends BaseSharedPreferencesService {
     defaultValueProvider: PlatformDetector.isTV,
   );
   @visibleForTesting
-  static bool defaultEnableCompanionRemoteServerFor({required bool isDesktop, required bool isTv}) =>
-      isDesktop || isTv;
+  static bool defaultEnableCompanionRemoteServerFor({required bool isDesktop, required bool isTv}) => isDesktop || isTv;
 
   static bool _defaultEnableCompanionRemoteServer() =>
       defaultEnableCompanionRemoteServerFor(isDesktop: PlatformDetector.isDesktopOS(), isTv: PlatformDetector.isTV());
@@ -1507,6 +1520,20 @@ class SettingsService extends BaseSharedPreferencesService {
     subtitleBorderColor,
     subtitleBackgroundColor,
     subtitleBackgroundOpacity,
+    danmakuEnabled,
+    danmakuAutoMatch,
+    danmakuFontSize,
+    danmakuOpacity,
+    danmakuScrollDuration,
+    danmakuDisplayArea,
+    danmakuStrokeWidth,
+    danmakuMergeDuplicates,
+    danmakuAllowStacking,
+    danmakuBlockScroll,
+    danmakuBlockTop,
+    danmakuBlockBottom,
+    danmakuBlockColor,
+    danmakuBlockedKeywords,
     rememberTrackSelections,
     followServerTrackSelections,
     downloadOnWifiOnly,

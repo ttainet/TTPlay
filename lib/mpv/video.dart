@@ -23,6 +23,7 @@ import 'player/video_rect_support.dart';
 /// ```
 class Video extends StatefulWidget {
   final Player player;
+  final Widget? overlay;
   final Widget Function(BuildContext context)? controls;
   final Color backgroundColor;
   final ValueListenable<bool>? hasFirstFrame;
@@ -30,6 +31,7 @@ class Video extends StatefulWidget {
   const Video({
     super.key,
     required this.player,
+    this.overlay,
     this.controls,
     this.backgroundColor = Colors.black,
     this.hasFirstFrame,
@@ -122,6 +124,9 @@ class _VideoState extends State<Video> {
         children: [
           // Video rendering area
           _buildVideoSurface(),
+
+          // Non-interactive overlay (e.g. danmaku) above video, below controls
+          if (widget.overlay != null) widget.overlay!,
 
           // Controls overlay
           if (widget.controls != null) widget.controls!(context),

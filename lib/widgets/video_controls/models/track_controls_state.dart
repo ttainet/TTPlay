@@ -6,6 +6,7 @@ import '../../../media/media_source_info.dart';
 import '../../../media/stream_quality.dart';
 import '../../../models/transcode_quality_preset.dart';
 import '../../../mpv/mpv.dart';
+import '../../../services/danmaku/danmaku_controller.dart';
 import '../../../services/online_subtitle_store.dart';
 import '../../../services/playback_initialization_types.dart';
 import '../../../services/playback_subtitle_resolver.dart';
@@ -94,6 +95,9 @@ class TrackControlsState {
   /// Whether online subtitle search is available for this playback item.
   final bool subtitleSearchSupported;
 
+  final DanmakuController? danmakuController;
+  final bool danmakuSupported;
+
   const TrackControlsState({
     this.availableVersions = const [],
     this.selectedMediaIndex = 0,
@@ -156,6 +160,8 @@ class TrackControlsState {
     this.onOnlineSubtitleApplied,
     this.onRefreshDirectorySubtitles,
     this.subtitleSearchSupported = false,
+    this.danmakuController,
+    this.danmakuSupported = false,
   });
 
   /// Whether the quality column lists the source's own renditions rather

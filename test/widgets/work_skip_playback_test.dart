@@ -651,4 +651,17 @@ void main() {
     expect(controls(tester).onEditSkipAt, isNull);
     await finish(tester);
   });
+
+  testWidgets('external manual seek suppression prevents intro auto skip at zero', (tester) async {
+    await pump(tester);
+    final state = tester.state<PlexVideoControlsState>(find.byType(PlexVideoControls));
+    final gen = state.beginManualSeekSuppression(Duration.zero);
+    await player.seek(Duration.zero);
+    state.endManualSeekSuppression(gen);
+    await tester.pump();
+    await tester.pump();
+    expect(player.position, Duration.zero);
+    expect(player.seeks, [Duration.zero]);
+    await finish(tester);
+  });
 }
