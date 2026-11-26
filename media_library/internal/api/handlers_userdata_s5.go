@@ -153,6 +153,23 @@ func (s *Server) handleRemoveFavorite(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+func (s *Server) handleListWorkPrefs(w http.ResponseWriter, r *http.Request) {
+	if s.UserData == nil {
+		writeErrCode(w, r, http.StatusServiceUnavailable, "unavailable", "userdata service unavailable")
+		return
+	}
+	p := UserPrincipalFromContext(r.Context())
+	items, err := s.UserData.ListWorkPrefs(p)
+	if err != nil {
+		writeMappedError(w, r, err)
+		return
+	}
+	writeJSON(w, r, http.StatusOK, map[string]any{
+		"code":  0,
+		"items": items,
+	})
+}
+
 func (s *Server) handleGetWorkPrefs(w http.ResponseWriter, r *http.Request) {
 	if s.UserData == nil {
 		writeErrCode(w, r, http.StatusServiceUnavailable, "unavailable", "userdata service unavailable")

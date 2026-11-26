@@ -2,17 +2,20 @@ import 'dart:convert';
 
 import '../database/app_database.dart';
 import '../library/library_watch_state_store.dart';
+import '../library/local_library_client.dart';
 import '../media/media_item.dart';
 import '../media/media_kind.dart';
 import '../media/media_server_client.dart';
 import '../media/work_identity.dart';
 import '../media/work_skip_settings.dart';
+import '../utils/app_logger.dart';
 
 /// One row per work in the account workspace, not per scanned item or file.
 /// Remote identity bindings are a local cache for previously opened downloads.
 class WorkSkipSettingsStore {
-  WorkSkipSettingsStore(this.db);
+  WorkSkipSettingsStore(this.db, {this.cloudBridge});
   final AppDatabase db;
+  final LocalCloudUserDataBridge? cloudBridge;
 
   static bool supports(MediaItem item) =>
       const {MediaKind.movie, MediaKind.show, MediaKind.season, MediaKind.episode}.contains(item.kind);
@@ -87,8 +90,17 @@ class WorkSkipSettingsStore {
     }
   }
 
-  Future<void> save(WorkIdentity work, WorkSkipSettings settings, {bool syncToOutbox = true}) async {
+  Future<void> save(WorkIdentity work, WorkSkipSettings settings, {bool syncToCloud = true}) async {
     if (!settings.validFor()) throw ArgumentError('Invalid skip ranges');
     await _put(_key(work), jsonEncode(settings.toJson()));
+    if (syncToCloud && work.source == WorkIdentity.localSource && cloudBridge != null) {
+      try {
+        await cloudBridge!
+            .pushWorkSkipSettings(workKey: work.cloudWorkKey, settings: settings)
+            .timeout(const Duration(seconds: 6));
+      } catch (e) {
+        appLogger.d('Cloud work skip settings sync skipped for ${work.cloudWorkKey}: $e');
+      }
+    }
   }
 }

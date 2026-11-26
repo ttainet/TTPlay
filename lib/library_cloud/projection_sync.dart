@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 
+import '../media/work_skip_settings.dart';
 import 'cloud_api_client.dart';
 
 class CloudSnapshotPage {
@@ -111,11 +112,7 @@ class CloudProjectionSyncClient {
   Future<CloudChangesPage> fetchChanges({required int sinceSeq, int limit = 200, bool includeFiles = false}) async {
     final resp = await api.getJson(
       '/api/v1/library/changes',
-      query: {
-        'since_seq': '$sinceSeq',
-        'limit': '$limit',
-        if (includeFiles) 'include_files': '1',
-      },
+      query: {'since_seq': '$sinceSeq', 'limit': '$limit', if (includeFiles) 'include_files': '1'},
     );
     return CloudChangesPage.fromJson(resp);
   }
@@ -179,11 +176,7 @@ class CloudProjectionSyncClient {
   Future<List<Map<String, dynamic>>> listProgress({String? workKey, int limit = 100, int offset = 0}) async {
     final resp = await api.getJson(
       '/api/v1/progress',
-      query: {
-        if (workKey != null && workKey.isNotEmpty) 'work_key': workKey,
-        'limit': '$limit',
-        'offset': '$offset',
-      },
+      query: {if (workKey != null && workKey.isNotEmpty) 'work_key': workKey, 'limit': '$limit', 'offset': '$offset'},
     );
     return [
       for (final i in (resp['items'] as List? ?? const []))
@@ -242,6 +235,27 @@ class CloudProjectionSyncClient {
 
   Future<void> removeFavorite(String workKey) async {
     await api.deleteJson('/api/v1/favorites/${Uri.encodeComponent(workKey)}');
+  }
+
+  Future<List<Map<String, dynamic>>> listWorkPrefs() async {
+    final resp = await api.getJson('/api/v1/work-prefs');
+    return [
+      for (final i in (resp['items'] as List? ?? const []))
+        if (i is Map) Map<String, dynamic>.from(i),
+    ];
+  }
+
+  Future<Map<String, dynamic>> upsertHouseholdWorkPrefs({
+    required String workKey,
+    required WorkSkipSettings settings,
+  }) async {
+    final resp = await api.putJson(
+      '/api/v1/work-prefs/${Uri.encodeComponent(workKey)}/household',
+      body: settings.toCloudHouseholdJson(),
+      timeout: const Duration(seconds: 8),
+    );
+    final prefs = resp['prefs'];
+    return prefs is Map ? Map<String, dynamic>.from(prefs) : const {};
   }
 
   // ─── Unmatched, Metadata Search & Manual Match (S4) ─────────────────────

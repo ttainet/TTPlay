@@ -622,16 +622,24 @@ func (s *Service) GetItemDetail(p *account.Principal, itemID int64) (ItemDetailV
 	}
 
 	// UserData progress & work prefs
-	if s.userData != nil && effectiveWorkKey != "" {
-		progKey := effectiveWorkKey
-		if det.Kind == db.KindEpisode && det.SeasonNumber != nil && det.EpisodeNumber != nil {
-			progKey = fmt.Sprintf("%s:s%d:e%d", effectiveWorkKey, *det.SeasonNumber, *det.EpisodeNumber)
+	if s.userData != nil && (effectiveWorkKey != "" || det.ShowWorkKey != "") {
+		if effectiveWorkKey != "" {
+			progKey := effectiveWorkKey
+			if det.Kind == db.KindEpisode && det.SeasonNumber != nil && det.EpisodeNumber != nil {
+				progKey = fmt.Sprintf("%s:s%d:e%d", effectiveWorkKey, *det.SeasonNumber, *det.EpisodeNumber)
+			}
+			if pv, pErr := s.userData.GetProgressByKey(p.HouseholdID, p.MemberID, progKey); pErr == nil {
+				det.Progress = &pv
+			}
 		}
-		if pv, pErr := s.userData.GetProgressByKey(p.HouseholdID, p.MemberID, progKey); pErr == nil {
-			det.Progress = &pv
+		prefsWorkKey := effectiveWorkKey
+		if (det.Kind == db.KindSeason || det.Kind == db.KindEpisode) && det.ShowWorkKey != "" {
+			prefsWorkKey = det.ShowWorkKey
 		}
-		if wp, wErr := s.userData.LoadWorkPrefs(p.HouseholdID, p.MemberID, effectiveWorkKey); wErr == nil {
-			det.WorkPrefs = &wp
+		if prefsWorkKey != "" {
+			if wp, wErr := s.userData.LoadWorkPrefs(p.HouseholdID, p.MemberID, prefsWorkKey); wErr == nil {
+				det.WorkPrefs = &wp
+			}
 		}
 	}
 

@@ -18,6 +18,7 @@ class WorkIdentity {
     String? tmdbId,
     String? imdbId,
     String? bangumiId,
+    String? doubanId,
   }) {
     if (source.trim().isEmpty || (kind != 'movie' && kind != 'show')) return null;
     final tmdb = int.tryParse(tmdbId?.trim() ?? '');
@@ -32,7 +33,43 @@ class WorkIdentity {
     if (bgm != null && bgm > 0) {
       return WorkIdentity(source: source, kind: kind, provider: 'bangumi', externalId: '$bgm');
     }
+    final douban = int.tryParse(doubanId?.trim() ?? '');
+    if (douban != null && douban > 0) {
+      return WorkIdentity(source: source, kind: kind, provider: 'douban', externalId: '$douban');
+    }
     return null;
+  }
+
+  String get cloudWorkKey => '$provider:$kind:$externalId';
+
+  static WorkIdentity? fromCloudWorkKey(String rawWorkKey, {String source = localSource}) {
+    var normalized = rawWorkKey.trim();
+    if (normalized.isEmpty) return null;
+    if (normalized.startsWith('work:')) {
+      final legacyParts = normalized.split(':');
+      if (legacyParts.length >= 4) {
+        final legacyKind = legacyParts[1].trim();
+        final legacyProvider = legacyParts[2].trim();
+        final legacyExtId = legacyParts.sublist(3).join(':').trim();
+        if (legacyKind.isNotEmpty && legacyProvider.isNotEmpty && legacyExtId.isNotEmpty) {
+          normalized = '$legacyProvider:$legacyKind:$legacyExtId';
+        }
+      }
+    }
+    final parts = normalized.split(':');
+    if (parts.length != 3) return null;
+    final provider = parts[0].trim().toLowerCase();
+    final kind = parts[1].trim().toLowerCase();
+    final extId = parts[2].trim();
+    if (provider.isEmpty || kind.isEmpty || extId.isEmpty) return null;
+    return resolve(
+      source: source,
+      kind: kind,
+      tmdbId: provider == 'tmdb' ? extId : null,
+      imdbId: provider == 'imdb' ? extId : null,
+      bangumiId: provider == 'bangumi' ? extId : null,
+      doubanId: provider == 'douban' ? extId : null,
+    );
   }
 
   /// -1 denotes the whole work; season 0 remains available for specials.

@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 
@@ -581,6 +582,114 @@ func (s *Service) RemoveFavorite(p *account.Principal, workKey string) error {
 	return tx.Commit()
 }
 
+func (s *Service) ListWorkPrefs(p *account.Principal) ([]WorkPrefsView, error) {
+	if p == nil {
+		return nil, ErrUnauthorized
+	}
+
+	byKey := make(map[string]*WorkPrefsView)
+	getOrInit := func(wk string) *WorkPrefsView {
+		if v, ok := byKey[wk]; ok {
+			return v
+		}
+		v := &WorkPrefsView{
+			WorkKey:       wk,
+			PlaybackSpeed: 1.0,
+		}
+		byKey[wk] = v
+		return v
+	}
+
+	hhRows, err := s.store.ReadDB().Query(`
+		SELECT work_key, intro_enabled, intro_start_ms, intro_end_ms,
+		       credits_enabled, credits_from_end_ms, keep_easter_egg_ms, updated_at
+		FROM household_work_prefs
+		WHERE household_id = ?`,
+		p.HouseholdID,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer hhRows.Close()
+
+	for hhRows.Next() {
+		var (
+			wk                                                   string
+			introEn, credEn                                      int
+			introStart, introEnd, credFromEnd, keepEgg, updated  int64
+		)
+		if err := hhRows.Scan(&wk, &introEn, &introStart, &introEnd, &credEn, &credFromEnd, &keepEgg, &updated); err != nil {
+			return nil, err
+		}
+		v := getOrInit(wk)
+		v.IntroEnabled = introEn != 0
+		v.IntroStartMs = introStart
+		v.IntroEndMs = introEnd
+		v.CreditsEnabled = credEn != 0
+		v.CreditsFromEndMs = credFromEnd
+		v.KeepEasterEggMs = keepEgg
+		v.HouseholdUpdatedAt = updated
+	}
+	if err := hhRows.Err(); err != nil {
+		return nil, err
+	}
+
+	if strings.TrimSpace(p.MemberID) != "" {
+		memRows, err := s.store.ReadDB().Query(`
+			SELECT work_key, preferred_audio_lang, preferred_sub_lang, playback_speed, updated_at
+			FROM member_work_prefs
+			WHERE household_id = ? AND member_id = ?`,
+			p.HouseholdID, p.MemberID,
+		)
+		if err != nil {
+			return nil, err
+		}
+		defer memRows.Close()
+
+		for memRows.Next() {
+			var (
+				wk         string
+				audio, sub sql.NullString
+				speed      float64
+				mUpdated   int64
+			)
+			if err := memRows.Scan(&wk, &audio, &sub, &speed, &mUpdated); err != nil {
+				return nil, err
+			}
+			v := getOrInit(wk)
+			v.PreferredAudioLang = audio.String
+			v.PreferredSubLang = sub.String
+			if speed > 0 {
+				v.PlaybackSpeed = speed
+			}
+			v.MemberUpdatedAt = mUpdated
+		}
+		if err := memRows.Err(); err != nil {
+			return nil, err
+		}
+	}
+
+	out := make([]WorkPrefsView, 0, len(byKey))
+	for _, v := range byKey {
+		out = append(out, *v)
+	}
+	sort.Slice(out, func(i, j int) bool {
+		ui := out[i].HouseholdUpdatedAt
+		if out[i].MemberUpdatedAt > ui {
+			ui = out[i].MemberUpdatedAt
+		}
+		uj := out[j].HouseholdUpdatedAt
+		if out[j].MemberUpdatedAt > uj {
+			uj = out[j].MemberUpdatedAt
+		}
+		if ui != uj {
+			return ui > uj
+		}
+		return out[i].WorkKey < out[j].WorkKey
+	})
+	return out, nil
+}
+
 func (s *Service) GetWorkPrefs(p *account.Principal, workKey string) (WorkPrefsView, error) {
 	if p == nil {
 		return WorkPrefsView{}, ErrUnauthorized
@@ -696,6 +805,12 @@ func (s *Service) UpsertHouseholdWorkPrefs(p *account.Principal, workKey string,
 	if err := tx.Commit(); err != nil {
 		return WorkPrefsView{}, err
 	}
+	if s.hub != nil {
+		s.hub.PublishToHousehold(p.HouseholdID, "userdata.changed", map[string]any{
+			"entity":   "work_prefs",
+			"work_key": wk,
+		})
+	}
 	return s.LoadWorkPrefs(p.HouseholdID, p.MemberID, wk)
 }
 
@@ -751,6 +866,12 @@ func (s *Service) UpsertMemberWorkPrefs(p *account.Principal, workKey string, re
 	}
 	if err := tx.Commit(); err != nil {
 		return WorkPrefsView{}, err
+	}
+	if s.hub != nil {
+		s.hub.PublishToMember(p.HouseholdID, p.MemberID, "userdata.changed", map[string]any{
+			"entity":   "work_prefs",
+			"work_key": wk,
+		})
 	}
 	return s.LoadWorkPrefs(p.HouseholdID, p.MemberID, wk)
 }

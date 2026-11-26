@@ -32,7 +32,8 @@ func TestUserDataProgressFavoritesPrefsListsAndMigration(t *testing.T) {
 	}
 	fileID, _ := res.LastInsertId()
 
-	svc := NewService(store, events.NewHub())
+	hub := events.NewHub()
+	svc := NewService(store, hub)
 	p := &account.Principal{
 		HouseholdID: "hh1",
 		MemberID:    "m1",
@@ -78,11 +79,25 @@ func TestUserDataProgressFavoritesPrefsListsAndMigration(t *testing.T) {
 	}
 	tr := true
 	iEnd := int64(85000)
+	evCh, unsub := hub.Subscribe("hh1", "m2")
+	defer unsub()
 	if _, err := svc.UpsertHouseholdWorkPrefs(p, "douban:show:999", HouseholdWorkPrefsInput{
 		IntroEnabled: &tr,
 		IntroEndMs:   &iEnd,
 	}); err != nil {
 		t.Fatal(err)
+	}
+	select {
+	case ev := <-evCh:
+		if ev.Type != "userdata.changed" {
+			t.Fatalf("unexpected event type: %+v", ev)
+		}
+		data, _ := ev.Data.(map[string]any)
+		if data["entity"] != "work_prefs" || data["work_key"] != "douban:show:999" {
+			t.Fatalf("unexpected event data: %+v", ev.Data)
+		}
+	default:
+		t.Fatalf("expected household userdata.changed SSE event for UpsertHouseholdWorkPrefs")
 	}
 	audio := "ja"
 	spd := 1.5
@@ -92,6 +107,16 @@ func TestUserDataProgressFavoritesPrefsListsAndMigration(t *testing.T) {
 	})
 	if err != nil || !prefs.IntroEnabled || prefs.IntroEndMs != 85000 || prefs.PreferredAudioLang != "ja" || prefs.PlaybackSpeed != 1.5 {
 		t.Fatalf("unexpected merged prefs: %+v err=%v", prefs, err)
+	}
+
+	list, err := svc.ListWorkPrefs(p)
+	if err != nil || len(list) != 1 || list[0].WorkKey != "douban:show:999" || !list[0].IntroEnabled || list[0].IntroEndMs != 85000 || list[0].PreferredAudioLang != "ja" {
+		t.Fatalf("unexpected ListWorkPrefs: %+v err=%v", list, err)
+	}
+	otherHH := &account.Principal{HouseholdID: "hh-other", MemberID: "m-other", Role: account.RoleOwner, Permissions: account.PermAll}
+	otherList, err := svc.ListWorkPrefs(otherHH)
+	if err != nil || len(otherList) != 0 {
+		t.Fatalf("expected empty ListWorkPrefs for other household, got %+v err=%v", otherList, err)
 	}
 
 	lst, err := svc.CreateList(p, CreateListRequest{Kind: "watchlist", Title: "My Watchlist"})

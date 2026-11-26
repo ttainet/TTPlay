@@ -13,6 +13,8 @@ import 'package:ttplay/library_cloud/cloud_projection_engine.dart';
 import 'package:ttplay/library_cloud/projection_sync.dart';
 import 'package:ttplay/library_cloud/scan_session_runner.dart';
 import 'package:ttplay/library_cloud/source_repository.dart';
+import 'package:ttplay/media/work_identity.dart';
+import 'package:ttplay/services/work_skip_settings_store.dart';
 import 'package:ttplay/storage/mount_registry.dart';
 import 'package:ttplay/storage/storage_driver.dart';
 import 'package:ttplay/storage/storage_mount.dart';
@@ -23,341 +25,339 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   driftRuntimeOptions.dontWarnAboutMultipleDatabases = true;
 
-  test('CloudMountMirror + CloudProjectionEngine projects cloud snapshot, preserves local mounts, and prunes empty shells', () async {
-    resetSharedPreferencesForTest();
-    final prevOverrides = HttpOverrides.current;
-    HttpOverrides.global = null;
-    addTearDown(() => HttpOverrides.global = prevOverrides);
+  test(
+    'CloudMountMirror + CloudProjectionEngine projects cloud snapshot, preserves local mounts, and prunes empty shells',
+    () async {
+      resetSharedPreferencesForTest();
+      final prevOverrides = HttpOverrides.current;
+      HttpOverrides.global = null;
+      addTearDown(() => HttpOverrides.global = prevOverrides);
 
-    final db = AppDatabase.forTesting(NativeDatabase.memory());
-    addTearDown(db.close);
-    final mountRegistry = MountRegistry(db);
+      final db = AppDatabase.forTesting(NativeDatabase.memory());
+      addTearDown(db.close);
+      final mountRegistry = MountRegistry(db);
 
-    // Seed a local-folder mount that MUST remain untouched by cloud projection.
-    await mountRegistry.upsert(
-      const StorageMount(
-        id: 'local_1',
-        kind: StorageKind.local,
-        displayName: 'Local Disk',
-        config: {MountKeys.rootPath: 'D:/Movies'},
-      ),
-    );
+      // Seed a local-folder mount that MUST remain untouched by cloud projection.
+      await mountRegistry.upsert(
+        const StorageMount(
+          id: 'local_1',
+          kind: StorageKind.local,
+          displayName: 'Local Disk',
+          config: {MountKeys.rootPath: 'D:/Movies'},
+        ),
+      );
 
-    final hk = CloudKeyring.generateMasterKey();
-    final webdavCipher = await CloudKeyring.encryptCredentialJson(
-      masterKey: hk,
-      payload: {'base_url': 'https://nas.example/dav', 'username': 'alice', 'password': 'pw123', 'root_path': '/'},
-    );
+      final hk = CloudKeyring.generateMasterKey();
+      final webdavCipher = await CloudKeyring.encryptCredentialJson(
+        masterKey: hk,
+        payload: {'base_url': 'https://nas.example/dav', 'username': 'alice', 'password': 'pw123', 'root_path': '/'},
+      );
 
-    var includeMovieFile = true;
-    var serverSeq = 10;
+      var includeMovieFile = true;
+      var serverSeq = 10;
 
-    final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
-    addTearDown(() => server.close(force: true));
+      final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+      addTearDown(() => server.close(force: true));
 
-    server.listen((req) async {
-      final path = req.uri.path;
-      if (req.method == 'GET' && path == '/api/v1/sources') {
-        req.response.statusCode = 200;
-        req.response.write(
-          jsonEncode({
-            'code': 0,
-            'sources': [
-              {
-                'id': 'src_dav',
-                'kind': 'webdav',
-                'name': 'Home WebDAV',
-                'identity_key': 'hmac_1',
-                'status': 'active',
-                'folders': [
-                  {'id': 'f1', 'source_id': 'src_dav', 'path': '/Movies'},
-                ],
-              },
-            ],
-          }),
-        );
-        await req.response.close();
-        return;
-      }
-
-      if (req.method == 'GET' && path == '/api/v1/sources/src_dav/credential') {
-        req.response.statusCode = 200;
-        req.response.write(
-          jsonEncode({
-            'code': 0,
-            'credential': {
-              'source_id': 'src_dav',
-              'ciphertext': webdavCipher,
-              'version': 1,
-              'key_epoch': 1,
-              'status': 'valid',
-            },
-          }),
-        );
-        await req.response.close();
-        return;
-      }
-
-      if (req.method == 'GET' && path == '/api/v1/library/snapshot') {
-        final kind = req.uri.queryParameters['kind'];
-        final items = <Map<String, dynamic>>[];
-        if (kind == 'movie' && includeMovieFile) {
-          items.add({
-            'id': 100,
-            'work_key': 'tmdb:movie:27205',
-            'kind': 'movie',
-            'library_type': 'movie',
-            'title': 'Inception',
-            'sort_title': 'inception',
-            'year': 2010,
-            'added_at': 1700000000000,
-            'updated_at': 1700000000000,
-          });
+      server.listen((req) async {
+        final path = req.uri.path;
+        if (req.method == 'GET' && path == '/api/v1/sources') {
+          req.response.statusCode = 200;
+          req.response.write(
+            jsonEncode({
+              'code': 0,
+              'sources': [
+                {
+                  'id': 'src_dav',
+                  'kind': 'webdav',
+                  'name': 'Home WebDAV',
+                  'identity_key': 'hmac_1',
+                  'status': 'active',
+                  'folders': [
+                    {'id': 'f1', 'source_id': 'src_dav', 'path': '/Movies'},
+                  ],
+                },
+              ],
+            }),
+          );
+          await req.response.close();
+          return;
         }
-        req.response.statusCode = 200;
-        req.response.write(
-          jsonEncode({
-            'code': 0,
-            'snapshot_seq': serverSeq,
-            'total': items.length,
-            'page': 1,
-            'page_size': 100,
-            'has_more': false,
-            'items': items,
-          }),
-        );
-        await req.response.close();
-        return;
-      }
 
-      if (req.method == 'GET' && path == '/api/v1/items/100') {
-        req.response.statusCode = 200;
-        req.response.write(
-          jsonEncode({
-            'code': 0,
-            'item': {
+        if (req.method == 'GET' && path == '/api/v1/sources/src_dav/credential') {
+          req.response.statusCode = 200;
+          req.response.write(
+            jsonEncode({
+              'code': 0,
+              'credential': {
+                'source_id': 'src_dav',
+                'ciphertext': webdavCipher,
+                'version': 1,
+                'key_epoch': 1,
+                'status': 'valid',
+              },
+            }),
+          );
+          await req.response.close();
+          return;
+        }
+
+        if (req.method == 'GET' && path == '/api/v1/library/snapshot') {
+          final kind = req.uri.queryParameters['kind'];
+          final items = <Map<String, dynamic>>[];
+          if (kind == 'movie' && includeMovieFile) {
+            items.add({
               'id': 100,
-              'files': includeMovieFile
-                  ? [
-                      {
-                        'id': 500,
-                        'source_id': 'src_dav',
-                        'path': '/Movies/Inception.2010.mkv',
-                        'size': 2048,
-                        'role': 'video',
-                      },
-                    ]
-                  : <Map<String, dynamic>>[],
-            },
-          }),
-        );
-        await req.response.close();
-        return;
-      }
+              'work_key': 'tmdb:movie:27205',
+              'kind': 'movie',
+              'library_type': 'movie',
+              'title': 'Inception',
+              'sort_title': 'inception',
+              'year': 2010,
+              'added_at': 1700000000000,
+              'updated_at': 1700000000000,
+            });
+          }
+          req.response.statusCode = 200;
+          req.response.write(
+            jsonEncode({
+              'code': 0,
+              'snapshot_seq': serverSeq,
+              'total': items.length,
+              'page': 1,
+              'page_size': 100,
+              'has_more': false,
+              'items': items,
+            }),
+          );
+          await req.response.close();
+          return;
+        }
 
-      if (req.method == 'GET' && path == '/api/v1/library/changes') {
-        req.response.statusCode = 200;
-        req.response.write(
-          jsonEncode({
-            'code': 0,
-            'reset_required': true,
-            'latest_seq': serverSeq,
-            'min_retained_seq': serverSeq,
-            'next_since_seq': serverSeq,
-            'has_more': false,
-            'changes': <Map<String, dynamic>>[],
-          }),
-        );
-        await req.response.close();
-        return;
-      }
-
-      if (req.method == 'GET' && path == '/api/v1/progress') {
-        req.response.statusCode = 200;
-        req.response.write(
-          jsonEncode({
-            'code': 0,
-            'items': [
-              {
-                'work_key': 'tmdb:movie:27205',
-                'position_ms': 95000,
-                'watched': false,
-                'play_count': 0,
+        if (req.method == 'GET' && path == '/api/v1/items/100') {
+          req.response.statusCode = 200;
+          req.response.write(
+            jsonEncode({
+              'code': 0,
+              'item': {
+                'id': 100,
+                'files': includeMovieFile
+                    ? [
+                        {
+                          'id': 500,
+                          'source_id': 'src_dav',
+                          'path': '/Movies/Inception.2010.mkv',
+                          'size': 2048,
+                          'role': 'video',
+                        },
+                      ]
+                    : <Map<String, dynamic>>[],
               },
-            ],
-          }),
-        );
-        await req.response.close();
-        return;
-      }
-
-      if (req.method == 'GET' && path == '/api/v1/favorites') {
-        req.response.statusCode = 200;
-        req.response.write(
-          jsonEncode({
-            'code': 0,
-            'items': [
-              {'work_key': 'tmdb:movie:27205'},
-            ],
-          }),
-        );
-        await req.response.close();
-        return;
-      }
-
-      req.response.statusCode = 404;
-      await req.response.close();
-    });
-
-    final api = CloudApiClient(baseUrl: 'http://127.0.0.1:${server.port}', accessToken: 'usr_proj');
-    addTearDown(api.close);
-
-    final repo = CloudSourceRepository(api: api, masterKeyProvider: () => hk);
-    final mirror = CloudMountMirror(sourceRepository: repo, mountRegistry: mountRegistry);
-    final syncClient = CloudProjectionSyncClient(api);
-    final engine = CloudProjectionEngine(db: db, syncClient: syncClient, mountMirror: mirror);
-
-    // 1. Full snapshot projects movie, mirrored cloud mount, and user state
-    final res1 = await engine.syncFullSnapshot();
-    expect(res1.fullReset, isTrue);
-    expect(res1.latestSeq, 10);
-    expect(res1.itemsProjected, 1);
-    expect(res1.filesProjected, 1);
-
-    final mounts = await mountRegistry.list();
-    expect(mounts.map((m) => m.id), containsAll(['local_1', 'cloud:src_dav']));
-    final mirrored = mounts.firstWhere((m) => m.id == 'cloud:src_dav');
-    expect(mirrored.secrets[MountKeys.secretPassword], 'pw123');
-
-    final items1 = await db.select(db.libraryItems).get();
-    expect(items1.length, 1);
-    expect(items1.single.title, 'Inception');
-
-    final userStates = await db.select(db.libraryUserStates).get();
-    expect(userStates.length, 1);
-    expect(userStates.single.positionMs, 95000);
-    expect(userStates.single.favorite, isTrue);
-
-    // 2. Movie removed on server -> incremental sync hits reset_required -> empty shell pruned
-    includeMovieFile = false;
-    serverSeq = 12;
-    final res2 = await engine.syncIncremental();
-    expect(res2.fullReset, isTrue);
-    expect(res2.latestSeq, 12);
-    expect(res2.emptyShellsPruned, 1);
-
-    final items2 = await db.select(db.libraryItems).get();
-    expect(items2, isEmpty);
-
-    // Local mount was preserved
-    final localMount = await mountRegistry.get('local_1');
-    expect(localMount, isNotNull);
-
-    // 3. Server emits media_file / source_folder delta changes -> triggers full snapshot & sync-state notifications
-    includeMovieFile = true;
-    serverSeq = 15;
-    final syncStates = <bool>[];
-    final engine2 = CloudProjectionEngine(
-      db: db,
-      syncClient: syncClient,
-      mountMirror: mirror,
-      onSyncStateChanged: syncStates.add,
-    );
-    addTearDown(engine2.stopListeningEvents);
-
-    // First snapshot puts lastSeq = 15, then verify media_file change at seq 15 triggers resync
-    final initialRes = await engine2.syncFullSnapshot();
-    expect(initialRes.latestSeq, 15);
-    expect(syncStates, [true, false]);
-
-    // Mock /changes: phase 1 returns media_file upsert (no full snapshot reset);
-    // phase 2 returns source_folder upsert (triggers full snapshot fallback).
-    final deltaServer = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
-    addTearDown(() => deltaServer.close(force: true));
-    var deltaSnapshotPasses = 0;
-    var deltaChangesPhase = 1;
-    deltaServer.listen((req) async {
-      final path = req.uri.path;
-      if (req.method == 'GET' && path == '/api/v1/sources') {
-        req.response.write(jsonEncode({'code': 0, 'sources': <Map<String, dynamic>>[]}));
-      } else if (req.method == 'GET' && path == '/api/v1/library/snapshot') {
-        if (req.uri.queryParameters['kind'] == 'movie') {
-          deltaSnapshotPasses++;
+            }),
+          );
+          await req.response.close();
+          return;
         }
-        req.response.write(
-          jsonEncode({
-            'code': 0,
-            'snapshot_seq': deltaSnapshotPasses == 1 ? 10 : 14,
-            'total': 0,
-            'page': 1,
-            'page_size': 100,
-            'has_more': false,
-            'items': <Map<String, dynamic>>[],
-          }),
-        );
-      } else if (req.method == 'GET' && path == '/api/v1/library/changes') {
-        if (deltaChangesPhase == 1) {
+
+        if (req.method == 'GET' && path == '/api/v1/library/changes') {
+          req.response.statusCode = 200;
           req.response.write(
             jsonEncode({
               'code': 0,
-              'reset_required': false,
-              'latest_seq': 12,
-              'min_retained_seq': 1,
-              'next_since_seq': 12,
+              'reset_required': true,
+              'latest_seq': serverSeq,
+              'min_retained_seq': serverSeq,
+              'next_since_seq': serverSeq,
               'has_more': false,
-              'changes': [
-                {'seq': 11, 'entity': 'media_file', 'entity_id': '1', 'op': 'upsert'},
-              ],
+              'changes': <Map<String, dynamic>>[],
             }),
           );
-        } else {
+          await req.response.close();
+          return;
+        }
+
+        if (req.method == 'GET' && path == '/api/v1/progress') {
+          req.response.statusCode = 200;
           req.response.write(
             jsonEncode({
               'code': 0,
-              'reset_required': false,
-              'latest_seq': 14,
-              'min_retained_seq': 1,
-              'next_since_seq': 14,
-              'has_more': false,
-              'changes': [
-                {'seq': 13, 'entity': 'source_folder', 'entity_id': 'f1', 'op': 'upsert'},
+              'items': [
+                {'work_key': 'tmdb:movie:27205', 'position_ms': 95000, 'watched': false, 'play_count': 0},
               ],
             }),
           );
+          await req.response.close();
+          return;
         }
-      } else if (req.method == 'GET' && (path == '/api/v1/progress' || path == '/api/v1/favorites')) {
-        req.response.write(jsonEncode({'code': 0, 'items': <Map<String, dynamic>>[]}));
-      } else {
+
+        if (req.method == 'GET' && path == '/api/v1/favorites') {
+          req.response.statusCode = 200;
+          req.response.write(
+            jsonEncode({
+              'code': 0,
+              'items': [
+                {'work_key': 'tmdb:movie:27205'},
+              ],
+            }),
+          );
+          await req.response.close();
+          return;
+        }
+
         req.response.statusCode = 404;
-      }
-      await req.response.close();
-    });
+        await req.response.close();
+      });
 
-    final deltaApi = CloudApiClient(baseUrl: 'http://127.0.0.1:${deltaServer.port}', accessToken: 'usr_d');
-    addTearDown(deltaApi.close);
-    final deltaRepo = CloudSourceRepository(api: deltaApi, masterKeyProvider: () => hk);
-    final deltaEngine = CloudProjectionEngine(
-      db: db,
-      syncClient: CloudProjectionSyncClient(deltaApi),
-      mountMirror: CloudMountMirror(sourceRepository: deltaRepo, mountRegistry: mountRegistry),
-    );
-    addTearDown(deltaEngine.stopListeningEvents);
-    await deltaEngine.syncFullSnapshot();
-    expect(deltaSnapshotPasses, 1);
+      final api = CloudApiClient(baseUrl: 'http://127.0.0.1:${server.port}', accessToken: 'usr_proj');
+      addTearDown(api.close);
 
-    // Phase 1: pending media_file upsert advances seq without triggering full snapshot
-    final mfRes = await deltaEngine.syncIncremental();
-    expect(mfRes.fullReset, isFalse);
-    expect(mfRes.hasChanges, isFalse);
-    expect(mfRes.latestSeq, 12);
-    expect(deltaSnapshotPasses, 1);
+      final repo = CloudSourceRepository(api: api, masterKeyProvider: () => hk);
+      final mirror = CloudMountMirror(sourceRepository: repo, mountRegistry: mountRegistry);
+      final syncClient = CloudProjectionSyncClient(api);
+      final engine = CloudProjectionEngine(db: db, syncClient: syncClient, mountMirror: mirror);
 
-    // Phase 2: structural source_folder change triggers full snapshot fallback
-    deltaChangesPhase = 2;
-    final deltaRes = await deltaEngine.syncIncremental();
-    expect(deltaRes.fullReset, isTrue);
-    expect(deltaSnapshotPasses, 2);
-  });
+      // 1. Full snapshot projects movie, mirrored cloud mount, and user state
+      final res1 = await engine.syncFullSnapshot();
+      expect(res1.fullReset, isTrue);
+      expect(res1.latestSeq, 10);
+      expect(res1.itemsProjected, 1);
+      expect(res1.filesProjected, 1);
+
+      final mounts = await mountRegistry.list();
+      expect(mounts.map((m) => m.id), containsAll(['local_1', 'cloud:src_dav']));
+      final mirrored = mounts.firstWhere((m) => m.id == 'cloud:src_dav');
+      expect(mirrored.secrets[MountKeys.secretPassword], 'pw123');
+
+      final items1 = await db.select(db.libraryItems).get();
+      expect(items1.length, 1);
+      expect(items1.single.title, 'Inception');
+
+      final userStates = await db.select(db.libraryUserStates).get();
+      expect(userStates.length, 1);
+      expect(userStates.single.positionMs, 95000);
+      expect(userStates.single.favorite, isTrue);
+
+      // 2. Movie removed on server -> incremental sync hits reset_required -> empty shell pruned
+      includeMovieFile = false;
+      serverSeq = 12;
+      final res2 = await engine.syncIncremental();
+      expect(res2.fullReset, isTrue);
+      expect(res2.latestSeq, 12);
+      expect(res2.emptyShellsPruned, 1);
+
+      final items2 = await db.select(db.libraryItems).get();
+      expect(items2, isEmpty);
+
+      // Local mount was preserved
+      final localMount = await mountRegistry.get('local_1');
+      expect(localMount, isNotNull);
+
+      // 3. Server emits media_file / source_folder delta changes -> triggers full snapshot & sync-state notifications
+      includeMovieFile = true;
+      serverSeq = 15;
+      final syncStates = <bool>[];
+      final engine2 = CloudProjectionEngine(
+        db: db,
+        syncClient: syncClient,
+        mountMirror: mirror,
+        onSyncStateChanged: syncStates.add,
+      );
+      addTearDown(engine2.stopListeningEvents);
+
+      // First snapshot puts lastSeq = 15, then verify media_file change at seq 15 triggers resync
+      final initialRes = await engine2.syncFullSnapshot();
+      expect(initialRes.latestSeq, 15);
+      expect(syncStates, [true, false]);
+
+      // Mock /changes: phase 1 returns media_file upsert (no full snapshot reset);
+      // phase 2 returns source_folder upsert (triggers full snapshot fallback).
+      final deltaServer = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+      addTearDown(() => deltaServer.close(force: true));
+      var deltaSnapshotPasses = 0;
+      var deltaChangesPhase = 1;
+      deltaServer.listen((req) async {
+        final path = req.uri.path;
+        if (req.method == 'GET' && path == '/api/v1/sources') {
+          req.response.write(jsonEncode({'code': 0, 'sources': <Map<String, dynamic>>[]}));
+        } else if (req.method == 'GET' && path == '/api/v1/library/snapshot') {
+          if (req.uri.queryParameters['kind'] == 'movie') {
+            deltaSnapshotPasses++;
+          }
+          req.response.write(
+            jsonEncode({
+              'code': 0,
+              'snapshot_seq': deltaSnapshotPasses == 1 ? 10 : 14,
+              'total': 0,
+              'page': 1,
+              'page_size': 100,
+              'has_more': false,
+              'items': <Map<String, dynamic>>[],
+            }),
+          );
+        } else if (req.method == 'GET' && path == '/api/v1/library/changes') {
+          if (deltaChangesPhase == 1) {
+            req.response.write(
+              jsonEncode({
+                'code': 0,
+                'reset_required': false,
+                'latest_seq': 12,
+                'min_retained_seq': 1,
+                'next_since_seq': 12,
+                'has_more': false,
+                'changes': [
+                  {'seq': 11, 'entity': 'media_file', 'entity_id': '1', 'op': 'upsert'},
+                ],
+              }),
+            );
+          } else {
+            req.response.write(
+              jsonEncode({
+                'code': 0,
+                'reset_required': false,
+                'latest_seq': 14,
+                'min_retained_seq': 1,
+                'next_since_seq': 14,
+                'has_more': false,
+                'changes': [
+                  {'seq': 13, 'entity': 'source_folder', 'entity_id': 'f1', 'op': 'upsert'},
+                ],
+              }),
+            );
+          }
+        } else if (req.method == 'GET' && (path == '/api/v1/progress' || path == '/api/v1/favorites')) {
+          req.response.write(jsonEncode({'code': 0, 'items': <Map<String, dynamic>>[]}));
+        } else {
+          req.response.statusCode = 404;
+        }
+        await req.response.close();
+      });
+
+      final deltaApi = CloudApiClient(baseUrl: 'http://127.0.0.1:${deltaServer.port}', accessToken: 'usr_d');
+      addTearDown(deltaApi.close);
+      final deltaRepo = CloudSourceRepository(api: deltaApi, masterKeyProvider: () => hk);
+      final deltaEngine = CloudProjectionEngine(
+        db: db,
+        syncClient: CloudProjectionSyncClient(deltaApi),
+        mountMirror: CloudMountMirror(sourceRepository: deltaRepo, mountRegistry: mountRegistry),
+      );
+      addTearDown(deltaEngine.stopListeningEvents);
+      await deltaEngine.syncFullSnapshot();
+      expect(deltaSnapshotPasses, 1);
+
+      // Phase 1: pending media_file upsert advances seq without triggering full snapshot
+      final mfRes = await deltaEngine.syncIncremental();
+      expect(mfRes.fullReset, isFalse);
+      expect(mfRes.hasChanges, isFalse);
+      expect(mfRes.latestSeq, 12);
+      expect(deltaSnapshotPasses, 1);
+
+      // Phase 2: structural source_folder change triggers full snapshot fallback
+      deltaChangesPhase = 2;
+      final deltaRes = await deltaEngine.syncIncremental();
+      expect(deltaRes.fullReset, isTrue);
+      expect(deltaSnapshotPasses, 2);
+    },
+  );
 
   test(
     'CloudProjectionEngine projects movie + show/season/episode with inline files, subtitles, and episode progress without item-detail N+1 calls',
@@ -627,75 +627,78 @@ void main() {
     },
   );
 
-  test('CloudProjectionEngine.syncIncremental emits onSyncStateChanged and hasChanges=false when no server changes', () async {
-    resetSharedPreferencesForTest();
-    final prevOverrides = HttpOverrides.current;
-    HttpOverrides.global = null;
-    addTearDown(() => HttpOverrides.global = prevOverrides);
+  test(
+    'CloudProjectionEngine.syncIncremental emits onSyncStateChanged and hasChanges=false when no server changes',
+    () async {
+      resetSharedPreferencesForTest();
+      final prevOverrides = HttpOverrides.current;
+      HttpOverrides.global = null;
+      addTearDown(() => HttpOverrides.global = prevOverrides);
 
-    final db = AppDatabase.forTesting(NativeDatabase.memory());
-    addTearDown(db.close);
-    final mountRegistry = MountRegistry(db);
-    final hk = CloudKeyring.generateMasterKey();
+      final db = AppDatabase.forTesting(NativeDatabase.memory());
+      addTearDown(db.close);
+      final mountRegistry = MountRegistry(db);
+      final hk = CloudKeyring.generateMasterKey();
 
-    final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
-    addTearDown(() => server.close(force: true));
-    server.listen((req) async {
-      final path = req.uri.path;
-      if (req.method == 'GET' && path == '/api/v1/sources') {
-        req.response.write(jsonEncode({'code': 0, 'sources': <Map<String, dynamic>>[]}));
-      } else if (req.method == 'GET' && path == '/api/v1/library/snapshot') {
-        req.response.write(
-          jsonEncode({
-            'code': 0,
-            'snapshot_seq': 50,
-            'total': 0,
-            'page': 1,
-            'page_size': 200,
-            'has_more': false,
-            'items': <Map<String, dynamic>>[],
-          }),
-        );
-      } else if (req.method == 'GET' && path == '/api/v1/library/changes') {
-        req.response.write(
-          jsonEncode({
-            'code': 0,
-            'reset_required': false,
-            'latest_seq': 50,
-            'min_retained_seq': 1,
-            'next_since_seq': 50,
-            'has_more': false,
-            'changes': <Map<String, dynamic>>[],
-          }),
-        );
-      } else if (req.method == 'GET' && (path == '/api/v1/progress' || path == '/api/v1/favorites')) {
-        req.response.write(jsonEncode({'code': 0, 'items': <Map<String, dynamic>>[]}));
-      } else {
-        req.response.statusCode = 404;
-      }
-      await req.response.close();
-    });
+      final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+      addTearDown(() => server.close(force: true));
+      server.listen((req) async {
+        final path = req.uri.path;
+        if (req.method == 'GET' && path == '/api/v1/sources') {
+          req.response.write(jsonEncode({'code': 0, 'sources': <Map<String, dynamic>>[]}));
+        } else if (req.method == 'GET' && path == '/api/v1/library/snapshot') {
+          req.response.write(
+            jsonEncode({
+              'code': 0,
+              'snapshot_seq': 50,
+              'total': 0,
+              'page': 1,
+              'page_size': 200,
+              'has_more': false,
+              'items': <Map<String, dynamic>>[],
+            }),
+          );
+        } else if (req.method == 'GET' && path == '/api/v1/library/changes') {
+          req.response.write(
+            jsonEncode({
+              'code': 0,
+              'reset_required': false,
+              'latest_seq': 50,
+              'min_retained_seq': 1,
+              'next_since_seq': 50,
+              'has_more': false,
+              'changes': <Map<String, dynamic>>[],
+            }),
+          );
+        } else if (req.method == 'GET' && (path == '/api/v1/progress' || path == '/api/v1/favorites')) {
+          req.response.write(jsonEncode({'code': 0, 'items': <Map<String, dynamic>>[]}));
+        } else {
+          req.response.statusCode = 404;
+        }
+        await req.response.close();
+      });
 
-    final api = CloudApiClient(baseUrl: 'http://127.0.0.1:${server.port}', accessToken: 'usr_empty');
-    addTearDown(api.close);
-    final syncStates = <bool>[];
-    final repo = CloudSourceRepository(api: api, masterKeyProvider: () => hk);
-    final engine = CloudProjectionEngine(
-      db: db,
-      syncClient: CloudProjectionSyncClient(api),
-      mountMirror: CloudMountMirror(sourceRepository: repo, mountRegistry: mountRegistry),
-      onSyncStateChanged: syncStates.add,
-    );
-    addTearDown(engine.stopListeningEvents);
+      final api = CloudApiClient(baseUrl: 'http://127.0.0.1:${server.port}', accessToken: 'usr_empty');
+      addTearDown(api.close);
+      final syncStates = <bool>[];
+      final repo = CloudSourceRepository(api: api, masterKeyProvider: () => hk);
+      final engine = CloudProjectionEngine(
+        db: db,
+        syncClient: CloudProjectionSyncClient(api),
+        mountMirror: CloudMountMirror(sourceRepository: repo, mountRegistry: mountRegistry),
+        onSyncStateChanged: syncStates.add,
+      );
+      addTearDown(engine.stopListeningEvents);
 
-    await engine.syncFullSnapshot();
-    syncStates.clear();
+      await engine.syncFullSnapshot();
+      syncStates.clear();
 
-    final res = await engine.syncIncremental();
-    expect(syncStates, [true, false]);
-    expect(res.hasChanges, isFalse);
-    expect(res.fullReset, isFalse);
-  });
+      final res = await engine.syncIncremental();
+      expect(syncStates, [true, false]);
+      expect(res.hasChanges, isFalse);
+      expect(res.fullReset, isFalse);
+    },
+  );
 
   test(
     'CloudProjectionEngine.syncIncremental projects item+files delta in place and hydrateItemDetailFromCloud pulls details',
@@ -744,7 +747,13 @@ void main() {
           req.response.write(
             jsonEncode({
               'code': 0,
-              'credential': {'source_id': 'src_qk', 'ciphertext': qkCipher, 'version': 1, 'key_epoch': 1, 'status': 'valid'},
+              'credential': {
+                'source_id': 'src_qk',
+                'ciphertext': qkCipher,
+                'version': 1,
+                'key_epoch': 1,
+                'status': 'valid',
+              },
             }),
           );
         } else if (req.method == 'GET' && path == '/api/v1/library/snapshot') {
@@ -790,14 +799,28 @@ void main() {
                 'added_at': 1000,
                 'updated_at': 1000,
                 'files': [
-                  {'id': 501, 'source_id': 'src_qk', 'path': '/TV/GuYu/S01E01.mkv', 'remote_id': 'rk_e1', 'mtime_s': 1000},
+                  {
+                    'id': 501,
+                    'source_id': 'src_qk',
+                    'path': '/TV/GuYu/S01E01.mkv',
+                    'remote_id': 'rk_e1',
+                    'mtime_s': 1000,
+                  },
                 ],
               },
             ],
             _ => <Map<String, dynamic>>[],
           };
           req.response.write(
-            jsonEncode({'code': 0, 'snapshot_seq': 10, 'total': items.length, 'page': 1, 'page_size': 200, 'has_more': false, 'items': items}),
+            jsonEncode({
+              'code': 0,
+              'snapshot_seq': 10,
+              'total': items.length,
+              'page': 1,
+              'page_size': 200,
+              'has_more': false,
+              'items': items,
+            }),
           );
         } else if (req.method == 'GET' && path == '/api/v1/library/changes') {
           changesIncludeFiles = req.uri.queryParameters['include_files'];
@@ -852,7 +875,13 @@ void main() {
                         'remote_id': 'rk_e2',
                         'mtime_s': 5000,
                         'subtitles': [
-                          {'id': 602, 'source_id': 'src_qk', 'path': '/TV/GuYu/S01E02.zh.srt', 'remote_id': 'rk_s2', 'language': 'zh'},
+                          {
+                            'id': 602,
+                            'source_id': 'src_qk',
+                            'path': '/TV/GuYu/S01E02.zh.srt',
+                            'remote_id': 'rk_s2',
+                            'language': 'zh',
+                          },
                         ],
                       },
                     ],
@@ -878,7 +907,13 @@ void main() {
                 'studio': 'Tencent',
                 'genres': ['剧情', '悬疑'],
                 'credits': [
-                  {'person_id': 1, 'name': '张颂文', 'job': 'actor', 'character': '主角', 'photo_url': '/api/v1/metadata/artwork?src=%2Factor.jpg'},
+                  {
+                    'person_id': 1,
+                    'name': '张颂文',
+                    'job': 'actor',
+                    'character': '主角',
+                    'photo_url': '/api/v1/metadata/artwork?src=%2Factor.jpg',
+                  },
                 ],
                 'children': [
                   {
@@ -947,7 +982,9 @@ void main() {
       expect(hydratedShow.summary, 'Detailed summary');
       expect(hydratedShow.tagline, 'Rain of Grain');
       expect(hydratedShow.studio, 'Tencent');
-      final hydratedSeason = await (db.select(db.libraryItems)..where((t) => t.kind.equals(LibraryKinds.season))).getSingle();
+      final hydratedSeason = await (db.select(
+        db.libraryItems,
+      )..where((t) => t.kind.equals(LibraryKinds.season))).getSingle();
       expect(hydratedSeason.workKey, 'tmdb:show:279155:s1');
       expect(hydratedSeason.parentId, showRow.id);
       expect((await libRepo.genresOf(showRow.id)).map((g) => g.name), containsAll(['剧情', '悬疑']));
@@ -987,7 +1024,12 @@ void main() {
             }),
           );
         } else if (req.method == 'POST' && req.uri.path.endsWith('/batches')) {
-          req.response.write(jsonEncode({'code': 0, 'receipt': {'added': 1, 'changed': 0, 'removed': 0}}));
+          req.response.write(
+            jsonEncode({
+              'code': 0,
+              'receipt': {'added': 1, 'changed': 0, 'removed': 0},
+            }),
+          );
         } else if (req.method == 'POST' && req.uri.path.endsWith('/complete')) {
           req.response.write(jsonEncode({'code': 0}));
         } else {
@@ -1070,7 +1112,12 @@ void main() {
       final hk = CloudKeyring.generateMasterKey();
       final webdavCipher = await CloudKeyring.encryptCredentialJson(
         masterKey: hk,
-        payload: {'base_url': 'http://localhost:8085', 'username': 'testuser', 'password': 'testpass123', 'root_path': '/'},
+        payload: {
+          'base_url': 'http://localhost:8085',
+          'username': 'testuser',
+          'password': 'testpass123',
+          'root_path': '/',
+        },
       );
 
       var phase = 1;
@@ -1255,7 +1302,8 @@ void main() {
               ],
             }),
           );
-        } else if (req.method == 'GET' && (path == '/api/v1/userdata/progress' || path == '/api/v1/userdata/favorites')) {
+        } else if (req.method == 'GET' &&
+            (path == '/api/v1/userdata/progress' || path == '/api/v1/userdata/favorites')) {
           req.response.statusCode = 200;
           req.response.write(jsonEncode({'code': 0, 'items': <Map<String, dynamic>>[]}));
         } else {
@@ -1303,6 +1351,263 @@ void main() {
         db.libraryItems,
       )..where((t) => t.workKey.equals('cloud:unmatched:101'))).getSingleOrNull();
       expect(oldUnmatched, isNull);
+    },
+  );
+
+  test(
+    'CloudProjectionEngine syncs household work_prefs via full snapshot, incremental changes, and detail hydration',
+    () async {
+      resetSharedPreferencesForTest();
+      final prevOverrides = HttpOverrides.current;
+      HttpOverrides.global = null;
+      addTearDown(() => HttpOverrides.global = prevOverrides);
+
+      final db = AppDatabase.forTesting(NativeDatabase.memory());
+      addTearDown(db.close);
+      final mountRegistry = MountRegistry(db);
+      final hk = CloudKeyring.generateMasterKey();
+      final davCipher = await CloudKeyring.encryptCredentialJson(
+        masterKey: hk,
+        payload: {'base_url': 'https://nas.example/dav', 'username': 'alice', 'password': 'pw', 'root_path': '/'},
+      );
+
+      var changesPhase = 1;
+      final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+      addTearDown(() => server.close(force: true));
+
+      server.listen((req) async {
+        final path = req.uri.path;
+        if (req.method == 'GET' && path == '/api/v1/sources') {
+          req.response.write(
+            jsonEncode({
+              'code': 0,
+              'sources': [
+                {
+                  'id': 'src_dav',
+                  'kind': 'webdav',
+                  'name': 'Home WebDAV',
+                  'identity_key': 'hmac_wp',
+                  'status': 'active',
+                },
+              ],
+            }),
+          );
+        } else if (req.method == 'GET' && path == '/api/v1/sources/src_dav/credential') {
+          req.response.write(
+            jsonEncode({
+              'code': 0,
+              'credential': {
+                'source_id': 'src_dav',
+                'ciphertext': davCipher,
+                'version': 1,
+                'key_epoch': 1,
+                'status': 'valid',
+              },
+            }),
+          );
+        } else if (req.method == 'GET' && path == '/api/v1/library/snapshot') {
+          final kind = req.uri.queryParameters['kind'];
+          req.response.write(
+            jsonEncode({
+              'code': 0,
+              'snapshot_seq': 10,
+              'total': kind == 'movie' ? 1 : 0,
+              'page': 1,
+              'page_size': 200,
+              'has_more': false,
+              'items': kind == 'movie'
+                  ? [
+                      {
+                        'id': 100,
+                        'work_key': 'tmdb:movie:27205',
+                        'kind': 'movie',
+                        'library_type': 'movie',
+                        'title': 'Inception',
+                        'sort_title': 'inception',
+                        'added_at': 1700000000000,
+                        'updated_at': 1700000000000,
+                        'files': [
+                          {
+                            'id': 500,
+                            'source_id': 'src_dav',
+                            'path': '/Movies/Inception.mkv',
+                            'size': 2048,
+                            'role': 'video',
+                          },
+                        ],
+                      },
+                    ]
+                  : <Map<String, dynamic>>[],
+            }),
+          );
+        } else if (req.method == 'GET' && path == '/api/v1/library/unmatched') {
+          req.response.write(jsonEncode({'code': 0, 'items': <Map<String, dynamic>>[], 'total': 0}));
+        } else if (req.method == 'GET' && (path == '/api/v1/progress' || path == '/api/v1/favorites')) {
+          req.response.write(jsonEncode({'code': 0, 'items': <Map<String, dynamic>>[]}));
+        } else if (req.method == 'GET' && path == '/api/v1/work-prefs') {
+          req.response.write(
+            jsonEncode({
+              'code': 0,
+              'items': [
+                {
+                  'work_key': 'tmdb:movie:27205',
+                  'intro_enabled': true,
+                  'intro_start_ms': 3000,
+                  'intro_end_ms': 85000,
+                  'credits_enabled': true,
+                  'credits_from_end_ms': 120000,
+                  'keep_easter_egg_ms': 15000,
+                  'household_updated_at': 1700000000100,
+                },
+                {
+                  // Member-only row with no household skip prefs should be skipped
+                  'work_key': 'tmdb:show:999',
+                  'intro_enabled': false,
+                  'credits_enabled': false,
+                  'playback_speed': 1.5,
+                  'household_updated_at': 0,
+                  'member_updated_at': 1700000000100,
+                },
+              ],
+            }),
+          );
+        } else if (req.method == 'GET' && path == '/api/v1/library/changes') {
+          if (changesPhase == 1) {
+            req.response.write(
+              jsonEncode({
+                'code': 0,
+                'reset_required': false,
+                'latest_seq': 11,
+                'min_retained_seq': 1,
+                'next_since_seq': 11,
+                'has_more': false,
+                'changes': [
+                  {
+                    'seq': 11,
+                    'entity': 'work_prefs',
+                    'entity_id': 'tmdb:show:999',
+                    'op': 'upsert',
+                    'data': {
+                      'work_key': 'tmdb:show:999',
+                      'intro_enabled': true,
+                      'intro_start_ms': 0,
+                      'intro_end_ms': 90000,
+                      'credits_enabled': false,
+                      'credits_from_end_ms': 0,
+                      'keep_easter_egg_ms': 0,
+                      'household_updated_at': 1700000000200,
+                    },
+                  },
+                ],
+              }),
+            );
+          } else {
+            req.response.write(
+              jsonEncode({
+                'code': 0,
+                'reset_required': false,
+                'latest_seq': 12,
+                'min_retained_seq': 1,
+                'next_since_seq': 12,
+                'has_more': false,
+                'changes': [
+                  {
+                    'seq': 12,
+                    'entity': 'work_prefs',
+                    'entity_id': 'tmdb:show:999',
+                    'op': 'upsert',
+                    'data': {
+                      'work_key': 'tmdb:show:999',
+                      'intro_enabled': false,
+                      'intro_start_ms': 0,
+                      'intro_end_ms': 90000,
+                      'credits_enabled': false,
+                      'credits_from_end_ms': 0,
+                      'keep_easter_egg_ms': 0,
+                      'household_updated_at': 1700000000300,
+                    },
+                  },
+                ],
+              }),
+            );
+          }
+        } else if (req.method == 'GET' && path == '/api/v1/items/by-work-key') {
+          req.response.write(
+            jsonEncode({
+              'code': 0,
+              'item': {
+                'id': 100,
+                'work_key': 'tmdb:movie:27205',
+                'kind': 'movie',
+                'library_type': 'movie',
+                'title': 'Inception',
+                'sort_title': 'inception',
+                'added_at': 1700000000000,
+                'updated_at': 1700000000000,
+                'files': [
+                  {'id': 500, 'source_id': 'src_dav', 'path': '/Movies/Inception.mkv', 'size': 2048, 'role': 'video'},
+                ],
+                'work_prefs': {
+                  'work_key': 'tmdb:movie:27205',
+                  'intro_enabled': true,
+                  'intro_start_ms': 7000,
+                  'intro_end_ms': 95000,
+                  'credits_enabled': false,
+                  'credits_from_end_ms': 0,
+                  'keep_easter_egg_ms': 0,
+                  'household_updated_at': 1700000000400,
+                },
+              },
+            }),
+          );
+        } else {
+          req.response.statusCode = 404;
+        }
+        await req.response.close();
+      });
+
+      final api = CloudApiClient(baseUrl: 'http://127.0.0.1:${server.port}', accessToken: 'tok');
+      addTearDown(api.close);
+      final repo = CloudSourceRepository(api: api, masterKeyProvider: () => hk, keyEpoch: 1);
+      final mirror = CloudMountMirror(sourceRepository: repo, mountRegistry: mountRegistry);
+      final sync = CloudProjectionSyncClient(api);
+      final engine = CloudProjectionEngine(db: db, syncClient: sync, mountMirror: mirror);
+      addTearDown(engine.stopListeningEvents);
+
+      final skipStore = WorkSkipSettingsStore(db);
+      final movieWork = WorkIdentity.fromCloudWorkKey('tmdb:movie:27205')!;
+      final showWork = WorkIdentity.fromCloudWorkKey('tmdb:show:999')!;
+
+      // 1. Full snapshot syncs movie skip settings and ignores member-only show row
+      await engine.syncFullSnapshot();
+      final movieRules = await skipStore.read(movieWork);
+      expect(movieRules.introEnabled, isTrue);
+      expect(movieRules.introStartMs, 3000);
+      expect(movieRules.introEndMs, 85000);
+      expect(movieRules.creditsEnabled, isTrue);
+      expect(movieRules.creditsDurationMs, 120000);
+      expect(movieRules.creditsResumeBeforeEndMs, 15000);
+      expect((await skipStore.read(showWork)).introEnabled, isFalse);
+
+      // 2. Incremental sync enables show intro, then disables it
+      final inc1 = await engine.syncIncremental();
+      expect(inc1.hasChanges, isTrue);
+      expect((await skipStore.read(showWork)).introEnabled, isTrue);
+      expect((await skipStore.read(showWork)).introEndMs, 90000);
+
+      changesPhase = 2;
+      final inc2 = await engine.syncIncremental();
+      expect(inc2.hasChanges, isTrue);
+      expect((await skipStore.read(showWork)).introEnabled, isFalse);
+
+      // 3. Detail hydration updates work_prefs locally
+      final item = (await (db.select(db.libraryItems)..where((t) => t.workKey.equals('tmdb:movie:27205'))).getSingle());
+      final hydrated = await engine.hydrateItemDetailFromCloud(item.id, 'tmdb:movie:27205');
+      expect(hydrated, isTrue);
+      final hydratedRules = await skipStore.read(movieWork);
+      expect(hydratedRules.introStartMs, 7000);
+      expect(hydratedRules.introEndMs, 95000);
+      expect(hydratedRules.creditsEnabled, isFalse);
     },
   );
 }

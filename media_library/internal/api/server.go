@@ -252,6 +252,7 @@ func (s *Server) buildMux() http.Handler {
 	mux.HandleFunc("GET /api/v1/favorites", s.requireUser(s.requirePerm(account.PermBrowse, s.handleListFavorites)))
 	mux.HandleFunc("PUT /api/v1/favorites/{work_key}", s.requireUser(s.requirePerm(account.PermBrowse, s.handleAddFavorite)))
 	mux.HandleFunc("DELETE /api/v1/favorites/{work_key}", s.requireUser(s.requirePerm(account.PermBrowse, s.handleRemoveFavorite)))
+	mux.HandleFunc("GET /api/v1/work-prefs", s.requireUser(s.requirePerm(account.PermBrowse, s.handleListWorkPrefs)))
 	mux.HandleFunc("GET /api/v1/work-prefs/{work_key}", s.requireUser(s.requirePerm(account.PermBrowse, s.handleGetWorkPrefs)))
 	mux.HandleFunc("PUT /api/v1/work-prefs/{work_key}/household", s.requireUser(s.handleUpsertHouseholdWorkPrefs))
 	mux.HandleFunc("PUT /api/v1/work-prefs/{work_key}/member", s.requireUser(s.requirePerm(account.PermBrowse, s.handleUpsertMemberWorkPrefs)))

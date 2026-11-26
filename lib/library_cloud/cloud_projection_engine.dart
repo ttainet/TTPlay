@@ -5,6 +5,9 @@ import 'package:drift/drift.dart';
 import '../database/app_database.dart';
 import '../library/deterministic_keys.dart';
 import '../library/library_repository.dart';
+import '../media/work_identity.dart';
+import '../media/work_skip_settings.dart';
+import '../services/work_skip_settings_store.dart';
 import '../storage/storage_path.dart';
 import '../utils/app_logger.dart';
 import 'cloud_mount_mirror.dart';
@@ -63,10 +66,7 @@ class CloudProjectionEngine {
   int get lastSeq => _lastSeq;
   bool get isSyncing => _syncing;
 
-  Future<CloudSyncResult> _withSyncLock(
-    Future<CloudSyncResult> Function() action, {
-    bool queueIfBusy = false,
-  }) async {
+  Future<CloudSyncResult> _withSyncLock(Future<CloudSyncResult> Function() action, {bool queueIfBusy = false}) async {
     if (_syncing) {
       if (queueIfBusy) _resyncQueued = true;
       return CloudSyncResult(
@@ -248,6 +248,7 @@ class CloudProjectionEngine {
       var hasUserDataChange = false;
       var hasFileChange = false;
       final changedItemsById = <int, Map<String, dynamic>>{};
+      final changedWorkPrefs = <Map<String, dynamic>>[];
 
       for (final c in changesPage.changes) {
         final entity = (c['entity'] as String? ?? '').toLowerCase();
@@ -285,7 +286,16 @@ class CloudProjectionEngine {
           // do not require re-downloading all snapshot pages.
           continue;
         }
-        if (entity == 'progress' || entity == 'work_prefs' || entity == 'list' || entity == 'favorite') {
+        if (entity == 'work_prefs') {
+          final data = c['data'];
+          if (op == 'upsert' && data is Map) {
+            changedWorkPrefs.add(Map<String, dynamic>.from(data));
+          } else {
+            hasUserDataChange = true;
+          }
+          continue;
+        }
+        if (entity == 'progress' || entity == 'list' || entity == 'favorite') {
           hasUserDataChange = true;
         }
       }
@@ -311,7 +321,14 @@ class CloudProjectionEngine {
         if (hasUserDataChange) {
           await _syncUserStateFromServer();
         }
-        final hasChanges = hasUserDataChange || itemsProjected > 0 || filesProjected > 0 || pruned > 0;
+        var workPrefsApplied = false;
+        for (final wp in changedWorkPrefs) {
+          if (await _applyCloudWorkPrefsMap(wp)) {
+            workPrefsApplied = true;
+          }
+        }
+        final hasChanges =
+            hasUserDataChange || workPrefsApplied || itemsProjected > 0 || filesProjected > 0 || pruned > 0;
         if (hasChanges) {
           onLibraryUpdated?.call();
         }
@@ -379,11 +396,15 @@ class CloudProjectionEngine {
           LibraryItemRow? localShow;
           if (showWkRaw.isNotEmpty) {
             final canonicalWk = DeterministicKeys.canonicalizeWorkKey(showWkRaw);
-            localShow = await (db.select(db.libraryItems)..where((t) => t.workKey.equals(canonicalWk))).getSingleOrNull();
+            localShow = await (db.select(
+              db.libraryItems,
+            )..where((t) => t.workKey.equals(canonicalWk))).getSingleOrNull();
           }
           if (localShow == null) {
             final fallbackCloudWk = 'cloud:$effectiveShowServerId';
-            localShow = await (db.select(db.libraryItems)..where((t) => t.workKey.equals(fallbackCloudWk))).getSingleOrNull();
+            localShow = await (db.select(
+              db.libraryItems,
+            )..where((t) => t.workKey.equals(fallbackCloudWk))).getSingleOrNull();
           }
           if (localShow != null) {
             serverIdToLocalId[effectiveShowServerId] = localShow.id;
@@ -391,28 +412,33 @@ class CloudProjectionEngine {
           }
         }
 
-        if (kind == LibraryKinds.episode && serverParentId != null && !changedItemsById.containsKey(serverParentId) && !serverIdToLocalId.containsKey(serverParentId)) {
+        if (kind == LibraryKinds.episode &&
+            serverParentId != null &&
+            !changedItemsById.containsKey(serverParentId) &&
+            !serverIdToLocalId.containsKey(serverParentId)) {
           final localShowId = effectiveShowServerId != null ? serverIdToLocalId[effectiveShowServerId] : null;
           final sNum = (raw['season_number'] as num?)?.toInt();
           if (localShowId != null && sNum != null) {
-            final localSeason = await (db.select(db.libraryItems)
-                  ..where(
-                    (t) =>
-                        t.showId.equals(localShowId) &
-                        t.kind.equals(LibraryKinds.season) &
-                        t.seasonNumber.equals(sNum),
-                  ))
-                .getSingleOrNull();
+            final localSeason =
+                await (db.select(db.libraryItems)..where(
+                      (t) =>
+                          t.showId.equals(localShowId) &
+                          t.kind.equals(LibraryKinds.season) &
+                          t.seasonNumber.equals(sNum),
+                    ))
+                    .getSingleOrNull();
             if (localSeason != null) {
               serverIdToLocalId[serverParentId] = localSeason.id;
             }
           }
         }
 
-        final hasShow = effectiveShowServerId == null ||
+        final hasShow =
+            effectiveShowServerId == null ||
             changedItemsById.containsKey(effectiveShowServerId) ||
             serverIdToLocalId.containsKey(effectiveShowServerId);
-        final hasParent = serverParentId != null &&
+        final hasParent =
+            serverParentId != null &&
             (changedItemsById.containsKey(serverParentId) || serverIdToLocalId.containsKey(serverParentId));
         if (!hasShow || !hasParent) {
           return await _runFullSnapshotLocked();
@@ -486,6 +512,9 @@ class CloudProjectionEngine {
 
       if (hasUserDataChange) {
         await _syncUserStateFromServer();
+      }
+      for (final wp in changedWorkPrefs) {
+        await _applyCloudWorkPrefsMap(wp);
       }
       _lastDetailHydratedAt.clear();
       _lastSeq = changesPage.nextSinceSeq > _lastSeq ? changesPage.nextSinceSeq : changesPage.latestSeq;
@@ -645,6 +674,13 @@ class CloudProjectionEngine {
             ));
           }
           await repo.setCredits(root.localId, credits);
+        }
+
+        final workPrefsRaw = detail['work_prefs'];
+        if (workPrefsRaw is Map) {
+          final prefsMap = Map<String, dynamic>.from(workPrefsRaw);
+          final fallbackWk = _nonEmptyString(detail['show_work_key']) ?? root.workKey;
+          await _applyCloudWorkPrefsMap(prefsMap, fallbackWorkKey: fallbackWk);
         }
 
         _lastDetailHydratedAt[trimmedKey] = DateTime.now();
@@ -815,8 +851,7 @@ class CloudProjectionEngine {
     final hasInvalidChildWorkKey =
         isChildItem &&
         (normalizedRawKey.isEmpty ||
-            (parentShowKey != null &&
-                normalizedRawKey == DeterministicKeys.canonicalizeWorkKey(parentShowKey)) ||
+            (parentShowKey != null && normalizedRawKey == DeterministicKeys.canonicalizeWorkKey(parentShowKey)) ||
             (kind == LibraryKinds.season && !RegExp(r':s\d+$').hasMatch(normalizedRawKey)) ||
             (kind == LibraryKinds.episode && !RegExp(r':e\d+$').hasMatch(normalizedRawKey)));
     String workKey;
@@ -863,7 +898,10 @@ class CloudProjectionEngine {
     if (raw.containsKey('aliases')) {
       final rawAliases = raw['aliases'];
       if (rawAliases is List) {
-        final list = [for (final a in rawAliases) if ('$a'.trim().isNotEmpty) '$a'.trim()];
+        final list = [
+          for (final a in rawAliases)
+            if ('$a'.trim().isNotEmpty) '$a'.trim(),
+        ];
         aliasesVal = Value(list.isEmpty ? null : list.join('\n'));
       } else if (rawAliases is String) {
         aliasesVal = Value(_nonEmptyString(rawAliases));
@@ -942,7 +980,9 @@ class CloudProjectionEngine {
     )..where((f) => f.fileKey.equals(fileKey) | (f.mountId.equals(mountId) & f.path.equals(path)))).getSingleOrNull();
 
     final rawMtime = (raw['mtime_s'] as num?)?.toInt();
-    final modifiedAtMs = rawMtime == null ? null : (rawMtime > 0 && rawMtime < 100000000000 ? rawMtime * 1000 : rawMtime);
+    final modifiedAtMs = rawMtime == null
+        ? null
+        : (rawMtime > 0 && rawMtime < 100000000000 ? rawMtime * 1000 : rawMtime);
     final nowMs = DateTime.now().millisecondsSinceEpoch;
     final companion = LibraryFilesCompanion(
       fileKey: Value(fileKey),
@@ -1019,13 +1059,13 @@ class CloudProjectionEngine {
       final matchedCloudKeys =
           projectedCloudFileKeys ??
           await () async {
-            final rows = await (db.select(db.libraryFiles)
-                  ..where(
-                    (f) =>
-                        f.mountId.like('${CloudMountMirror.cloudMountPrefix}%') &
-                        f.matchState.equals(LibraryMatchStates.matched),
-                  ))
-                .get();
+            final rows =
+                await (db.select(db.libraryFiles)..where(
+                      (f) =>
+                          f.mountId.like('${CloudMountMirror.cloudMountPrefix}%') &
+                          f.matchState.equals(LibraryMatchStates.matched),
+                    ))
+                    .get();
             return <String>{
               for (final r in rows)
                 if (r.fileKey != null && r.fileKey!.isNotEmpty) r.fileKey!,
@@ -1099,13 +1139,13 @@ class CloudProjectionEngine {
       }
 
       if (pruneStaleUnmatched) {
-        final existingUnmatchedFiles = await (db.select(db.libraryFiles)
-              ..where(
-                (f) =>
-                    f.mountId.like('${CloudMountMirror.cloudMountPrefix}%') &
-                    f.matchState.isIn([LibraryMatchStates.unmatched, LibraryMatchStates.pending]),
-              ))
-            .get();
+        final existingUnmatchedFiles =
+            await (db.select(db.libraryFiles)..where(
+                  (f) =>
+                      f.mountId.like('${CloudMountMirror.cloudMountPrefix}%') &
+                      f.matchState.isIn([LibraryMatchStates.unmatched, LibraryMatchStates.pending]),
+                ))
+                .get();
         for (final f in existingUnmatchedFiles) {
           final key = f.fileKey;
           if (key == null || !activeUnmatchedFileKeys.contains(key)) {
@@ -1139,11 +1179,11 @@ class CloudProjectionEngine {
       }
     }
     if (itemVideoIds.isNotEmpty) {
-      final subFiles = await (db.select(db.libraryFiles)
-            ..where(
-              (f) => f.mountId.like('${CloudMountMirror.cloudMountPrefix}%') & f.ownerFileId.isIn(itemVideoIds),
-            ))
-          .get();
+      final subFiles =
+          await (db.select(db.libraryFiles)..where(
+                (f) => f.mountId.like('${CloudMountMirror.cloudMountPrefix}%') & f.ownerFileId.isIn(itemVideoIds),
+              ))
+              .get();
       for (final s in subFiles) {
         final key = s.fileKey;
         if (key == null || !keepFileKeys.contains(key)) {
@@ -1155,9 +1195,9 @@ class CloudProjectionEngine {
 
   Future<void> _pruneStaleCloudFiles(Set<String> keepFileKeys) async {
     await db.transaction(() async {
-      final cloudFiles = await (db.select(db.libraryFiles)
-            ..where((f) => f.mountId.like('${CloudMountMirror.cloudMountPrefix}%')))
-          .get();
+      final cloudFiles = await (db.select(
+        db.libraryFiles,
+      )..where((f) => f.mountId.like('${CloudMountMirror.cloudMountPrefix}%'))).get();
       for (final f in cloudFiles) {
         final key = f.fileKey;
         if (key == null || !keepFileKeys.contains(key)) {
@@ -1167,9 +1207,34 @@ class CloudProjectionEngine {
     });
   }
 
+  Future<bool> _applyCloudWorkPrefsMap(Map<String, dynamic> raw, {String? fallbackWorkKey}) async {
+    final rawWk = ((raw['work_key'] as String?) ?? fallbackWorkKey ?? '').trim();
+    if (rawWk.isEmpty) return false;
+    final work = WorkIdentity.fromCloudWorkKey(rawWk);
+    if (work == null) return false;
+
+    final hhUpdated = (raw['household_updated_at'] as num?)?.toInt() ?? 0;
+    final settings = WorkSkipSettings.fromCloudJson(raw);
+    if (hhUpdated <= 0 && !settings.introEnabled && !settings.creditsEnabled) {
+      return false;
+    }
+    if (!settings.validFor()) {
+      appLogger.w('CloudProjectionEngine: ignoring invalid cloud skip settings for $rawWk');
+      return false;
+    }
+    await WorkSkipSettingsStore(db).save(work, settings, syncToCloud: false);
+    return true;
+  }
+
   Future<void> _syncUserStateFromServer() async {
     try {
       final (progressList, favList) = await (syncClient.listProgress(limit: 500), syncClient.listFavorites()).wait;
+      List<Map<String, dynamic>> workPrefsList = const [];
+      try {
+        workPrefsList = await syncClient.listWorkPrefs();
+      } catch (e) {
+        appLogger.d('CloudProjectionEngine: work_prefs list unavailable, skipping: $e');
+      }
       final favKeys = <String>{
         for (final f in favList)
           if ((f['work_key'] as String?)?.isNotEmpty == true)
@@ -1197,15 +1262,15 @@ class CloudProjectionEngine {
             if (item == null && wk.isNotEmpty) {
               final show = await (db.select(db.libraryItems)..where((t) => t.workKey.equals(wk))).getSingleOrNull();
               if (show != null) {
-                item = await (db.select(db.libraryItems)
-                      ..where(
-                        (t) =>
-                            t.showId.equals(show.id) &
-                            t.kind.equals(LibraryKinds.episode) &
-                            t.seasonNumber.equals(seasonNum) &
-                            t.episodeNumber.equals(episodeNum),
-                      ))
-                    .getSingleOrNull();
+                item =
+                    await (db.select(db.libraryItems)..where(
+                          (t) =>
+                              t.showId.equals(show.id) &
+                              t.kind.equals(LibraryKinds.episode) &
+                              t.seasonNumber.equals(seasonNum) &
+                              t.episodeNumber.equals(episodeNum),
+                        ))
+                        .getSingleOrNull();
               }
             }
           } else if (wk.isNotEmpty) {
@@ -1214,19 +1279,21 @@ class CloudProjectionEngine {
           if (item == null) continue;
 
           final durMs = (p['duration_ms'] as num?)?.toInt();
-          await db.into(db.libraryUserStates).insertOnConflictUpdate(
-            LibraryUserStatesCompanion(
-              itemId: Value(item.id),
-              positionMs: Value((p['position_ms'] as num?)?.toInt() ?? 0),
-              durationMs: durMs != null ? Value(durMs) : const Value.absent(),
-              watched: Value(p['watched'] == true),
-              playCount: Value((p['play_count'] as num?)?.toInt() ?? 0),
-              lastPlayedAt: Value((p['last_played_at'] as num?)?.toInt()),
-              favorite: Value(!isEpisodeProgress && wk.isNotEmpty && favKeys.contains(wk)),
-              hiddenFromContinue: Value(p['hidden_from_continue'] == true),
-              updatedAt: Value((p['updated_at'] as num?)?.toInt() ?? nowMs),
-            ),
-          );
+          await db
+              .into(db.libraryUserStates)
+              .insertOnConflictUpdate(
+                LibraryUserStatesCompanion(
+                  itemId: Value(item.id),
+                  positionMs: Value((p['position_ms'] as num?)?.toInt() ?? 0),
+                  durationMs: durMs != null ? Value(durMs) : const Value.absent(),
+                  watched: Value(p['watched'] == true),
+                  playCount: Value((p['play_count'] as num?)?.toInt() ?? 0),
+                  lastPlayedAt: Value((p['last_played_at'] as num?)?.toInt()),
+                  favorite: Value(!isEpisodeProgress && wk.isNotEmpty && favKeys.contains(wk)),
+                  hiddenFromContinue: Value(p['hidden_from_continue'] == true),
+                  updatedAt: Value((p['updated_at'] as num?)?.toInt() ?? nowMs),
+                ),
+              );
         }
 
         for (final favWk in favKeys) {
@@ -1242,10 +1309,20 @@ class CloudProjectionEngine {
               )..where((s) => s.itemId.equals(item.id))).write(const LibraryUserStatesCompanion(favorite: Value(true)));
             }
           } else {
-            await db.into(db.libraryUserStates).insert(
-              LibraryUserStatesCompanion(itemId: Value(item.id), favorite: const Value(true), updatedAt: Value(nowMs)),
-            );
+            await db
+                .into(db.libraryUserStates)
+                .insert(
+                  LibraryUserStatesCompanion(
+                    itemId: Value(item.id),
+                    favorite: const Value(true),
+                    updatedAt: Value(nowMs),
+                  ),
+                );
           }
+        }
+
+        for (final wp in workPrefsList) {
+          await _applyCloudWorkPrefsMap(wp);
         }
       });
     } catch (e) {

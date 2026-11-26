@@ -31,6 +31,7 @@ class LibraryWatchStateStore {
       tmdbId: work.tmdbId,
       imdbId: work.imdbId,
       bangumiId: work.bangumiId,
+      doubanId: work.doubanId,
     );
   }
 
@@ -61,6 +62,7 @@ class LibraryWatchStateStore {
       tmdbId: work.tmdbId,
       imdbId: work.imdbId,
       bangumiId: work.bangumiId,
+      doubanId: work.doubanId,
     );
     return identity == null ? null : (work: identity, season: season, episode: episode);
   }
@@ -123,8 +125,7 @@ class LibraryWatchStateStore {
         current.scrapedAt == null) {
       return;
     }
-    final sameImdb =
-        previous.imdbId != null && previous.imdbId!.isNotEmpty && previous.imdbId == current.imdbId;
+    final sameImdb = previous.imdbId != null && previous.imdbId!.isNotEmpty && previous.imdbId == current.imdbId;
     final sameBangumi =
         !sameImdb &&
         previous.bangumiId != null &&

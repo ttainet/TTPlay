@@ -19,6 +19,7 @@ import '../library_cloud/scan_session_runner.dart';
 import '../library_cloud/source_repository.dart';
 import '../media/ids.dart';
 import '../media/library_change_event.dart';
+import '../media/work_skip_settings.dart';
 import '../providers/multi_server_provider.dart';
 import '../services/multi_server_manager.dart';
 import '../session/app_session_controller.dart';
@@ -83,7 +84,8 @@ class TtplaySessionBinder extends ChangeNotifier {
   static const Duration _manualCloudIncrementalCooldown = Duration(seconds: 45);
 
   TtplayApiClient? get activeApiClient => _apiClient;
-  TtplayAdminService? get adminService => _apiClient == null ? null : (_adminService ??= TtplayAdminService(_apiClient!));
+  TtplayAdminService? get adminService =>
+      _apiClient == null ? null : (_adminService ??= TtplayAdminService(_apiClient!));
   CloudApiClient? get cloudApiClient => _cloudApiClient;
   CloudSourceRepository? get cloudSourceRepository => _cloudSourceRepository;
   CloudScanSessionRunner? get cloudScanRunner => _cloudScanRunner;
@@ -105,10 +107,8 @@ class TtplaySessionBinder extends ChangeNotifier {
     _multiServerProvider = provider;
   }
 
-  static String accountScopeKeyFor(SelfHostedSession session) => crypto.sha256
-      .convert(utf8.encode('${session.serverUrl}|${session.username}'))
-      .toString()
-      .substring(0, 16);
+  static String accountScopeKeyFor(SelfHostedSession session) =>
+      crypto.sha256.convert(utf8.encode('${session.serverUrl}|${session.username}')).toString().substring(0, 16);
 
   void attachIptvProvider(IptvProvider provider) {
     _iptvProvider = provider;
@@ -128,10 +128,7 @@ class TtplaySessionBinder extends ChangeNotifier {
   ///
   /// For `media_library` v1 sessions, [localLibraryClient] remains registered as
   /// the unified library (combining local folders with cloud-projected items).
-  void seedSelfHostedSynchronously(
-    SelfHostedSession session, {
-    CloudExternalMirrorSnapshot? cachedMirror,
-  }) {
+  void seedSelfHostedSynchronously(SelfHostedSession session, {CloudExternalMirrorSnapshot? cachedMirror}) {
     if (_disposed) return;
     _syncGeneration++;
     unawaited(_iptvProvider?.setSessionScope(isSelfHosted: true, accountScopeKey: accountScopeKeyFor(session)));
@@ -408,11 +405,7 @@ class TtplaySessionBinder extends ChangeNotifier {
   void _notifyLocalLibraryMutated() {
     onLocalLibraryMutated?.call();
     LibraryContentNotifier().notifyChanged(
-      LibraryChangeEvent(
-        serverId: ServerId(LocalLibraryClient.localServerId),
-        itemsAdded: true,
-        itemsUpdated: true,
-      ),
+      LibraryChangeEvent(serverId: ServerId(LocalLibraryClient.localServerId), itemsAdded: true, itemsUpdated: true),
     );
   }
 
@@ -471,7 +464,8 @@ class TtplaySessionBinder extends ChangeNotifier {
       final dueCandidates = <({StorageMount mount, String sourceId, Duration interval})>[];
       for (final mount in enabledQuarkMounts) {
         final sourceId = CloudMountMirror.sourceIdFromMountId(mount.id);
-        final rawMinutes = mount.configInt(MountKeys.autoIncrementalIntervalMinutes) ??
+        final rawMinutes =
+            mount.configInt(MountKeys.autoIncrementalIntervalMinutes) ??
             MountKeys.defaultAutoIncrementalIntervalMinutes;
         final interval = Duration(minutes: rawMinutes.clamp(1, 1440));
         final lastCheck = _lastCloudIncrementalBySource[sourceId];
@@ -639,10 +633,7 @@ class TtplaySessionBinder extends ChangeNotifier {
     _iptvProvider?.setCloudSources(mirror.lastIptvSources);
     final previousDirectIds = _directCloudExternalServerIds;
     final conns = mirror.lastExternalConnections;
-    final seedOnline = <String>{
-      ..._recentlyVerifiedExternalServerIds,
-      ...mirror.consumeSeededExternalServerIds(),
-    };
+    final seedOnline = <String>{..._recentlyVerifiedExternalServerIds, ...mirror.consumeSeededExternalServerIds()};
     _recentlyVerifiedExternalServerIds.clear();
 
     await serverManager.syncDirectCloudExternalConnections(conns, seedOnlineServerIds: seedOnline);
@@ -692,11 +683,7 @@ class TtplaySessionBinder extends ChangeNotifier {
       }
     }
 
-    final repo = CloudSourceRepository(
-      api: cloudApi,
-      masterKeyProvider: masterKeyProvider,
-      keyEpoch: session.keyEpoch,
-    );
+    final repo = CloudSourceRepository(api: cloudApi, masterKeyProvider: masterKeyProvider, keyEpoch: session.keyEpoch);
     final syncClient = CloudProjectionSyncClient(cloudApi);
     final mirror = CloudMountMirror(
       sourceRepository: repo,
@@ -777,9 +764,11 @@ class TtplaySessionBinder extends ChangeNotifier {
     localLibraryClient.metadataServerUrl = ServerMetadataProvider.defaultOfficialMetadataUrl;
     localLibraryClient.metadataAccessToken = null;
     if (hadCloud && !sessionController.isOffline) {
-      unawaited(clearCloudProjectionData().catchError((Object e) {
-        appLogger.d('Ignoring cloud projection cleanup error: $e');
-      }));
+      unawaited(
+        clearCloudProjectionData().catchError((Object e) {
+          appLogger.d('Ignoring cloud projection cleanup error: $e');
+        }),
+      );
     }
     _cloudApiClient?.close();
     _cloudApiClient = null;
@@ -896,4 +885,8 @@ class _CloudUserDataBridgeImpl implements LocalCloudUserDataBridge {
     );
     return _sync.hideContinueWatching(progressKey);
   }
+
+  @override
+  Future<void> pushWorkSkipSettings({required String workKey, required WorkSkipSettings settings}) =>
+      _sync.upsertHouseholdWorkPrefs(workKey: workKey, settings: settings);
 }

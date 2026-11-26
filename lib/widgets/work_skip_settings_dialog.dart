@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import '../database/app_database.dart';
 import '../focus/focusable_text_field.dart';
 import '../i18n/strings.g.dart';
+import '../library/local_library_client.dart';
 import '../media/ids.dart';
 import '../media/media_item.dart';
 import '../media/media_kind.dart';
@@ -22,8 +23,11 @@ Future<WorkSkipSettings?> showWorkSkipSettingsDialog(
   Duration? duration,
   Duration? clicked,
 }) {
-  final store = WorkSkipSettingsStore(context.read<AppDatabase>());
   final client = context.tryGetMediaClientForServer(serverIdOrNull(item.serverId));
+  final store = WorkSkipSettingsStore(
+    context.read<AppDatabase>(),
+    cloudBridge: client is LocalLibraryClient ? client.cloudUserDataBridge : null,
+  );
   return showScopedDialog<WorkSkipSettings>(
     context: context,
     builder: (_) =>

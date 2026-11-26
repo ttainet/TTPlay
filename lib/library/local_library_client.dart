@@ -34,6 +34,7 @@ import '../media/media_version.dart';
 import '../media/playback_report_metadata.dart';
 import '../media/server_capabilities.dart';
 import '../media/stream_quality.dart';
+import '../media/work_skip_settings.dart';
 import '../mpv/mpv.dart';
 import '../services/api_cache.dart';
 import '../services/jellyfin_api_cache.dart';
@@ -912,13 +913,7 @@ class LocalLibraryClient implements MediaServerClient, StreamQualityClient {
     final id = _id(itemId);
     if (id == null) return;
     await _repo.setProgress(id, positionMs: position.inMilliseconds, durationMs: duration?.inMilliseconds);
-    unawaited(
-      _pushCloudWatchMutation(
-        id,
-        positionMs: position.inMilliseconds,
-        durationMs: duration?.inMilliseconds,
-      ),
-    );
+    unawaited(_pushCloudWatchMutation(id, positionMs: position.inMilliseconds, durationMs: duration?.inMilliseconds));
   }
 
   Future<({String workKey, int seasonNumber, int episodeNumber})?> _resolveCloudWorkCoords(int itemId) async {
@@ -1179,11 +1174,7 @@ class LocalLibraryClient implements MediaServerClient, StreamQualityClient {
     if (uri == null) return sizedUrl;
     final isAuthArtwork = uri.path == '/api/v1/metadata/artwork' || uri.path.endsWith('/api/v1/metadata/artwork');
     final sameOrigin = !uri.hasAuthority || (serverBase.isNotEmpty && sizedUrl.startsWith('$serverBase/'));
-    if (isAuthArtwork &&
-        token != null &&
-        token.isNotEmpty &&
-        !uri.queryParameters.containsKey('token') &&
-        sameOrigin) {
+    if (isAuthArtwork && token != null && token.isNotEmpty && !uri.queryParameters.containsKey('token') && sameOrigin) {
       final params = Map<String, String>.from(uri.queryParameters)..['token'] = token;
       return uri.replace(queryParameters: params).toString();
     }
@@ -1207,34 +1198,16 @@ class LocalLibraryClient implements MediaServerClient, StreamQualityClient {
       // Already pointing at our server's artwork endpoint (relative or full).
       if (trimmed.startsWith('/api/v1/')) {
         final resolved = serverBase.isEmpty ? trimmed : '$serverBase$trimmed';
-        return _rewriteMetadataArtworkUrl(
-          resolved,
-          serverBase: serverBase,
-          token: token,
-          width: width,
-          cover: cover,
-        );
+        return _rewriteMetadataArtworkUrl(resolved, serverBase: serverBase, token: token, width: width, cover: cover);
       }
       if (serverBase.isNotEmpty && trimmed.startsWith('$serverBase/api/v1/')) {
-        return _rewriteMetadataArtworkUrl(
-          trimmed,
-          serverBase: serverBase,
-          token: token,
-          width: width,
-          cover: cover,
-        );
+        return _rewriteMetadataArtworkUrl(trimmed, serverBase: serverBase, token: token, width: width, cover: cover);
       }
 
       // Proxy relative TMDB paths and remote artwork through our media_library server.
       if (trimmed.startsWith('/') || trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
         if (_isArtworkProxyUrl(trimmed)) {
-          return _rewriteMetadataArtworkUrl(
-            trimmed,
-            serverBase: serverBase,
-            token: token,
-            width: width,
-            cover: cover,
-          );
+          return _rewriteMetadataArtworkUrl(trimmed, serverBase: serverBase, token: token, width: width, cover: cover);
         }
         final sizedSource = width != null
             ? TmdbImageUrl.replaceSize(trimmed, TmdbImageUrl.sizeForWidth(width, path: trimmed, cover: cover))
@@ -1274,13 +1247,7 @@ class LocalLibraryClient implements MediaServerClient, StreamQualityClient {
     if (_isArtworkProxyUrl(trimmed)) {
       final serverBase = metadataServerUrl.trim().replaceAll(RegExp(r'/+$'), '');
       final token = metadataAccessToken?.trim();
-      return _rewriteMetadataArtworkUrl(
-        trimmed,
-        serverBase: serverBase,
-        token: token,
-        width: width,
-        cover: cover,
-      );
+      return _rewriteMetadataArtworkUrl(trimmed, serverBase: serverBase, token: token, width: width, cover: cover);
     }
     if (width != null && TmdbImageUrl.toRelativePath(trimmed) != trimmed) {
       return TmdbImageUrl.replaceSize(trimmed, TmdbImageUrl.sizeForWidth(width, path: trimmed, cover: cover));
@@ -1475,9 +1442,7 @@ class LocalLibraryClient implements MediaServerClient, StreamQualityClient {
       return probed == MountOnlineStatus.onlinePrimary || probed == MountOnlineStatus.onlineFallback;
     }
     final shouldProbe =
-        mount.kind != StorageKind.quark ||
-        probeUnknownQuark ||
-        mount.configString(MountKeys.fallbackUrl) != null;
+        mount.kind != StorageKind.quark || probeUnknownQuark || mount.configString(MountKeys.fallbackUrl) != null;
     if (!shouldProbe) return true;
     final probed = await _mountManager.probeMount(mount);
     await _mountManager.applyProbeStatus(mount.id, probed, kind: mount.kind);
@@ -1511,9 +1476,7 @@ class LocalLibraryClient implements MediaServerClient, StreamQualityClient {
         mediaSourceId: '${candidate.file.id}',
         mediaIndex: candidate.index,
       ),
-      subtitleSidecars: [
-        for (final track in subtitles) PlaybackSubtitleSidecar(sourceStreamId: null, track: track),
-      ],
+      subtitleSidecars: [for (final track in subtitles) PlaybackSubtitleSidecar(sourceStreamId: null, track: track)],
       playMethod: variant == null ? 'DirectPlay' : 'DirectStream',
       selectedMediaIndex: candidate.index,
       selectedMediaSourceId: '${candidate.file.id}',
@@ -1608,8 +1571,7 @@ class LocalLibraryClient implements MediaServerClient, StreamQualityClient {
           }(),
       ]);
       for (final result in reprobed) {
-        if (result.status != MountOnlineStatus.onlinePrimary &&
-            result.status != MountOnlineStatus.onlineFallback) {
+        if (result.status != MountOnlineStatus.onlinePrimary && result.status != MountOnlineStatus.onlineFallback) {
           continue;
         }
         try {
@@ -1978,6 +1940,8 @@ abstract class LocalCloudUserDataBridge {
   Future<void> pushFavorite({required String workKey, required bool isFavorite});
 
   Future<void> pushHideContinue({required String workKey, int seasonNumber = 0, int episodeNumber = 0});
+
+  Future<void> pushWorkSkipSettings({required String workKey, required WorkSkipSettings settings}) async {}
 
   Future<bool> hydrateCloudItemDetail(int localItemId, String workKey) async => false;
 }

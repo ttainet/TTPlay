@@ -4,10 +4,12 @@ import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:ttplay/database/app_database.dart';
 import 'package:ttplay/library/library_repository.dart';
+import 'package:ttplay/library/local_library_client.dart';
 import 'package:ttplay/media/media_backend.dart';
 import 'package:ttplay/media/media_item.dart';
 import 'package:ttplay/media/media_kind.dart';
 import 'package:ttplay/media/media_server_client.dart';
+import 'package:ttplay/media/work_identity.dart';
 import 'package:ttplay/media/work_skip_settings.dart';
 import 'package:ttplay/services/work_skip_settings_store.dart';
 import 'package:ttplay/utils/external_ids.dart';
@@ -28,6 +30,33 @@ class FakeSkipClient implements MediaServerClient {
   Future<MediaItem?> fetchItem(String id) async => testMediaItem(id: id, kind: MediaKind.season, parentId: 'show');
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
+class _RecordingCloudBridge extends LocalCloudUserDataBridge {
+  final pushed = <({String workKey, WorkSkipSettings settings})>[];
+  bool shouldThrow = false;
+
+  @override
+  Future<void> pushProgress({
+    required String workKey,
+    int seasonNumber = 0,
+    int episodeNumber = 0,
+    required int positionMs,
+    int? durationMs,
+    bool? watched,
+  }) async {}
+
+  @override
+  Future<void> pushFavorite({required String workKey, required bool isFavorite}) async {}
+
+  @override
+  Future<void> pushHideContinue({required String workKey, int seasonNumber = 0, int episodeNumber = 0}) async {}
+
+  @override
+  Future<void> pushWorkSkipSettings({required String workKey, required WorkSkipSettings settings}) async {
+    if (shouldThrow) throw const SocketException('network error');
+    pushed.add((workKey: workKey, settings: settings));
+  }
 }
 
 void main() {
@@ -218,6 +247,70 @@ void main() {
       client.ids = const ExternalIds();
       expect(await store.resolve(episode, client), isNull, reason: 'successful unmatch invalidates cache');
       expect(await store.resolve(episode, null), isNull);
+    });
+
+    test('WorkIdentity cloudWorkKey/fromCloudWorkKey round-trip including douban and reject episode keys', () {
+      final tmdb = WorkIdentity.fromCloudWorkKey('tmdb:movie:27205')!;
+      expect(tmdb.cloudWorkKey, 'tmdb:movie:27205');
+      expect(tmdb.source, WorkIdentity.localSource);
+
+      final douban = WorkIdentity.fromCloudWorkKey('douban:show:123456')!;
+      expect(douban.provider, 'douban');
+      expect(douban.externalId, '123456');
+      expect(douban.cloudWorkKey, 'douban:show:123456');
+
+      final legacy = WorkIdentity.fromCloudWorkKey('work:movie:imdb:tt0133093')!;
+      expect(legacy.cloudWorkKey, 'imdb:movie:tt0133093');
+
+      expect(WorkIdentity.fromCloudWorkKey('tmdb:show:27205:s1:e1'), isNull);
+      expect(WorkIdentity.fromCloudWorkKey('nfo:movie:foo:2020'), isNull);
+      expect(WorkIdentity.fromCloudWorkKey(''), isNull);
+    });
+
+    test('WorkSkipSettings cloud JSON mapping handles credits_from_end_ms and keep_easter_egg_ms', () {
+      const s = WorkSkipSettings(
+        introEnabled: true,
+        introStartMs: 5000,
+        introEndMs: 90000,
+        creditsEnabled: true,
+        creditsDurationMs: 120000,
+        creditsResumeBeforeEndMs: 30000,
+      );
+      final cloudJson = s.toCloudHouseholdJson();
+      expect(cloudJson['intro_enabled'], isTrue);
+      expect(cloudJson['intro_start_ms'], 5000);
+      expect(cloudJson['intro_end_ms'], 90000);
+      expect(cloudJson['credits_enabled'], isTrue);
+      expect(cloudJson['credits_from_end_ms'], 120000);
+      expect(cloudJson['keep_easter_egg_ms'], 30000);
+
+      final parsed = WorkSkipSettings.fromCloudJson(cloudJson);
+      expect(parsed.toJson(), s.toJson());
+    });
+
+    test('WorkSkipSettingsStore pushes only local-library changes and keeps local write if cloud fails', () async {
+      final bridge = _RecordingCloudBridge();
+      final bridgedStore = WorkSkipSettingsStore(db, cloudBridge: bridge);
+
+      final localWork = WorkIdentity.resolve(source: WorkIdentity.localSource, kind: 'show', tmdbId: '555')!;
+      await bridgedStore.save(localWork, rules);
+      expect(bridge.pushed.length, 1);
+      expect(bridge.pushed.single.workKey, 'tmdb:show:555');
+
+      // syncToCloud: false never pushes
+      await bridgedStore.save(localWork, rules, syncToCloud: false);
+      expect(bridge.pushed.length, 1);
+
+      // External Emby/Jellyfin work never pushes
+      final embyWork = WorkIdentity.resolve(source: 'emby/srv1', kind: 'movie', tmdbId: '777')!;
+      await bridgedStore.save(embyWork, rules);
+      expect(bridge.pushed.length, 1);
+
+      // Cloud failure does not fail local persistence
+      bridge.shouldThrow = true;
+      const updated = WorkSkipSettings(introEnabled: true, introStartMs: 1000, introEndMs: 45000);
+      await bridgedStore.save(localWork, updated);
+      expect((await bridgedStore.read(localWork)).introEndMs, 45000);
     });
   });
 }

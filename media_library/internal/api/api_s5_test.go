@@ -207,6 +207,29 @@ func TestS5FeedSnapshotChangesSidecarSSEAndUserData(t *testing.T) {
 		t.Fatalf("get work prefs: %d %s", getPref.Code, getPref.Body.String())
 	}
 
+	// Batch list work prefs (own household sees it; other household gets empty list)
+	listPref := doJSONReq(srv, http.MethodGet, "/api/v1/work-prefs", tok1, "", nil, nil)
+	if listPref.Code != http.StatusOK || !strings.Contains(listPref.Body.String(), wk) || !strings.Contains(listPref.Body.String(), "90000") {
+		t.Fatalf("list work prefs: %d %s", listPref.Code, listPref.Body.String())
+	}
+	listPrefCross := doJSONReq(srv, http.MethodGet, "/api/v1/work-prefs", tok2, "", nil, nil)
+	if listPrefCross.Code != http.StatusOK || strings.Contains(listPrefCross.Body.String(), wk) {
+		t.Fatalf("cross-tenant list work prefs leaked: %d %s", listPrefCross.Code, listPrefCross.Body.String())
+	}
+
+	// Episode detail inherits show-level household work prefs
+	showWK := "tmdb:show:999"
+	showPref := doJSONReq(srv, http.MethodPut, "/api/v1/work-prefs/"+url.PathEscape(showWK)+"/household", tok1, "", nil, map[string]any{
+		"intro_enabled": true, "intro_start_ms": 5000, "intro_end_ms": 88000,
+	})
+	if showPref.Code != http.StatusOK {
+		t.Fatalf("show household prefs: %d %s", showPref.Code, showPref.Body.String())
+	}
+	epDet := doJSONReq(srv, http.MethodGet, "/api/v1/items/"+strconv.FormatInt(epID, 10), tok1, "", nil, nil)
+	if epDet.Code != http.StatusOK || !strings.Contains(epDet.Body.String(), `"intro_end_ms":88000`) {
+		t.Fatalf("episode detail missing show work_prefs: %d %s", epDet.Code, epDet.Body.String())
+	}
+
 	// Lists CRUD + entries + cross-tenant 404
 	listCreate := doJSONReq(srv, http.MethodPost, "/api/v1/lists", tok1, "", nil, map[string]any{
 		"kind": "playlist", "title": "Sci-Fi Watchlist",
