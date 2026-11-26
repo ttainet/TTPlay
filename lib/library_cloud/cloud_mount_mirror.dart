@@ -317,6 +317,7 @@ class CloudMountMirror {
       final quarkMode = (cred['quark_mode'] as String? ?? QuarkMode.web.name).trim();
       final downloadConnections = (cred['download_connections'] as num?)?.toInt();
       final downloadChunkMiB = (cred['download_chunk_mib'] as num?)?.toInt();
+      final playbackAcceleration = cred['playback_acceleration'] is bool ? cred['playback_acceleration'] as bool : true;
       final requestIntervalMs = (cred['request_interval_ms'] as num?)?.toInt();
       return StorageMount(
         id: mountId,
@@ -335,6 +336,7 @@ class CloudMountMirror {
             MountKeys.quarkDownloadConnections: downloadConnections,
           if (downloadChunkMiB != null && downloadChunkMiB > 0)
             MountKeys.quarkDownloadChunkMiB: downloadChunkMiB,
+          MountKeys.quarkPlaybackAcceleration: playbackAcceleration,
           if (requestIntervalMs != null && requestIntervalMs > 0)
             MountKeys.requestIntervalMs: requestIntervalMs,
           if (includePaths.isNotEmpty) MountKeys.includePaths: includePaths,

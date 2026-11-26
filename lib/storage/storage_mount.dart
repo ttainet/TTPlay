@@ -173,6 +173,11 @@ abstract final class MountKeys {
   static const String quarkDownloadConnections = 'downloadConnections';
   static const String quarkDownloadChunkMiB = 'downloadChunkMiB';
 
+  /// Quark: whether playback uses multi-connection buffering across all
+  /// qualities (original and transcoded renditions). Defaults to true when
+  /// absent.
+  static const String quarkPlaybackAcceleration = 'playbackAcceleration';
+
   /// Per-mount opt-in for automatic incremental scan checks (only takes effect
   /// after at least one manual scan has completed).
   static const String autoIncrementalScan = 'autoIncrementalScan';

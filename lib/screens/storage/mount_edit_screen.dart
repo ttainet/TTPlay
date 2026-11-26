@@ -76,6 +76,7 @@ class _MountEditScreenState extends State<MountEditScreen> {
   late QuarkMode _quarkMode;
   late int _downloadConnections;
   late int _downloadChunkMiB;
+  late bool _playbackAcceleration;
   StorageMount? _initialQuarkMount;
   late final TextEditingController _requestInterval;
   late final TextEditingController _host;
@@ -151,6 +152,7 @@ class _MountEditScreenState extends State<MountEditScreen> {
     _downloadConnections = mount?.configInt(MountKeys.quarkDownloadConnections) ?? downloadDefaults.connections;
     _downloadChunkMiB =
         mount?.configInt(MountKeys.quarkDownloadChunkMiB) ?? downloadDefaults.chunkSize ~/ BulkReadOptions.bytesPerMiB;
+    _playbackAcceleration = mount?.configBool(MountKeys.quarkPlaybackAcceleration, fallback: true) ?? true;
     _requestInterval = TextEditingController(
       text:
           '${mount?.configInt(MountKeys.requestIntervalMs) ?? QuarkStorageDriver.defaultRequestInterval.inMilliseconds}',
@@ -241,6 +243,7 @@ class _MountEditScreenState extends State<MountEditScreen> {
           MountKeys.rootFolderPath: StoragePath.root,
           MountKeys.quarkDownloadConnections: _downloadConnections,
           MountKeys.quarkDownloadChunkMiB: _downloadChunkMiB,
+          MountKeys.quarkPlaybackAcceleration: _playbackAcceleration,
           MountKeys.requestIntervalMs:
               int.tryParse(_requestInterval.text.trim()) ?? QuarkStorageDriver.defaultRequestInterval.inMilliseconds,
           ...filterConfig,
@@ -304,6 +307,7 @@ class _MountEditScreenState extends State<MountEditScreen> {
           mount.id,
           connections: _downloadConnections,
           chunkMiB: _downloadChunkMiB,
+          playbackAcceleration: _playbackAcceleration,
         );
       } else {
         final resolvedStatus = await _probeOnSave(manager, mount);
@@ -359,11 +363,13 @@ class _MountEditScreenState extends State<MountEditScreen> {
     return initial.displayName == mount.displayName &&
         mapEquals(initial.secrets, mount.secrets) &&
         (initial.configInt(MountKeys.quarkDownloadConnections) != _downloadConnections ||
-            initial.configInt(MountKeys.quarkDownloadChunkMiB) != _downloadChunkMiB) &&
+            initial.configInt(MountKeys.quarkDownloadChunkMiB) != _downloadChunkMiB ||
+            initial.configBool(MountKeys.quarkPlaybackAcceleration, fallback: true) != _playbackAcceleration) &&
         mapEquals(mount.config, {
           ...initial.config,
           MountKeys.quarkDownloadConnections: _downloadConnections,
           MountKeys.quarkDownloadChunkMiB: _downloadChunkMiB,
+          MountKeys.quarkPlaybackAcceleration: _playbackAcceleration,
         });
   }
 
@@ -655,6 +661,15 @@ class _MountEditScreenState extends State<MountEditScreen> {
           ),
           const SizedBox(height: _fieldGap),
           _scanFoldersTile(StorageKind.quark),
+          const SizedBox(height: _fieldGap),
+          FocusableSwitchListTile(
+            contentPadding: EdgeInsets.zero,
+            dense: false,
+            title: Text(t.storage.quarkPlaybackAcceleration),
+            subtitle: Text(t.storage.quarkPlaybackAccelerationDescription),
+            value: _playbackAcceleration,
+            onChanged: _saving ? null : (value) => setState(() => _playbackAcceleration = value),
+          ),
           if (account != null) ..._quarkDownloadFields(QuarkDownloadTier.forAccount(account)),
         ],
       );

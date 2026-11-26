@@ -508,6 +508,8 @@ class _CloudSourcesScreenState extends State<CloudSourcesScreen> {
             MountKeys.quarkDownloadConnections: (cred['download_connections'] as num).toInt(),
           if (cred['download_chunk_mib'] is num)
             MountKeys.quarkDownloadChunkMiB: (cred['download_chunk_mib'] as num).toInt(),
+          if (cred['playback_acceleration'] is bool)
+            MountKeys.quarkPlaybackAcceleration: cred['playback_acceleration'] as bool,
           if (cred['request_interval_ms'] is num)
             MountKeys.requestIntervalMs: (cred['request_interval_ms'] as num).toInt(),
         },

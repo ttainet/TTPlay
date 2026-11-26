@@ -2709,6 +2709,8 @@
     "quarkMemberSuperVip": "Quark Super VIP",
     "quarkDownloadPerformance": "Download performance",
     "quarkDownloadConnectionsDescription": "Up to $effective per file · Account range $min–$max",
+    "quarkPlaybackAcceleration": "Multi-connection playback buffering",
+    "quarkPlaybackAccelerationDescription": "Prefetch video over multiple connections across all qualities to reduce buffering under single-connection speed limits",
     "quarkSignedIn": "Signed in",
     "quarkSignedOut": "Not signed in",
     "quarkScan": "Sign in with QR code",

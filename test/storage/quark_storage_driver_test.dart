@@ -5,7 +5,9 @@ import 'dart:typed_data';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:ttplay/storage/drivers/quark_storage_driver.dart';
 import 'package:ttplay/storage/http_range_reader.dart';
+import 'package:ttplay/storage/playback_prefetch_cache.dart';
 import 'package:ttplay/storage/storage_driver.dart';
+import 'package:ttplay/storage/storage_mount.dart';
 import 'package:ttplay/storage/stream_proxy.dart';
 
 /// A stand-in for the Quark API and its download host on one loopback server.
@@ -365,5 +367,57 @@ void main() {
       driver.check(),
       throwsA(isA<StorageException>().having((e) => e.kind, 'kind', StorageErrorKind.unauthorized)),
     );
+  });
+
+  test('fromMount defaults playbackAcceleration to true and respects false', () {
+    const base = StorageMount(
+      id: 'm1',
+      kind: StorageKind.quark,
+      displayName: 'Quark',
+      secrets: {MountKeys.secretCookie: '__pus=abc'},
+    );
+    final defaultDriver = QuarkStorageDriver.fromMount(base);
+    addTearDown(defaultDriver.close);
+    expect(defaultDriver.playbackPrefetchEnabled, isTrue);
+
+    final disabledDriver = QuarkStorageDriver.fromMount(
+      base.copyWith(config: const {MountKeys.quarkPlaybackAcceleration: false}),
+    );
+    addTearDown(disabledDriver.close);
+    expect(disabledDriver.playbackPrefetchEnabled, isFalse);
+  });
+
+  test('StreamProxy /s/ uses multi-chunk playback prefetch when enabled and falls back when disabled', () async {
+    const mib = PlaybackPrefetchCache.defaultChunkSize;
+    const size = 3 * mib;
+    fake.bytes = Uint8List.fromList(List<int>.generate(size, (i) => i % 251));
+    final accelDriver = QuarkStorageDriver(
+      cookie: '__pus=abc',
+      apiBase: fake.apiBase,
+      requestInterval: Duration.zero,
+    );
+    addTearDown(accelDriver.close);
+    final proxy = StreamProxy();
+    addTearDown(proxy.stop);
+    final client = HttpClient();
+    addTearDown(() => client.close(force: true));
+    const entry = StorageEntry(path: '/movie.mkv', name: 'movie.mkv', isDirectory: false, id: 'f-movie', size: size);
+
+    final url = await proxy.register(mountId: 'quark', driver: accelDriver, entry: entry);
+    final resp1 = await (await client.getUrl(url)).close();
+    final body1 = await resp1.expand((c) => c).toList();
+    expect(body1, fake.bytes);
+    expect(fake.ranges, containsAll([(0, mib - 1), (mib, 2 * mib - 1), (2 * mib, size - 1)]));
+
+    fake.ranges.clear();
+    accelDriver.updateDownloadOptions(connections: 4, chunkMiB: 2, playbackAcceleration: false);
+    expect(accelDriver.playbackPrefetchEnabled, isFalse);
+
+    final req2 = await client.getUrl(url);
+    req2.headers.set(HttpHeaders.rangeHeader, 'bytes=0-${size - 1}');
+    final resp2 = await req2.close();
+    final body2 = await resp2.expand((c) => c).toList();
+    expect(body2, fake.bytes);
+    expect(fake.ranges, [(0, size - 1)]);
   });
 }

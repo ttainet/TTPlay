@@ -108,3 +108,24 @@ abstract interface class ParallelReadSource {
     required int chunkSize,
   });
 }
+
+/// A driver that can accelerate sequential playback reads by prefetching
+/// fixed-size byte chunks over multiple concurrent connections.
+abstract interface class PrefetchReadSource {
+  bool get playbackPrefetchEnabled;
+
+  Stream<List<int>> openReadPlayback(
+    StorageEntry entry, {
+    required int start,
+    required int end,
+    required int totalSize,
+  });
+
+  Stream<List<int>> openReadVariantPlayback({
+    required String cacheKey,
+    required Future<({Uri url, Map<String, String> headers})> Function({required bool forceRefresh}) resolve,
+    required int start,
+    required int end,
+    required int totalSize,
+  });
+}

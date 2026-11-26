@@ -6538,6 +6538,12 @@ class Translations$storage$en {
 	/// en: 'Up to $effective per file · Account range $min–$max'
 	String quarkDownloadConnectionsDescription({required Object effective, required Object min, required Object max}) => 'Up to ${effective} per file · Account range ${min}–${max}';
 
+	/// en: 'Multi-connection playback buffering'
+	String get quarkPlaybackAcceleration => 'Multi-connection playback buffering';
+
+	/// en: 'Prefetch video over multiple connections across all qualities to reduce buffering under single-connection speed limits'
+	String get quarkPlaybackAccelerationDescription => 'Prefetch video over multiple connections across all qualities to reduce buffering under single-connection speed limits';
+
 	/// en: 'Signed in'
 	String get quarkSignedIn => 'Signed in';
 
@@ -12512,6 +12518,8 @@ extension on Translations {
 			'storage.quarkMemberSuperVip' => 'Quark Super VIP',
 			'storage.quarkDownloadPerformance' => 'Download performance',
 			'storage.quarkDownloadConnectionsDescription' => ({required Object effective, required Object min, required Object max}) => 'Up to ${effective} per file · Account range ${min}–${max}',
+			'storage.quarkPlaybackAcceleration' => 'Multi-connection playback buffering',
+			'storage.quarkPlaybackAccelerationDescription' => 'Prefetch video over multiple connections across all qualities to reduce buffering under single-connection speed limits',
 			'storage.quarkSignedIn' => 'Signed in',
 			'storage.quarkSignedOut' => 'Not signed in',
 			'storage.quarkScan' => 'Sign in with QR code',
@@ -12608,10 +12616,10 @@ extension on Translations {
 			'storage.metadataLanguage' => 'Metadata language',
 			'storage.bangumiForAnime' => 'Use Bangumi for anime',
 			'storage.bangumiForAnimeHelp' => 'Anime is looked up on Bangumi first, then TMDB',
-			'storage.metadataProxy' => 'HTTP proxy',
-			'storage.metadataProxyHelp' => 'host:port, used for metadata requests only. Leave empty to connect directly.',
 			_ => null,
 		} ?? switch (path) {
+			'storage.metadataProxy' => 'HTTP proxy',
+			'storage.metadataProxyHelp' => 'host:port, used for metadata requests only. Leave empty to connect directly.',
 			'storage.tmdbApiBase' => 'TMDB API address',
 			'storage.tmdbImageBase' => 'TMDB image address',
 			'storage.manualMatch' => 'Match manually',

@@ -2697,6 +2697,8 @@
     "quarkMemberSuperVip": "夸克超级会员",
     "quarkDownloadPerformance": "下载性能",
     "quarkDownloadConnectionsDescription": "单个文件最多 $effective 路 · 账号可选 $min–$max 路",
+    "quarkPlaybackAcceleration": "多连接缓冲加速",
+    "quarkPlaybackAccelerationDescription": "使用多连接并发预读视频流（适用于全部清晰度），缓解网盘单连接限速导致的卡顿",
     "quarkSignedIn": "已登录",
     "quarkSignedOut": "尚未登录",
     "quarkScan": "扫码登录",

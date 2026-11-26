@@ -151,11 +151,74 @@ void main() {
     final savedMounts = await registry.list();
     expect(savedMounts, hasLength(1));
     final savedMount = savedMounts.single;
+    expect(savedMount.configBool(MountKeys.quarkPlaybackAcceleration, fallback: false), isTrue);
     expect(scans.statusOf(savedMount.id).error, isNull);
     expect(find.textContaining('Client is closed'), findsNothing);
     expect(mounts.statusOf(savedMount.id), MountOnlineStatus.onlinePrimary);
 
     // Unmount MountsScreen and drain Drift's StreamQueryStore close timer before closing db.
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pumpAndSettle();
+  });
+
+  testWidgets('Quark mount playback acceleration switch defaults on and persists false when toggled off', (
+    tester,
+  ) async {
+    final db = AppDatabase.forTesting(NativeDatabase.memory());
+    final registry = MountRegistry(db);
+    final mounts = MountManager(registry, driverFactory: (mount, {bool useFallback = false}) => _ClosingRaceDriver());
+    final repo = LibraryRepository(db);
+    final scans = LibraryScanService(repository: repo, scanner: LibraryScanner(db, repo), mounts: mounts);
+    addTearDown(() async {
+      scans.dispose();
+      await mounts.dispose();
+      await db.close();
+    });
+
+    await tester.pumpWidget(
+      MultiProvider(
+        providers: [
+          Provider<MountManager>.value(value: mounts),
+          ChangeNotifierProvider<LibraryScanService>.value(value: scans),
+        ],
+        child: const InputModeTracker(child: MaterialApp(home: MountsScreen())),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text(t.storage.addMount));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text(t.storage.kind.quark));
+    await tester.pumpAndSettle();
+
+    final editScrollable = find.descendant(of: find.byType(MountEditScreen), matching: find.byType(Scrollable)).first;
+    await tester.scrollUntilVisible(find.text(t.storage.sectionLibrary), 200, scrollable: editScrollable);
+    final accelTile = find.widgetWithText(SwitchListTile, t.storage.quarkPlaybackAcceleration);
+    await tester.scrollUntilVisible(accelTile, -200, scrollable: editScrollable);
+    expect(tester.widget<SwitchListTile>(accelTile).value, isTrue);
+
+    await tester.tap(accelTile);
+    await tester.pump();
+    expect(tester.widget<SwitchListTile>(accelTile).value, isFalse);
+
+    await tester.scrollUntilVisible(find.text(t.storage.sectionAdvanced), 200, scrollable: editScrollable);
+    await tester.tap(find.text(t.storage.sectionAdvanced));
+    await tester.pumpAndSettle();
+
+    final cookieField = find.byWidgetPredicate(
+      (widget) => widget is TextField && widget.decoration?.labelText == t.storage.quarkCookieManual,
+    );
+    await tester.scrollUntilVisible(cookieField, 200, scrollable: editScrollable);
+    await tester.enterText(cookieField, '__pus=test-cookie; uid=12345');
+    await tester.pump();
+
+    await tester.tap(find.text(t.storage.testAndSave));
+    await tester.pumpAndSettle();
+
+    final savedMount = (await registry.list()).single;
+    expect(savedMount.configBool(MountKeys.quarkPlaybackAcceleration, fallback: true), isFalse);
+
     await tester.pumpWidget(const SizedBox.shrink());
     await tester.pumpAndSettle();
   });

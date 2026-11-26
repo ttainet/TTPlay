@@ -2609,6 +2609,8 @@ class Translations$storage$zh extends Translations$storage$en {
 	@override String get quarkMemberSuperVip => '夸克超级会员';
 	@override String get quarkDownloadPerformance => '下载性能';
 	@override String quarkDownloadConnectionsDescription({required Object effective, required Object min, required Object max}) => '单个文件最多 ${effective} 路 · 账号可选 ${min}–${max} 路';
+	@override String get quarkPlaybackAcceleration => '多连接缓冲加速';
+	@override String get quarkPlaybackAccelerationDescription => '使用多连接并发预读视频流（适用于全部清晰度），缓解网盘单连接限速导致的卡顿';
 	@override String get quarkSignedIn => '已登录';
 	@override String get quarkSignedOut => '尚未登录';
 	@override String get quarkScan => '扫码登录';
@@ -6583,6 +6585,8 @@ extension on TranslationsZh {
 			'storage.quarkMemberSuperVip' => '夸克超级会员',
 			'storage.quarkDownloadPerformance' => '下载性能',
 			'storage.quarkDownloadConnectionsDescription' => ({required Object effective, required Object min, required Object max}) => '单个文件最多 ${effective} 路 · 账号可选 ${min}–${max} 路',
+			'storage.quarkPlaybackAcceleration' => '多连接缓冲加速',
+			'storage.quarkPlaybackAccelerationDescription' => '使用多连接并发预读视频流（适用于全部清晰度），缓解网盘单连接限速导致的卡顿',
 			'storage.quarkSignedIn' => '已登录',
 			'storage.quarkSignedOut' => '尚未登录',
 			'storage.quarkScan' => '扫码登录',
@@ -6687,10 +6691,10 @@ extension on TranslationsZh {
 			'storage.noMatchResults' => '没有结果',
 			'storage.mediaSources' => '本地挂载',
 			'storage.scraperSettingsDescription' => '官方元数据服务与刮削语言偏好',
-			'storage.metadataServiceTitle' => '官方元数据服务',
-			'storage.metadataServiceOfficial' => '当前使用 TTPlay 官方通用元数据服务',
 			_ => null,
 		} ?? switch (path) {
+			'storage.metadataServiceTitle' => '官方元数据服务',
+			'storage.metadataServiceOfficial' => '当前使用 TTPlay 官方通用元数据服务',
 			'storage.metadataServiceSelfHosted' => '当前使用自建服务器元数据服务',
 			'storage.metadataServiceManagedHint' => 'TMDB、豆瓣、Bangumi、代理与图片转发均由官方元数据服务端统一提供，本地免配密钥。',
 			'storage.metadataServerTest' => '测试元数据服务',

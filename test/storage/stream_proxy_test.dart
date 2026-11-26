@@ -63,6 +63,40 @@ class _ParallelDriver extends _MemoryDriver implements ParallelReadSource {
   }
 }
 
+class _PrefetchDriver extends _MemoryDriver implements PrefetchReadSource {
+  _PrefetchDriver(super.bytes);
+
+  @override
+  bool playbackPrefetchEnabled = true;
+
+  final List<({int start, int end, int totalSize})> playbackReads = [];
+  Stream<List<int>>? playbackBody;
+
+  @override
+  Stream<List<int>> openReadPlayback(
+    StorageEntry entry, {
+    required int start,
+    required int end,
+    required int totalSize,
+  }) async* {
+    playbackReads.add((start: start, end: end, totalSize: totalSize));
+    if (playbackBody case final body?) {
+      yield* body;
+      return;
+    }
+    yield bytes.sublist(start, end + 1);
+  }
+
+  @override
+  Stream<List<int>> openReadVariantPlayback({
+    required String cacheKey,
+    required Future<({Uri url, Map<String, String> headers})> Function({required bool forceRefresh}) resolve,
+    required int start,
+    required int end,
+    required int totalSize,
+  }) => throw UnimplementedError();
+}
+
 void main() {
   late StreamProxy proxy;
   late _MemoryDriver driver;
@@ -272,5 +306,50 @@ void main() {
     final result = await fetch(bulk);
     expect(result.body, content);
     expect(driver.reads, [(start: 0, end: null)]);
+  });
+
+  test('a plain URL uses openReadPlayback when PrefetchReadSource is enabled, and openRead when disabled', () async {
+    final prefetch = _PrefetchDriver(content);
+    const entry = StorageEntry(path: '/film.mkv', name: 'film.mkv', isDirectory: false, size: 1000);
+    final url = await proxy.register(mountId: 'm1', driver: prefetch, entry: entry);
+
+    final head = await fetch(url, method: 'HEAD');
+    expect(head.status, HttpStatus.ok);
+    expect(prefetch.playbackReads, isEmpty);
+    expect(prefetch.reads, isEmpty);
+
+    final enabledResp = await fetch(url, range: 'bytes=100-499');
+    expect(enabledResp.status, HttpStatus.partialContent);
+    expect(enabledResp.body, content.sublist(100, 500));
+    expect(prefetch.playbackReads, [(start: 100, end: 499, totalSize: 1000)]);
+    expect(prefetch.reads, isEmpty);
+
+    prefetch.playbackPrefetchEnabled = false;
+    final disabledResp = await fetch(url, range: 'bytes=200-399');
+    expect(disabledResp.status, HttpStatus.partialContent);
+    expect(disabledResp.body, content.sublist(200, 400));
+    expect(prefetch.playbackReads, hasLength(1));
+    expect(prefetch.reads, [(start: 200, end: 399)]);
+  });
+
+  test('a disconnected playback prefetch client cancels the upstream stream', () async {
+    final cancelled = Completer<void>();
+    final body = StreamController<List<int>>(onCancel: cancelled.complete);
+    addTearDown(body.close);
+    final prefetch = _PrefetchDriver([])..playbackBody = body.stream;
+    const piece = 1024 * 1024;
+    final url = await proxy.register(
+      mountId: 'm1',
+      driver: prefetch,
+      entry: const StorageEntry(path: '/film.mkv', name: 'film.mkv', isDirectory: false, size: 2 * piece),
+    );
+    body.add(Uint8List(piece));
+
+    final request = await client.getUrl(url);
+    final response = await request.close();
+    expect(response.statusCode, HttpStatus.ok);
+    client.close(force: true);
+
+    await cancelled.future.timeout(const Duration(seconds: 3));
   });
 }

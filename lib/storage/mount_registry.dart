@@ -75,18 +75,23 @@ class MountRegistry {
     await (_db.update(_db.mounts)..where((t) => t.id.equals(id))).write(MountsCompanion(secrets: Value(secrets)));
   });
 
-  Future<bool> updateQuarkDownloadOptions(String id, {required int connections, required int chunkMiB}) =>
-      _db.transaction(() async {
-        final mount = await get(id);
-        if (mount == null || mount.kind != StorageKind.quark) return false;
-        final config = jsonEncode({
-          ...mount.config,
-          MountKeys.quarkDownloadConnections: connections,
-          MountKeys.quarkDownloadChunkMiB: chunkMiB,
-        });
-        await (_db.update(_db.mounts)..where((t) => t.id.equals(id))).write(MountsCompanion(configJson: Value(config)));
-        return true;
-      });
+  Future<bool> updateQuarkDownloadOptions(
+    String id, {
+    required int connections,
+    required int chunkMiB,
+    bool? playbackAcceleration,
+  }) => _db.transaction(() async {
+    final mount = await get(id);
+    if (mount == null || mount.kind != StorageKind.quark) return false;
+    final config = jsonEncode({
+      ...mount.config,
+      MountKeys.quarkDownloadConnections: connections,
+      MountKeys.quarkDownloadChunkMiB: chunkMiB,
+      MountKeys.quarkPlaybackAcceleration: ?playbackAcceleration,
+    });
+    await (_db.update(_db.mounts)..where((t) => t.id.equals(id))).write(MountsCompanion(configJson: Value(config)));
+    return true;
+  });
 
   Future<void> remove(String id) async {
     await (_db.delete(_db.mounts)..where((t) => t.id.equals(id))).go();

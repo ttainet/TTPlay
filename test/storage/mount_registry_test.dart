@@ -2,6 +2,7 @@ import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:ttplay/database/app_database.dart';
 import 'package:ttplay/services/credential_vault.dart';
+import 'package:ttplay/storage/drivers/quark_storage_driver.dart';
 import 'package:ttplay/storage/mount_manager.dart';
 import 'package:ttplay/storage/mount_registry.dart';
 import 'package:ttplay/storage/storage_mount.dart';
@@ -70,16 +71,18 @@ void main() {
     final driver = manager.driverFor(mount);
 
     await Future.wait([
-      manager.saveQuarkDownloadOptions(mount.id, connections: 12, chunkMiB: 3),
+      manager.saveQuarkDownloadOptions(mount.id, connections: 12, chunkMiB: 3, playbackAcceleration: false),
       registry.updateSecret(mount.id, MountKeys.secretCookie, '__pus=rotated'),
     ]);
 
     final loaded = (await registry.get(mount.id))!;
     expect(loaded.configInt(MountKeys.quarkDownloadConnections), 12);
     expect(loaded.configInt(MountKeys.quarkDownloadChunkMiB), 3);
+    expect(loaded.configBool(MountKeys.quarkPlaybackAcceleration, fallback: true), isFalse);
     expect(loaded.configString(MountKeys.rootFolderId), 'abc');
     expect(loaded.secret(MountKeys.secretCookie), '__pus=rotated');
     expect(manager.driverFor(loaded), same(driver));
+    expect((driver as QuarkStorageDriver).playbackPrefetchEnabled, isFalse);
   });
 
   test('a mount whose key was lost loads without secrets', () async {

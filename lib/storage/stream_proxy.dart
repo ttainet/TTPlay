@@ -6,6 +6,7 @@ import 'dart:math';
 import 'package:flutter/foundation.dart' show visibleForTesting;
 
 import '../utils/app_logger.dart';
+import 'hls_segment_prefetcher.dart';
 import 'http_range_reader.dart';
 import 'storage_driver.dart';
 import 'storage_path.dart';
@@ -22,9 +23,12 @@ import 'stream_variant.dart';
 /// other devices cannot reach it and other local processes cannot enumerate it.
 class StreamProxy {
   static const resumeRequestHeader = 'x-plezy-resume';
-  StreamProxy({Random? random, BulkReadOptions Function()? bulkOptions})
-    : _random = random ?? Random.secure(),
-      _bulkOptions = bulkOptions ?? (() => BulkReadOptions.defaults);
+  StreamProxy({
+    Random? random,
+    BulkReadOptions Function()? bulkOptions,
+    this._hlsPrefetcher,
+  }) : _random = random ?? Random.secure(),
+       _bulkOptions = bulkOptions ?? (() => BulkReadOptions.defaults);
 
   final Random _random;
 
@@ -35,8 +39,10 @@ class StreamProxy {
   final Map<String, String> _tokensByKey = {};
   HttpServer? _server;
   HttpClient? _upstream;
+  HlsSegmentPrefetcher? _hlsPrefetcher;
 
   HttpClient get _upstreamClient => _upstream ??= HttpClient()..connectionTimeout = const Duration(seconds: 15);
+  HlsSegmentPrefetcher get _hls => _hlsPrefetcher ??= HlsSegmentPrefetcher(_upstreamClient);
   Future<HttpServer>? _starting;
 
   bool get isRunning => _server != null;
@@ -155,7 +161,7 @@ class StreamProxy {
     final server = await _ensureServer();
     final key = '$mountId\u0000${entry.path}\u0000${variant.id}';
     final token = _tokensByKey.putIfAbsent(key, _newToken);
-    final registered = _variants[token] ??= _VariantSource(source, entry, variant.id);
+    final registered = _variants[token] ??= _VariantSource(source, entry, variant.id, key);
     registered.current = variant;
     final stem = entry.name.contains('.') ? entry.name.substring(0, entry.name.lastIndexOf('.')) : entry.name;
     return Uri(
@@ -172,6 +178,7 @@ class StreamProxy {
   /// removed or its driver is rebuilt with new credentials.
   void unregisterMount(String mountId) {
     final prefix = '$mountId\u0000';
+    _hlsPrefetcher?.evictByPrefix(prefix);
     final keys = _tokensByKey.keys.where((k) => k.startsWith(prefix)).toList();
     for (final key in keys) {
       final token = _tokensByKey.remove(key);
@@ -236,6 +243,8 @@ class StreamProxy {
       // player as an HTTP error instead of a truncated 200.
       final driver = source.driver;
       final bulkOptions = bulk ? _bulkOptions() : null;
+      final usePlaybackPrefetch =
+          bulkOptions == null && driver is PrefetchReadSource && (driver as PrefetchReadSource).playbackPrefetchEnabled;
       final chunks = !wantsBody
           ? null
           : StreamIterator(
@@ -246,6 +255,13 @@ class StreamProxy {
                       end: end,
                       connections: bulkOptions.connections,
                       chunkSize: bulkOptions.chunkSize,
+                    )
+                  : usePlaybackPrefetch
+                  ? (driver as PrefetchReadSource).openReadPlayback(
+                      entry,
+                      start: start,
+                      end: end,
+                      totalSize: size,
                     )
                   : driver.openRead(entry, start: start, end: range == null ? null : end),
             );
@@ -261,9 +277,12 @@ class StreamProxy {
           response.headers.set(HttpHeaders.contentRangeHeader, 'bytes $start-$end/$size');
         }
         if (chunks != null && hasFirst) {
+          response.bufferOutput = false;
           // From here a driver failure can only be signalled by dropping the
           // connection, which players answer by reconnecting with a new Range.
-          await response.addStream(bulkOptions == null ? _remaining(chunks) : _remainingBulk(chunks));
+          await response.addStream(
+            (bulkOptions == null && !usePlaybackPrefetch) ? _remaining(chunks) : _remainingBulk(chunks),
+          );
         }
         await response.close();
       } finally {
@@ -297,22 +316,32 @@ class StreamProxy {
   Future<void> _handleVariant(HttpRequest request, _VariantSource source, List<String> segments) async {
     final response = request.response;
     Uri? resource;
+    int? resourceIndex;
     if (segments.length >= 4 && segments[2] == 'r') {
       final index = int.tryParse(segments[3]);
       if (index == null || index < 0 || index >= source.resources.length) {
         return _finish(response, HttpStatus.notFound);
       }
+      resourceIndex = index;
       resource = source.resources[index];
     }
 
-    Future<(HttpClientResponse, Uri)> fetch({required bool refresh}) async {
+    final prefetchSource = source.source is PrefetchReadSource ? source.source as PrefetchReadSource : null;
+    final usePrefetch = prefetchSource != null && prefetchSource.playbackPrefetchEnabled;
+    if (!usePrefetch) {
+      _hlsPrefetcher?.evictByPrefix(source.cacheKey);
+    }
+
+    Future<(HttpClientResponse, Uri)> fetchWithMethod(String method, {required bool refresh}) async {
       final variant = await source.variant(forceRefresh: refresh);
       final target = resource ?? variant.url;
       try {
-        final upstream = await _upstreamClient.openUrl(request.method, target);
+        final upstream = await _upstreamClient.openUrl(method, target);
         variant.headers.forEach(upstream.headers.set);
         final range = request.headers.value(HttpHeaders.rangeHeader);
-        if (range != null) upstream.headers.set(HttpHeaders.rangeHeader, range);
+        if (range != null && method == request.method) {
+          upstream.headers.set(HttpHeaders.rangeHeader, range);
+        }
         upstream.headers.set(HttpHeaders.acceptEncodingHeader, 'identity');
         final answer = await upstream.close().timeout(const Duration(seconds: 30));
         final redirects = answer.redirects;
@@ -326,10 +355,149 @@ class StreamProxy {
       }
     }
 
-    var (upstream, finalUrl) = await fetch(refresh: false);
+    Future<({int? size, String? contentType, bool isPlaylist})?> ensureSizeMeta() async {
+      if (resourceIndex == null) {
+        if (source.mediaSize != null) {
+          return (size: source.mediaSize, contentType: source.mediaContentType, isPlaylist: false);
+        }
+      } else if (source.resourceMeta[resourceIndex] case final cached?) {
+        return (size: cached.size, contentType: cached.contentType, isPlaylist: false);
+      }
+      var (head, finalUrl) = await fetchWithMethod('HEAD', refresh: false);
+      if (_staleStatuses.contains(head.statusCode)) {
+        await head.drain<void>().catchError((Object _) {});
+        (head, finalUrl) = await fetchWithMethod('HEAD', refresh: true);
+      }
+      final status = head.statusCode;
+      final headContentType = head.headers.contentType?.mimeType.toLowerCase() ?? '';
+      final isPlaylist = headContentType.contains('mpegurl') || finalUrl.path.toLowerCase().endsWith('.m3u8');
+      final length = head.contentLength > 0 ? head.contentLength : null;
+      final rawContentType = head.headers.value(HttpHeaders.contentTypeHeader);
+      await head.drain<void>().catchError((Object _) {});
+      if (status >= 400 || isPlaylist || length == null) {
+        return null;
+      }
+      if (resourceIndex == null) {
+        source.mediaSize = length;
+        source.mediaContentType = rawContentType;
+      } else {
+        source.resourceMeta[resourceIndex] = (size: length, contentType: rawContentType);
+      }
+      return (size: length, contentType: rawContentType, isPlaylist: false);
+    }
+
+    Future<void> serveRangePrefetch({
+      required String cacheKey,
+      required int size,
+      String? contentType,
+    }) async {
+      final range = _parseRange(request.headers.value(HttpHeaders.rangeHeader), size);
+      if (range == _unsatisfiable) {
+        response.headers.set(HttpHeaders.contentRangeHeader, 'bytes */$size');
+        return _finish(response, HttpStatus.requestedRangeNotSatisfiable);
+      }
+      final start = range?.start ?? 0;
+      final end = range?.end ?? size - 1;
+      final length = end - start + 1;
+      final chunks = request.method == 'GET' && length > 0
+          ? StreamIterator(
+              prefetchSource!.openReadVariantPlayback(
+                cacheKey: cacheKey,
+                resolve: ({required bool forceRefresh}) async {
+                  final v = await source.variant(forceRefresh: forceRefresh);
+                  return (url: resource ?? v.url, headers: v.headers);
+                },
+                start: start,
+                end: end,
+                totalSize: size,
+              ),
+            )
+          : null;
+      try {
+        final hasFirst = chunks != null && await chunks.moveNext();
+        response.headers
+          ..set(HttpHeaders.acceptRangesHeader, 'bytes')
+          ..set(
+            HttpHeaders.contentTypeHeader,
+            contentType ?? _contentType(resource?.pathSegments.lastOrNull ?? source.entry.name),
+          )
+          ..contentLength = length;
+        if (range != null) {
+          response.statusCode = HttpStatus.partialContent;
+          response.headers.set(HttpHeaders.contentRangeHeader, 'bytes $start-$end/$size');
+        }
+        if (chunks != null && hasFirst) {
+          response.bufferOutput = false;
+          await response.addStream(_remainingBulk(chunks));
+        }
+        await response.close();
+      } finally {
+        await chunks?.cancel();
+      }
+    }
+
+    final rangeHeader = request.headers.value(HttpHeaders.rangeHeader);
+    if (usePrefetch && resource == null) {
+      final known = await source.variant(forceRefresh: false);
+      if (!known.isHls) {
+        final meta = await ensureSizeMeta();
+        if (meta != null && meta.size != null) {
+          return serveRangePrefetch(
+            cacheKey: source.cacheKey,
+            size: meta.size!,
+            contentType: meta.contentType,
+          );
+        }
+      }
+    }
+
+    if (usePrefetch && resource != null && resourceIndex != null && request.method == 'GET') {
+      if (rangeHeader != null) {
+        final meta = await ensureSizeMeta();
+        if (meta != null && meta.size != null) {
+          return serveRangePrefetch(
+            cacheKey: '${source.cacheKey}\u0000r\u0000$resourceIndex',
+            size: meta.size!,
+            contentType: meta.contentType,
+          );
+        }
+      } else if (source.segmentOrderByResourceIndex[resourceIndex] case final segMeta?) {
+        await source.variant(forceRefresh: false);
+        final seg = await _hls.openSegment(
+          playlistKey: segMeta.playlistKey,
+          segmentUrls: segMeta.segments,
+          segmentPosition: segMeta.position,
+          resolveHeaders: ({required bool forceRefresh}) async {
+            final v = await source.variant(forceRefresh: forceRefresh);
+            return v.headers;
+          },
+        );
+        final chunks = StreamIterator(seg.body);
+        try {
+          final hasFirst = await chunks.moveNext();
+          response.statusCode = seg.statusCode;
+          if (seg.contentType != null) {
+            response.headers.set(HttpHeaders.contentTypeHeader, seg.contentType!);
+          }
+          if (seg.contentLength != null && seg.contentLength! >= 0) {
+            response.headers.contentLength = seg.contentLength!;
+          }
+          if (hasFirst) {
+            response.bufferOutput = false;
+            await response.addStream(_remainingBulk(chunks));
+          }
+          await response.close();
+        } finally {
+          await chunks.cancel();
+        }
+        return;
+      }
+    }
+
+    var (upstream, finalUrl) = await fetchWithMethod(request.method, refresh: false);
     if (_staleStatuses.contains(upstream.statusCode)) {
       await upstream.drain<void>().catchError((Object _) {});
-      (upstream, finalUrl) = await fetch(refresh: true);
+      (upstream, finalUrl) = await fetchWithMethod(request.method, refresh: true);
     }
     final status = upstream.statusCode;
     if (status >= 400) {
@@ -350,15 +518,31 @@ class StreamProxy {
       }
       final server = _server!;
       final token = segments[1];
-      final text = rewritePlaylist(utf8.decode(bytes, allowMalformed: true), finalUrl, (uri) {
+      final mediaEntries = <({int resourceIndex, Uri url})>[];
+      final text = _rewritePlaylistInternal(utf8.decode(bytes, allowMalformed: true), finalUrl, (uri, isMediaSegment) {
+        final idx = source.indexOf(uri);
+        if (isMediaSegment) {
+          mediaEntries.add((resourceIndex: idx, url: uri));
+        }
         final name = uri.pathSegments.isEmpty ? 'resource' : uri.pathSegments.last;
         return Uri(
           scheme: 'http',
           host: InternetAddress.loopbackIPv4.address,
           port: server.port,
-          pathSegments: ['v', token, 'r', '${source.indexOf(uri)}', if (name.isEmpty) 'resource' else name],
+          pathSegments: ['v', token, 'r', '$idx', if (name.isEmpty) 'resource' else name],
         ).toString();
       });
+      if (mediaEntries.isNotEmpty) {
+        final playlistKey = '${source.cacheKey}\u0000pl\u0000${resourceIndex ?? 'root'}';
+        final segmentUrls = [for (final item in mediaEntries) item.url];
+        for (var pos = 0; pos < mediaEntries.length; pos++) {
+          source.segmentOrderByResourceIndex[mediaEntries[pos].resourceIndex] = (
+            playlistKey: playlistKey,
+            segments: segmentUrls,
+            position: pos,
+          );
+        }
+      }
       final body = utf8.encode(text);
       response.headers
         ..set(HttpHeaders.contentTypeHeader, 'application/vnd.apple.mpegurl')
@@ -391,9 +575,19 @@ class StreamProxy {
   /// Only http(s) URLs are rewritten; anything else is left as it is.
   @visibleForTesting
   static String rewritePlaylist(String playlist, Uri base, String Function(Uri url) proxied) {
-    String rewrite(String reference) {
+    return _rewritePlaylistInternal(playlist, base, (uri, _) => proxied(uri));
+  }
+
+  static String _rewritePlaylistInternal(
+    String playlist,
+    Uri base,
+    String Function(Uri url, bool isMediaSegment) proxied,
+  ) {
+    String rewrite(String reference, {required bool mediaLine}) {
       final resolved = base.resolve(reference.trim());
-      return resolved.scheme == 'http' || resolved.scheme == 'https' ? proxied(resolved) : reference;
+      if (resolved.scheme != 'http' && resolved.scheme != 'https') return reference;
+      final isMediaSegment = mediaLine && !resolved.path.toLowerCase().endsWith('.m3u8');
+      return proxied(resolved, isMediaSegment);
     }
 
     final attribute = RegExp(r'URI="([^"]*)"');
@@ -403,9 +597,9 @@ class StreamProxy {
       if (trimmed.isEmpty) {
         out.writeln(line);
       } else if (trimmed.startsWith('#')) {
-        out.writeln(line.replaceAllMapped(attribute, (m) => 'URI="${rewrite(m[1]!)}"'));
+        out.writeln(line.replaceAllMapped(attribute, (m) => 'URI="${rewrite(m[1]!, mediaLine: false)}"'));
       } else {
-        out.writeln(rewrite(trimmed));
+        out.writeln(rewrite(trimmed, mediaLine: true));
       }
     }
     return out.toString();
@@ -526,6 +720,8 @@ class StreamProxy {
     _sources.clear();
     _variants.clear();
     _tokensByKey.clear();
+    _hlsPrefetcher?.clear();
+    _hlsPrefetcher = null;
     _upstream?.close(force: true);
     _upstream = null;
     await server?.close(force: true);
@@ -537,14 +733,19 @@ class StreamProxy {
 /// [resources], so a proxy URL can only ever reach what the origin's own
 /// playlist pointed at.
 class _VariantSource {
-  _VariantSource(this.source, this.entry, this.variantId);
+  _VariantSource(this.source, this.entry, this.variantId, this.cacheKey);
 
   final StreamVariantSource source;
   final StorageEntry entry;
   final String variantId;
+  final String cacheKey;
   StreamVariant? current;
   final List<Uri> resources = [];
   final Map<Uri, int> _indexes = {};
+  int? mediaSize;
+  String? mediaContentType;
+  final Map<int, ({int? size, String? contentType})> resourceMeta = {};
+  final Map<int, ({String playlistKey, List<Uri> segments, int position})> segmentOrderByResourceIndex = {};
 
   Future<StreamVariant> variant({required bool forceRefresh}) async {
     final known = current;

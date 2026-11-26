@@ -5,6 +5,7 @@ import 'dart:io';
 import 'package:clock/clock.dart';
 
 import '../http_range_reader.dart';
+import '../playback_prefetch_cache.dart';
 import '../request_throttle.dart';
 import '../storage_driver.dart';
 import '../storage_mount.dart';
@@ -69,7 +70,7 @@ enum QuarkDownloadTier {
 ///
 /// Besides the original file, Quark serves the renditions it transcoded
 /// itself; see [streamVariants].
-class QuarkStorageDriver implements StorageDriver, StreamVariantSource, ParallelReadSource {
+class QuarkStorageDriver implements StorageDriver, StreamVariantSource, ParallelReadSource, PrefetchReadSource {
   QuarkStorageDriver({
     required String cookie,
     QuarkMode mode = QuarkMode.web,
@@ -82,6 +83,8 @@ class QuarkStorageDriver implements StorageDriver, StreamVariantSource, Parallel
     QuarkPcDevice? fallbackDevice,
     this._downloadConnections,
     this._downloadChunkMiB,
+    this._playbackAcceleration = true,
+    PlaybackPrefetchCache? playbackCache,
   }) : supportsIncremental = mode.supportsIncremental,
        _apiBase = apiBase ?? Uri.parse('https://drive-pc.quark.cn/1/clouddrive'),
        _client = httpClient ?? HttpClient(),
@@ -103,6 +106,7 @@ class QuarkStorageDriver implements StorageDriver, StreamVariantSource, Parallel
       ..connectionTimeout = const Duration(seconds: 15)
       ..userAgent = _transport.userAgent;
     _reader = HttpRangeReader(_client);
+    _playbackCache = playbackCache ?? PlaybackPrefetchCache(_client);
     _folderIds[StoragePath.root] = rootFolderId.isEmpty ? defaultRootFolderId : rootFolderId;
   }
 
@@ -131,6 +135,7 @@ class QuarkStorageDriver implements StorageDriver, StreamVariantSource, Parallel
       fallbackDevice: fallbackDevice ?? QuarkPcDeviceStore.cached,
       downloadConnections: mount.configInt(MountKeys.quarkDownloadConnections),
       downloadChunkMiB: mount.configInt(MountKeys.quarkDownloadChunkMiB),
+      playbackAcceleration: mount.configBool(MountKeys.quarkPlaybackAcceleration, fallback: true),
     );
   }
 
@@ -151,11 +156,19 @@ class QuarkStorageDriver implements StorageDriver, StreamVariantSource, Parallel
   final RequestThrottle _throttle;
   int? _downloadConnections;
   int? _downloadChunkMiB;
+  bool _playbackAcceleration;
   late final HttpRangeReader _reader;
+  late final PlaybackPrefetchCache _playbackCache;
 
-  void updateDownloadOptions({required int connections, required int chunkMiB}) {
+  void updateDownloadOptions({required int connections, required int chunkMiB, bool? playbackAcceleration}) {
     _downloadConnections = connections;
     _downloadChunkMiB = chunkMiB;
+    if (playbackAcceleration != null) {
+      _playbackAcceleration = playbackAcceleration;
+      if (!playbackAcceleration) {
+        _playbackCache.clear();
+      }
+    }
   }
 
   final Map<String, String> _folderIds = {};
@@ -346,7 +359,47 @@ class QuarkStorageDriver implements StorageDriver, StreamVariantSource, Parallel
     final entry = await stat(path);
     _links.remove(entry.id);
     _rawLinks.remove(entry.id);
+    _playbackCache.evictFile(entry.id ?? entry.path);
     return entry;
+  }
+
+  @override
+  bool get playbackPrefetchEnabled => _playbackAcceleration;
+
+  @override
+  Stream<List<int>> openReadPlayback(
+    StorageEntry entry, {
+    required int start,
+    required int end,
+    required int totalSize,
+  }) {
+    return _playbackCache.read(
+      fileKey: entry.id ?? entry.path,
+      resolve: ({required bool forceRefresh}) => _linkFor(entry, forceRefresh: forceRefresh),
+      start: start,
+      end: end,
+      totalSize: totalSize,
+    );
+  }
+
+  @override
+  Stream<List<int>> openReadVariantPlayback({
+    required String cacheKey,
+    required Future<({Uri url, Map<String, String> headers})> Function({required bool forceRefresh}) resolve,
+    required int start,
+    required int end,
+    required int totalSize,
+  }) {
+    return _playbackCache.read(
+      fileKey: cacheKey,
+      resolve: ({required bool forceRefresh}) async {
+        final resolved = await resolve(forceRefresh: forceRefresh);
+        return StorageLink(resolved.url, headers: resolved.headers);
+      },
+      start: start,
+      end: end,
+      totalSize: totalSize,
+    );
   }
 
   @override
@@ -590,6 +643,7 @@ class QuarkStorageDriver implements StorageDriver, StreamVariantSource, Parallel
 
   @override
   Future<void> close() async {
+    _playbackCache.clear();
     _client.close(force: true);
   }
 }

@@ -118,6 +118,7 @@ class _CloudSourceEditScreenState extends State<CloudSourceEditScreen> {
   QuarkMode _quarkMode = QuarkMode.pc;
   int _downloadConnections = BulkReadOptions.defaults.connections;
   int _downloadChunkMiB = BulkReadOptions.defaults.chunkSize ~/ BulkReadOptions.bytesPerMiB;
+  bool _playbackAcceleration = true;
   final List<String> _selectedDirs = [];
 
   DecryptedSourceCredential? _loadedCredential;
@@ -175,6 +176,9 @@ class _CloudSourceEditScreenState extends State<CloudSourceEditScreen> {
           }
           if (p['download_chunk_mib'] is num) {
             _downloadChunkMiB = (p['download_chunk_mib'] as num).toInt();
+          }
+          if (p['playback_acceleration'] is bool) {
+            _playbackAcceleration = p['playback_acceleration'] as bool;
           }
           if (p['request_interval_ms'] is num) {
             _requestIntervalCtrl.text = '${(p['request_interval_ms'] as num).toInt()}';
@@ -248,6 +252,7 @@ class _CloudSourceEditScreenState extends State<CloudSourceEditScreen> {
             MountKeys.rootPath: StoragePath.root,
             MountKeys.quarkDownloadConnections: _downloadConnections,
             MountKeys.quarkDownloadChunkMiB: _downloadChunkMiB,
+            MountKeys.quarkPlaybackAcceleration: _playbackAcceleration,
             MountKeys.requestIntervalMs:
                 int.tryParse(_requestIntervalCtrl.text.trim()) ??
                 QuarkStorageDriver.defaultRequestInterval.inMilliseconds,
@@ -448,6 +453,7 @@ class _CloudSourceEditScreenState extends State<CloudSourceEditScreen> {
         'root_path': StoragePath.root,
         'download_connections': _downloadConnections,
         'download_chunk_mib': _downloadChunkMiB,
+        'playback_acceleration': _playbackAcceleration,
         'request_interval_ms': intervalMs,
         'auto_incremental_scan': _autoIncrementalScan,
         'auto_incremental_interval_minutes': _autoIncrementalIntervalMinutes,
@@ -585,6 +591,7 @@ class _CloudSourceEditScreenState extends State<CloudSourceEditScreen> {
         'root_path': StoragePath.root,
         'download_connections': _downloadConnections,
         'download_chunk_mib': _downloadChunkMiB,
+        'playback_acceleration': _playbackAcceleration,
         'request_interval_ms': intervalMs,
         'auto_incremental_scan': _autoIncrementalScan,
         'auto_incremental_interval_minutes': _autoIncrementalIntervalMinutes,
@@ -946,6 +953,16 @@ class _CloudSourceEditScreenState extends State<CloudSourceEditScreen> {
           ),
           const SizedBox(height: _fieldGap),
           _buildScanFoldersSection('quark'),
+          const SizedBox(height: _fieldGap),
+          Card(
+            child: FocusableSwitchListTile(
+              dense: false,
+              title: Text(t.storage.quarkPlaybackAcceleration),
+              subtitle: Text(t.storage.quarkPlaybackAccelerationDescription),
+              value: _playbackAcceleration,
+              onChanged: _saving ? null : (v) => setState(() => _playbackAcceleration = v),
+            ),
+          ),
           if (tier != null) ...[
             const SizedBox(height: _fieldGap),
             _buildQuarkDownloadPicker(tier),

@@ -196,11 +196,27 @@ class MountManager {
 
   /// Updates tuning in place so existing transfers keep their stream and any
   /// new bulk reads use the new settings.
-  Future<void> saveQuarkDownloadOptions(String mountId, {required int connections, required int chunkMiB}) async {
-    final updated = await registry.updateQuarkDownloadOptions(mountId, connections: connections, chunkMiB: chunkMiB);
+  Future<void> saveQuarkDownloadOptions(
+    String mountId, {
+    required int connections,
+    required int chunkMiB,
+    bool? playbackAcceleration,
+  }) async {
+    final updated = await registry.updateQuarkDownloadOptions(
+      mountId,
+      connections: connections,
+      chunkMiB: chunkMiB,
+      playbackAcceleration: playbackAcceleration,
+    );
     if (!updated) throw const StorageException(StorageErrorKind.notFound, 'Quark mount no longer exists');
     final driver = _drivers[mountId];
-    if (driver is QuarkStorageDriver) driver.updateDownloadOptions(connections: connections, chunkMiB: chunkMiB);
+    if (driver is QuarkStorageDriver) {
+      driver.updateDownloadOptions(
+        connections: connections,
+        chunkMiB: chunkMiB,
+        playbackAcceleration: playbackAcceleration,
+      );
+    }
   }
 
   Future<void> remove(String mountId) async {
