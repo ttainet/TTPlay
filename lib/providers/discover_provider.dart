@@ -239,6 +239,7 @@ class DiscoverProvider extends ChangeNotifier with DisposableChangeNotifierMixin
   int _contentRevision = 0;
   int _commitRevision = 0;
   DiscoverRefreshOutcome _lastOutcome = DiscoverRefreshOutcome.cancelled;
+  bool _loggedInitialLoadTiming = false;
   Future<void>? _continueWatchingRefreshFuture;
   bool _continueWatchingRefreshQueued = false;
 
@@ -387,6 +388,8 @@ class DiscoverProvider extends ChangeNotifier with DisposableChangeNotifierMixin
   }
 
   Future<void> _loadOnce({required bool showLoading}) async {
+    final shouldLogInitialTiming = !_loggedInitialLoadTiming;
+    final loadWatch = Stopwatch()..start();
     var outcome = DiscoverRefreshOutcome.cancelled;
     var passClearedExceptionBoundary = false;
     List<MediaItem>? systemShelfPassToken;
@@ -469,6 +472,7 @@ class DiscoverProvider extends ChangeNotifier with DisposableChangeNotifierMixin
       // every preparatory await: a patch recorded later has a higher sequence
       // and must survive this pass's observations.
       observation = _beginObservation();
+      final prepMs = loadWatch.elapsedMilliseconds;
       final onDeckFuture = aggregation.getOnDeckFromAllServers(
         limit: _continueWatchingProbeLimit,
         hiddenLibraryKeys: _hiddenLibraries.hiddenLibraryKeys,
@@ -486,6 +490,7 @@ class DiscoverProvider extends ChangeNotifier with DisposableChangeNotifierMixin
       // follow-up load is guaranteed (binding-settle prime, or
       // syncToOnlineServers falling through to load() while not loaded).
       final fetchedOnDeck = await onDeckFuture;
+      final onDeckMs = loadWatch.elapsedMilliseconds - prepMs;
       onDeckFetchCompleted = true;
       succeededServerIds.addAll(fetchedOnDeck.succeededServerIds);
       failedServerIds.addAll(fetchedOnDeck.failedServerIds);
@@ -525,6 +530,7 @@ class DiscoverProvider extends ChangeNotifier with DisposableChangeNotifierMixin
       }
 
       final fetchedHubs = await hubsFuture;
+      final hubsMs = loadWatch.elapsedMilliseconds - prepMs;
       hubFetchCompleted = true;
       succeededServerIds.addAll(fetchedHubs.succeededServerIds);
       failedServerIds.addAll(fetchedHubs.failedServerIds);
@@ -568,10 +574,22 @@ class DiscoverProvider extends ChangeNotifier with DisposableChangeNotifierMixin
       // defers to the cooldown's trailing edge instead of refetching.
       _libraryEventPacer.notePass();
       settlePassOutcome();
+      if (shouldLogInitialTiming) {
+        _loggedInitialLoadTiming = true;
+        appLogger.i(
+          'Startup timing (discover): total=${loadWatch.elapsedMilliseconds}ms '
+          'prep=${prepMs}ms onDeck=${onDeckMs}ms hubs=${hubsMs}ms '
+          'onDeckItems=${_onDeck.length} hubs=${filteredHubs.length} '
+          'servers=${succeededServerIds.length} failed=${failedServerIds.length}',
+        );
+      }
       safeNotifyListeners();
     } catch (e) {
       if (isDisposed) return;
       outcome = isProfileBinding() ? DiscoverRefreshOutcome.cancelled : DiscoverRefreshOutcome.failed;
+      if (shouldLogInitialTiming) {
+        appLogger.i('Startup timing (discover): failed after ${loadWatch.elapsedMilliseconds}ms (${e.runtimeType})');
+      }
       appLogger.e('Failed to load discover content', error: e);
       final hadPriorContent = previousOnDeck.isNotEmpty || previousHubs.isNotEmpty;
       if (!hadPriorContent) {

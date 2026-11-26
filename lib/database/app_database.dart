@@ -110,6 +110,7 @@ class AppDatabase extends _$AppDatabase {
     TvosDatabaseRecoveryStore? recoveryStore,
     TvosDatabaseRecoveryPriorInstallEvidence? priorInstallEvidence,
   }) async {
+    final openWatch = Stopwatch()..start();
     final file = databaseFile ?? await _resolveProductionDatabaseFile();
     if (!await file.parent.exists()) {
       await file.parent.create(recursive: true);
@@ -127,12 +128,15 @@ class AppDatabase extends _$AppDatabase {
     final store = recoveryStore ?? TvosDatabaseRecoveryStore(prefs, isTvos: isTvos);
     final database = AppDatabase._((executorFactory ?? _createNativeDatabase)(file), recoveryStore: store);
     try {
+      final select1Watch = Stopwatch()..start();
       if (!isTvos) {
         // Drift executors open lazily. Force the connection through setup and
         // migrations while failures are still covered by this close/rethrow
         // boundary and the caller's startup download-recovery decision.
         await database.customSelect('SELECT 1').get();
       }
+      final select1Ms = select1Watch.elapsedMilliseconds;
+      final reconcileWatch = Stopwatch()..start();
       final outcome = await _tvosRecoveryQueue.run(
         () => store.reconcile(
           databaseExisted: databaseExisted,
@@ -147,6 +151,11 @@ class AppDatabase extends _$AppDatabase {
                     (prefs.getString('credential_vault_key_v1')?.isNotEmpty ?? false);
               },
         ),
+      );
+      final reconcileMs = reconcileWatch.elapsedMilliseconds;
+      appLogger.i(
+        'Startup timing (db.open): total=${openWatch.elapsedMilliseconds}ms '
+        'select1=${select1Ms}ms reconcile=${reconcileMs}ms existed=$databaseExisted',
       );
       return AppDatabaseBootstrap(database: database, recoveryOutcome: outcome);
     } catch (_) {
@@ -400,8 +409,16 @@ class AppDatabase extends _$AppDatabase {
       // queries — also applies to in-memory test databases that don't go
       // through `_openConnection`.
       beforeOpen: (details) async {
+        final watch = Stopwatch()..start();
         await customStatement('PRAGMA foreign_keys = ON');
-        await LibraryWatchStateStore(this).restoreAll();
+        final restoreWatch = Stopwatch()..start();
+        final restoredItems = await LibraryWatchStateStore(this).restoreAll();
+        appLogger.i(
+          'Startup timing (db.beforeOpen): total=${watch.elapsedMilliseconds}ms '
+          'restoreAll=${restoreWatch.elapsedMilliseconds}ms items=$restoredItems '
+          'created=${details.wasCreated} upgraded=${details.hadUpgrade} '
+          'v=${details.versionBefore}->${details.versionNow}',
+        );
       },
       onCreate: (Migrator m) async {
         await m.createAll();

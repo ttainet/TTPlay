@@ -75,11 +75,13 @@ class LibraryWatchStateStore {
       (db.select(db.workWatchStates)..where((t) => t.stateKey.equals(key))).getSingleOrNull();
 
   /// Restores current index projections from this version's work state.
-  Future<void> restoreAll() => db.transaction(() async {
+  /// Returns the number of `library_items` rows inspected.
+  Future<int> restoreAll() => db.transaction(() async {
     final items = await db.select(db.libraryItems).get();
     for (final item in items) {
       await _restore(item);
     }
+    return items.length;
   });
 
   Future<void> restoreItemAndChildren(int id) => db.transaction(() async {

@@ -301,10 +301,14 @@ Future<void> _optionalGatePhase(
 }
 
 Future<_StartupDependencies> _initializeApplication() async {
+  final prefsWatch = Stopwatch()..start();
   final settings = await _gatePhase(StartupPhase.preferences, SettingsService.getInstance);
+  final prefsMs = prefsWatch.elapsedMilliseconds;
   setLoggerLevel(settings.read(SettingsService.enableDebugLogging));
 
+  int? sentryMs;
   if (_enableSentry && _sentryDsn.isNotEmpty) {
+    final sentryWatch = Stopwatch()..start();
     // Crash reporting is observability: it must never veto the launch it
     // exists to report on. `Sentry.init` runs its integrations eagerly, so an
     // integration throwing used to fail the gate before any Plezy code ran.
@@ -339,6 +343,7 @@ Future<_StartupDependencies> _initializeApplication() async {
       // accepts events and drops them.
       _crashReporterReady = true;
     });
+    sentryMs = sentryWatch.elapsedMilliseconds;
   }
 
   // Registered rather than awaited: sending must not sit on the critical path,
@@ -348,7 +353,7 @@ Future<_StartupDependencies> _initializeApplication() async {
   StartupDiagnosticsStore.holdForFlush(flushPendingStartupFailure());
 
   AndroidExitDiagnostics.markTelemetryReady();
-  return _initializeStartup(settings);
+  return _initializeStartup(settings, prefsMs: prefsMs, sentryMs: sentryMs);
 }
 
 /// Release identifier for Sentry.
@@ -1017,11 +1022,13 @@ Future<StartupSessionBootstrap> resolveStartupSessionBootstrap({
     return StartupSessionBootstrap.recoveryRequired();
   }
 
+  final sessionWatch = Stopwatch()..start();
   final connRegistry = ConnectionRegistry(appDatabase, includePlex: plexSupportEnabled);
   final mountRegistry = MountRegistry(appDatabase);
   final sessionStore = AppSessionStore(appDatabase);
   final identityStore = LanIdentityStore(appDatabase);
 
+  final queriesWatch = Stopwatch()..start();
   final (initialMounts, initialConnections, sessionState, trustedPeers, existingLibraryRow) = await (
     mountRegistry.list(),
     connRegistry.list(),
@@ -1029,6 +1036,7 @@ Future<StartupSessionBootstrap> resolveStartupSessionBootstrap({
     identityStore.loadTrustedLanPeers(),
     appDatabase.customSelect('SELECT 1 FROM library_items LIMIT 1').getSingleOrNull(),
   ).wait;
+  final queriesMs = queriesWatch.elapsedMilliseconds;
 
   var effectiveMode = sessionState.mode;
   if (effectiveMode == null &&
@@ -1039,6 +1047,10 @@ Future<StartupSessionBootstrap> resolveStartupSessionBootstrap({
   }
 
   if (effectiveMode == null) {
+    appLogger.i(
+      'Startup timing (session): total=${sessionWatch.elapsedMilliseconds}ms '
+      'queries=${queriesMs}ms mode=onboarding mounts=${initialMounts.length} conns=${initialConnections.length}',
+    );
     return StartupSessionBootstrap.onboardingRequired(
       initialMounts: initialMounts,
       initialConnections: initialConnections,
@@ -1052,8 +1064,11 @@ Future<StartupSessionBootstrap> resolveStartupSessionBootstrap({
     profileConnections: profileConnections,
     storage: storage,
   );
+  final plexHomeWatch = Stopwatch()..start();
   await plexHomeService.hydrate();
+  final plexHomeMs = plexHomeWatch.elapsedMilliseconds;
 
+  final profilesWatch = Stopwatch()..start();
   if ((await profileRegistry.list()).isEmpty) {
     await profileRegistry.upsert(
       Profile.local(id: const Uuid().v4(), displayName: t.storage.defaultProfileName, createdAt: DateTime.now()),
@@ -1074,6 +1089,7 @@ Future<StartupSessionBootstrap> resolveStartupSessionBootstrap({
       await activeProfileProvider.activate(candidate);
     }
   }
+  final profilesMs = profilesWatch.elapsedMilliseconds;
 
   final requiresProfilePrompt =
       (activeProfileProvider.active == null && activeProfileProvider.profiles.isNotEmpty) ||
@@ -1086,13 +1102,22 @@ Future<StartupSessionBootstrap> resolveStartupSessionBootstrap({
       existingLibraryRow == null;
 
   CloudExternalMirrorSnapshot? initialCloudExternalMirror;
+  var mirrorMs = 0;
   if (effectiveMode == AppLoginMode.selfHosted && sessionState.selfHosted != null) {
+    final mirrorWatch = Stopwatch()..start();
     initialCloudExternalMirror = await CloudExternalMirrorStore(
       appDatabase,
     ).load(TtplaySessionBinder.accountScopeKeyFor(sessionState.selfHosted!));
+    mirrorMs = mirrorWatch.elapsedMilliseconds;
   }
 
   AndroidExitDiagnostics.markStartupPhase(AndroidStartupPhase.credentialsLoaded);
+  appLogger.i(
+    'Startup timing (session): total=${sessionWatch.elapsedMilliseconds}ms '
+    'queries=${queriesMs}ms plexHome=${plexHomeMs}ms profiles=${profilesMs}ms '
+    'mirror=${mirrorMs}ms mode=${effectiveMode.name} mounts=${initialMounts.length} '
+    'conns=${initialConnections.length}',
+  );
 
   return StartupSessionBootstrap.readyForHome(
     loginMode: effectiveMode,
@@ -1156,7 +1181,11 @@ Future<AppDatabaseBootstrap> openAppDatabaseWithDownloadRecovery({
   }
 }
 
-Future<_StartupDependencies> _initializeStartup(SettingsService settings) async {
+Future<_StartupDependencies> _initializeStartup(
+  SettingsService settings, {
+  int prefsMs = 0,
+  int? sentryMs,
+}) async {
   final startupWatch = Stopwatch()..start();
   var lastStartupMarkMs = 0;
   void markStartupPhase(String phase) {
@@ -1166,48 +1195,67 @@ Future<_StartupDependencies> _initializeStartup(SettingsService settings) async 
     lastStartupMarkMs = elapsedMs;
   }
 
+  final stepMs = <String, int>{'prefs': prefsMs, 'sentry': ?sentryMs};
+  Future<T> timeStep<T>(String key, Future<T> Function() step) async {
+    final watch = Stopwatch()..start();
+    try {
+      return await step();
+    } finally {
+      stepMs[key] = watch.elapsedMilliseconds;
+    }
+  }
+
   AppDatabase? openedDatabase;
   Future<AppDatabaseBootstrap>? databaseFuture;
   try {
     // Slang builds the base locale eagerly, so `t` already resolves before
     // this runs; a failure here degrades to English rather than no app.
-    await _optionalGatePhase(StartupPhase.locale, () async {
-      final savedLocale = settings.read(SettingsService.appLocale);
-      await LocaleSettings.setLocale(savedLocale);
-    });
+    await timeStep(
+      'locale',
+      () => _optionalGatePhase(StartupPhase.locale, () async {
+        final savedLocale = settings.read(SettingsService.appLocale);
+        await LocaleSettings.setLocale(savedLocale);
+      }),
+    );
     markStartupPhase('locale');
 
-    final userAuthorities = Platform.isAndroid ? CertificateTrust.loadUserAuthorities() : null;
+    final userAuthorities = Platform.isAndroid ? timeStep('certs', CertificateTrust.loadUserAuthorities) : null;
 
     final optionalFuture = Future.wait<void>([
       if (PlatformDetector.isDesktopOS())
-        _optionalGatePhase(StartupPhase.windowManager, () async {
-          await windowManager.ensureInitialized();
-          if (Platform.isMacOS) await MacOSWindowService.setupCustomTitlebar();
-        }),
+        timeStep(
+          'windowManager',
+          () => _optionalGatePhase(StartupPhase.windowManager, () async {
+            await windowManager.ensureInitialized();
+            if (Platform.isMacOS) await MacOSWindowService.setupCustomTitlebar();
+          }),
+        ),
       _optionalGatePhase(StartupPhase.deviceCapabilities, () async {
         await (
-          TvDetectionService.getInstance(forceTv: settings.read(SettingsService.forceTvMode)),
-          DevicePerformance.getInstance(override: settings.read(SettingsService.visualEffects)),
-          VideoDecodeCapabilities.getInstance(),
+          timeStep('tv', () => TvDetectionService.getInstance(forceTv: settings.read(SettingsService.forceTvMode))),
+          timeStep('perf', () => DevicePerformance.getInstance(override: settings.read(SettingsService.visualEffects))),
+          timeStep('codecs', VideoDecodeCapabilities.getInstance),
         ).wait;
       }),
       if (userAuthorities != null) _optionalGatePhase(StartupPhase.certificateTrust, () => userAuthorities),
     ]);
 
-    final storageFuture = _gatePhase(StartupPhase.storage, StorageService.getInstance);
+    final storageFuture = timeStep('storage', () => _gatePhase(StartupPhase.storage, StorageService.getInstance));
 
-    databaseFuture = _gatePhase(StartupPhase.database, () async {
-      AndroidExitDiagnostics.markStartupPhase(AndroidStartupPhase.databaseOpenStarted);
-      final bootstrap = await openAppDatabaseWithDownloadRecovery(
-        openDatabase: () => AppDatabase.open(isTvos: PlatformDetector.isAppleTV()),
-        recoverNativeDownloads: DownloadManagerService.discardInterruptedNativeDownloadsAfterStorageFailure,
-        storageFullMessage: t.downloads.storageFull,
-      );
-      openedDatabase = bootstrap.database;
-      AndroidExitDiagnostics.markStartupPhase(AndroidStartupPhase.databaseReady);
-      return bootstrap;
-    });
+    databaseFuture = timeStep(
+      'db',
+      () => _gatePhase(StartupPhase.database, () async {
+        AndroidExitDiagnostics.markStartupPhase(AndroidStartupPhase.databaseOpenStarted);
+        final bootstrap = await openAppDatabaseWithDownloadRecovery(
+          openDatabase: () => AppDatabase.open(isTvos: PlatformDetector.isAppleTV()),
+          recoverNativeDownloads: DownloadManagerService.discardInterruptedNativeDownloadsAfterStorageFailure,
+          storageFullMessage: t.downloads.storageFull,
+        );
+        openedDatabase = bootstrap.database;
+        AndroidExitDiagnostics.markStartupPhase(AndroidStartupPhase.databaseReady);
+        return bootstrap;
+      }),
+    );
 
     // Attach no-op error handlers before awaiting so a background failure never
     // escapes as an unhandled async error if an earlier await throws first.
@@ -1220,16 +1268,22 @@ Future<_StartupDependencies> _initializeStartup(SettingsService settings) async 
     await optionalFuture;
     markStartupPhase('platform-and-database');
 
-    await _optionalGatePhase(StartupPhase.imageCache, () async => DevicePerformance.applyImageCacheBudget());
+    await timeStep(
+      'imgCache',
+      () => _optionalGatePhase(StartupPhase.imageCache, () async => DevicePerformance.applyImageCacheBudget()),
+    );
     markStartupPhase('image-cache');
 
-    final sessionBootstrap = await _gatePhase(
-      StartupPhase.database,
-      () => resolveStartupSessionBootstrap(
-        appDatabase: databaseBootstrap.database,
-        storage: storage,
-        settings: settings,
-        databaseRecoveryOutcome: databaseBootstrap.recoveryOutcome,
+    final sessionBootstrap = await timeStep(
+      'session',
+      () => _gatePhase(
+        StartupPhase.database,
+        () => resolveStartupSessionBootstrap(
+          appDatabase: databaseBootstrap.database,
+          storage: storage,
+          settings: settings,
+          databaseRecoveryOutcome: databaseBootstrap.recoveryOutcome,
+        ),
       ),
     );
     markStartupPhase('session-bootstrap');
@@ -1247,6 +1301,10 @@ Future<_StartupDependencies> _initializeStartup(SettingsService settings) async 
     } catch (_) {}
     await openedDatabase?.close();
     rethrow;
+  } finally {
+    final totalMs = prefsMs + (sentryMs ?? 0) + startupWatch.elapsedMilliseconds;
+    final breakdown = stepMs.entries.map((e) => '${e.key}=${e.value}ms').join(' ');
+    appLogger.i('Startup timing (gate): total=${totalMs}ms $breakdown');
   }
 }
 
