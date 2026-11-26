@@ -5,11 +5,36 @@ import 'package:flutter/foundation.dart';
 import '../utils/media_server_http_client.dart';
 import 'ttplay_server.dart';
 
+/// Default `media_library` server base URL for client diagnostic log uploads.
+/// Hardcoded to the live media server for now; can still be overridden via
+/// `--dart-define=TTPLAY_LOG_UPLOAD_URL=...` or `--dart-define=TTPLAY_RELAY_BASE_URL=...`.
+const String defaultLogUploadBaseUrl = String.fromEnvironment(
+  'TTPLAY_LOG_UPLOAD_URL',
+  defaultValue: 'http://123.57.195.60:20001',
+);
+
 /// TTPlay server endpoint that returns a short, quotable Log ID.
-const String logUploadEndpoint = '$ttplayServerBaseUrl/logs';
+const String logUploadEndpoint = '$defaultLogUploadBaseUrl/logs';
 
 @visibleForTesting
 String? logUploadBaseUrlOverride;
+
+/// Resolves the target base URL for diagnostic log uploads without trailing `/`.
+String resolveLogUploadBaseUrl() {
+  final raw = logUploadBaseUrlOverride ??
+      (ttplayServerBaseUrl.trim().isNotEmpty ? ttplayServerBaseUrl : defaultLogUploadBaseUrl);
+  return raw.trim().replaceFirst(RegExp(r'/+$'), '');
+}
+
+String _encodeHeaderValue(String value) {
+  final trimmed = value.trim();
+  for (final codeUnit in trimmed.codeUnits) {
+    if (codeUnit < 32 || codeUnit > 126) {
+      return Uri.encodeComponent(trimmed);
+    }
+  }
+  return trimmed;
+}
 
 /// The server's `/logs` accepts 1 MiB. The in-memory buffer intentionally remains
 /// larger for local viewing and copying; uploads retain the device header and
@@ -45,23 +70,48 @@ String constrainLogUploadPayload({required String header, required String logs, 
   return header + utf8.decode(logBytes.sublist(start));
 }
 
-/// Posts [payload] to the log relay and returns the short Log ID.
+/// Posts [payload] to the media server and returns the short Log ID.
 ///
 /// Shared by Settings › Logs and by the startup failure screen, which cannot
 /// reach Settings because the gate it needs has not completed (#1732).
 ///
 /// [payload] must already be redacted and allowlisted by the caller; this
 /// function performs no sanitisation of its own.
-Future<String> uploadDiagnosticText(String payload, {MediaServerHttpClient? client}) async {
-  final baseUrl = logUploadBaseUrlOverride ?? ttplayServerBaseUrl;
+Future<String> uploadDiagnosticText(
+  String payload, {
+  MediaServerHttpClient? client,
+  Map<String, String>? metadataHeaders,
+}) async {
+  final baseUrl = resolveLogUploadBaseUrl();
   if (baseUrl.isEmpty) {
     throw StateError('Diagnostic log upload relay is not configured');
   }
+  final headers = <String, String>{
+    'Content-Type': 'text/plain; charset=utf-8',
+    'User-Agent': 'TTPlay/DiagnosticUploader',
+  };
+  if (metadataHeaders != null) {
+    for (final entry in metadataHeaders.entries) {
+      final key = entry.key.trim();
+      final value = entry.value.trim();
+      if (key.isEmpty || value.isEmpty) continue;
+      headers[key] = _encodeHeaderValue(value);
+    }
+  }
+
   final response = await (client ?? httpClient).post(
     '$baseUrl/logs',
     body: payload,
-    headers: {'Content-Type': 'text/plain'},
+    headers: headers,
   );
+  throwIfHttpError(response);
   final data = response.data is String ? jsonDecode(response.data as String) : response.data;
-  return (data as Map<String, dynamic>)['id'] as String;
+  if (data is! Map<String, dynamic>) {
+    throw const FormatException('Invalid diagnostic log upload response');
+  }
+  final id = data['id'];
+  if (id is! String || id.trim().isEmpty) {
+    throw const FormatException('Diagnostic log upload response missing id');
+  }
+  return id;
 }

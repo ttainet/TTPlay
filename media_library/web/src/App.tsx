@@ -11,6 +11,7 @@ import { AdminAccountsPage } from './pages/AdminAccountsPage';
 import { AdminAuditPage } from './pages/AdminAuditPage';
 import { AdminInvitesPage } from './pages/AdminInvitesPage';
 import { AdminOverviewPage } from './pages/AdminOverviewPage';
+import { ClientLogsPage } from './pages/ClientLogsPage';
 import { LoginPage } from './pages/LoginPage';
 import { MetadataManagePage } from './pages/MetadataManagePage';
 import { ServerLogsPage } from './pages/ServerLogsPage';
@@ -53,6 +54,7 @@ const AdminRoutes: React.FC = () => {
         <Route path="settings" element={<SettingsPage />} />
         <Route path="metadata" element={<MetadataManagePage />} />
         <Route path="logs" element={<ServerLogsPage />} />
+        <Route path="client-logs" element={<ClientLogsPage />} />
         <Route path="audit" element={<AdminAuditPage />} />
         <Route path="*" element={<Navigate to="/admin" replace />} />
       </Routes>

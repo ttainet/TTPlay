@@ -6,6 +6,7 @@ import {
   Database,
   Loader2,
   LogOut,
+  MonitorSmartphone,
   PanelLeftClose,
   PanelLeftOpen,
   Pause,
@@ -30,6 +31,7 @@ const ROUTE_TITLES: Record<string, { title: string; subtitle: string }> = {
   '/admin/settings': { title: '刮削与平台设置', subtitle: 'TMDB、多数据源连通、识别词库与站点外观' },
   '/admin/metadata': { title: '公共元数据缓存', subtitle: '跨用户共享的影视条目、季集与海报缓存管理' },
   '/admin/logs': { title: '系统运行日志', subtitle: '实时日志流与服务端日志文件导出' },
+  '/admin/client-logs': { title: '客户端上报日志', subtitle: '按设备与日期筛选查看客户端诊断日志' },
   '/admin/audit': { title: '审计日志与安全', subtitle: '平台管理凭据变更与敏感操作追踪' },
 };
 
@@ -161,6 +163,10 @@ export const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) 
               <NavLink to="/admin/logs" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`} title="系统运行日志">
                 <ScrollText size={18} />
                 <span className="nav-text">系统运行日志</span>
+              </NavLink>
+              <NavLink to="/admin/client-logs" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`} title="客户端上报日志">
+                <MonitorSmartphone size={18} />
+                <span className="nav-text">客户端上报日志</span>
               </NavLink>
               <NavLink to="/admin/audit" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`} title="审计日志与安全">
                 <Shield size={18} />

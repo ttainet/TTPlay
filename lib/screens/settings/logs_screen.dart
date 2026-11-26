@@ -109,6 +109,11 @@ class LogsScreen extends StatefulWidget {
 class _LogsScreenState extends State<LogsScreen> with MountedSetStateMixin {
   List<LogEntry> _logs = [];
   String _deviceInfo = '';
+  String _deviceName = '';
+  String _platformName = '';
+  String _osVersion = '';
+  String _appVersion = '';
+  bool _isTv = false;
   final ScrollController _scrollController = ScrollController();
   // skipTraversal: selection is pointer-driven; the region must not become a
   // D-pad/Tab stop between the action bar and the scrollable body.
@@ -129,13 +134,23 @@ class _LogsScreenState extends State<LogsScreen> with MountedSetStateMixin {
     final deviceInfo = widget.deviceInfoPlugin ?? DeviceInfoPlugin();
     final buffer = StringBuffer();
     final commitSuffix = gitCommit.isNotEmpty ? ' ${gitCommit.substring(0, 7)}' : '';
-    buffer.writeln('${t.app.title} v${packageInfo.version} (${packageInfo.buildNumber})$commitSuffix');
+    final appVersion = '${packageInfo.version} (${packageInfo.buildNumber})$commitSuffix';
+    buffer.writeln('${t.app.title} v$appVersion');
+
+    var platformName = Platform.operatingSystem;
+    var osVersion = '';
+    var deviceName = '';
+    var isTv = false;
 
     if (Platform.isAndroid) {
       final info = await deviceInfo.androidInfo;
-      buffer.writeln('Android ${info.version.release} (API ${info.version.sdkInt})');
-      buffer.writeln('${info.manufacturer} ${info.model}');
+      platformName = 'android';
+      osVersion = 'Android ${info.version.release} (API ${info.version.sdkInt})';
+      deviceName = '${info.manufacturer} ${info.model}'.trim();
+      buffer.writeln(osVersion);
+      buffer.writeln(deviceName);
       if (PlatformDetector.isTV()) {
+        isTv = true;
         final reasons = TvDetectionService.tvDetectionReasonsSync();
         final suffix = reasons.isEmpty ? '' : ' (${reasons.join(', ')})';
         buffer.writeln('TV mode: yes$suffix');
@@ -157,22 +172,44 @@ class _LogsScreenState extends State<LogsScreen> with MountedSetStateMixin {
       buffer.writeln('Background: ${backgroundWork.describeSync()}');
     } else if (Platform.isIOS) {
       final info = await deviceInfo.iosInfo;
-      buffer.writeln('iOS ${info.systemVersion}');
-      buffer.writeln(info.utsname.machine);
+      platformName = 'ios';
+      osVersion = 'iOS ${info.systemVersion}';
+      deviceName = info.utsname.machine;
+      buffer.writeln(osVersion);
+      buffer.writeln(deviceName);
     } else if (Platform.isMacOS) {
       final info = await deviceInfo.macOsInfo;
-      buffer.writeln('macOS ${info.osRelease}');
-      buffer.writeln(info.model);
+      platformName = 'macos';
+      osVersion = 'macOS ${info.osRelease}';
+      deviceName = info.model;
+      buffer.writeln(osVersion);
+      buffer.writeln(deviceName);
+    } else if (Platform.isWindows) {
+      platformName = 'windows';
+      osVersion = 'Windows ${Platform.operatingSystemVersion}';
+      deviceName = Platform.localHostname;
+      buffer.writeln(osVersion);
+      buffer.writeln(deviceName);
     } else if (Platform.isLinux) {
       final info = await deviceInfo.linuxInfo;
-      buffer.writeln('Linux ${info.versionId ?? info.id}');
+      platformName = 'linux';
+      osVersion = 'Linux ${info.versionId ?? info.id}';
+      deviceName = info.name;
+      buffer.writeln(osVersion);
     }
 
     buffer.writeln('Effects: ${DevicePerformance.describeSync()}');
     buffer.writeln('Display: ${DevicePerformance.describeDisplay()}');
     buffer.writeln('Video decoders: ${VideoDecodeCapabilities.describeSync()}');
 
-    setStateIfMounted(() => _deviceInfo = buffer.toString().trimRight());
+    setStateIfMounted(() {
+      _deviceInfo = buffer.toString().trimRight();
+      _appVersion = appVersion;
+      _platformName = platformName;
+      _osVersion = osVersion;
+      _deviceName = deviceName;
+      _isTv = isTv;
+    });
   }
 
   @override
@@ -267,7 +304,18 @@ class _LogsScreenState extends State<LogsScreen> with MountedSetStateMixin {
     showLoadingDialog(context);
 
     try {
-      final id = await uploadDiagnosticText(logText, client: _httpClient);
+      final id = await uploadDiagnosticText(
+        logText,
+        client: _httpClient,
+        metadataHeaders: {
+          if (_deviceName.isNotEmpty) 'X-Client-Device': _deviceName,
+          if (_platformName.isNotEmpty) 'X-Client-Platform': _platformName,
+          if (_osVersion.isNotEmpty) 'X-Client-OS': _osVersion,
+          if (_appVersion.isNotEmpty) 'X-Client-Version': _appVersion,
+          'X-Client-Is-TV': _isTv ? 'true' : 'false',
+          'X-Client-Log-Source': 'logs_screen',
+        },
+      );
 
       if (!mounted) return;
       Navigator.of(context).pop(); // dismiss loading
@@ -309,7 +357,8 @@ class _LogsScreenState extends State<LogsScreen> with MountedSetStateMixin {
           ),
         ),
       );
-    } catch (_) {
+    } catch (error, stackTrace) {
+      appLogger.w('Failed to upload diagnostic logs', error: error, stackTrace: stackTrace);
       if (!mounted) return;
       Navigator.of(context).pop(); // dismiss loading
       showErrorSnackBar(context, t.messages.logsUploadFailed);

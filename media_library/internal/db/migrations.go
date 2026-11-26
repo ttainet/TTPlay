@@ -732,6 +732,32 @@ var migrations = []Migration{
 			`CREATE INDEX IF NOT EXISTS idx_danmaku_comment_cache_exp ON danmaku_comment_cache(expires_at)`,
 		},
 	},
+	{
+		Version: 8,
+		Name:    "0008_client_logs",
+		Statements: []string{
+			`CREATE TABLE IF NOT EXISTS client_logs (
+				id           TEXT PRIMARY KEY,
+				device_name  TEXT NOT NULL DEFAULT '',
+				platform     TEXT NOT NULL DEFAULT '',
+				os_version   TEXT NOT NULL DEFAULT '',
+				app_version  TEXT NOT NULL DEFAULT '',
+				is_tv        INTEGER NOT NULL DEFAULT 0,
+				source       TEXT NOT NULL DEFAULT 'logs_screen',
+				client_ip    TEXT NOT NULL DEFAULT '',
+				size_bytes   INTEGER NOT NULL DEFAULT 0,
+				line_count   INTEGER NOT NULL DEFAULT 0,
+				preview      TEXT NOT NULL DEFAULT '',
+				content      TEXT NOT NULL,
+				created_date TEXT NOT NULL,
+				created_at   INTEGER NOT NULL
+			)`,
+			`CREATE INDEX IF NOT EXISTS idx_client_logs_created_at ON client_logs(created_at DESC)`,
+			`CREATE INDEX IF NOT EXISTS idx_client_logs_created_date ON client_logs(created_date DESC, created_at DESC)`,
+			`CREATE INDEX IF NOT EXISTS idx_client_logs_device_name ON client_logs(device_name)`,
+			`CREATE INDEX IF NOT EXISTS idx_client_logs_platform ON client_logs(platform)`,
+		},
+	},
 }
 
 func (s *Store) runMigrations() error {

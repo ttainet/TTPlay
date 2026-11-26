@@ -99,7 +99,14 @@ class _StartupFailureViewState extends State<StartupFailureView> {
   Future<void> _uploadDetails() async {
     setState(() => _uploading = true);
     try {
-      final id = await uploadDiagnosticText(widget.failure.describe());
+      final id = await uploadDiagnosticText(
+        widget.failure.describe(),
+        metadataHeaders: {
+          'X-Client-Log-Source': 'startup_failure',
+          if (widget.failure.appVersion.isNotEmpty) 'X-Client-Version': widget.failure.appVersion,
+          if (widget.failure.platform.isNotEmpty) 'X-Client-OS': widget.failure.platform,
+        },
+      );
       if (!mounted) return;
       await showScopedDialog<void>(
         context: context,

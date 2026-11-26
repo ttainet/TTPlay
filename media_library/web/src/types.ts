@@ -198,6 +198,34 @@ export interface ServerLogEntry {
   message: string;
 }
 
+export interface ClientLogSummary {
+  id: string;
+  device_name: string;
+  platform: string;
+  os_version: string;
+  app_version: string;
+  is_tv: boolean;
+  source: string;
+  client_ip: string;
+  size_bytes: number;
+  line_count: number;
+  preview: string;
+  created_date: string;
+  created_at: number;
+}
+
+export interface ClientLogDetail extends ClientLogSummary {
+  content: string;
+}
+
+export interface ClientLogListResponse {
+  items: ClientLogSummary[];
+  total: number;
+  total_size_bytes: number;
+  devices: string[];
+  platforms: string[];
+}
+
 export interface UserPrincipal {
   token_id: string;
   household_id: string;

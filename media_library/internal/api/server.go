@@ -15,6 +15,7 @@ import (
 
 	"ttplay/media_library/internal/account"
 	"ttplay/media_library/internal/applog"
+	"ttplay/media_library/internal/clientlogs"
 	"ttplay/media_library/internal/danmaku"
 	"ttplay/media_library/internal/db"
 	"ttplay/media_library/internal/events"
@@ -66,15 +67,18 @@ type Server struct {
 	Idf      *identify.Queue
 	Sub      *subtitles.Service
 	Danmu    *danmaku.Service
-	UserData *userdata.Service
-	Feed     *feed.Service
-	Mux      http.Handler
+	UserData   *userdata.Service
+	Feed       *feed.Service
+	ClientLogs *clientlogs.Service
+	Mux        http.Handler
 
 	webDir                   string
 	allowInsecureCredentials bool
 	trustedProxies           []*net.IPNet
 	pubRateMu                sync.Mutex
 	pubRate                  map[string]*ipRateBucket
+	logUploadRateMu          sync.Mutex
+	logUploadRate            map[string]*ipRateBucket
 	metaLimiter              *security.LoginLimiter
 }
 
@@ -113,28 +117,32 @@ func NewServer(
 	var feedSvc *feed.Service
 	var subSvc *subtitles.Service
 	var danmuSvc *danmaku.Service
+	var clientLogsSvc *clientlogs.Service
 	if store != nil {
 		udSvc = userdata.NewService(store, hub)
 		feedSvc = feed.NewService(store, udSvc)
 		subSvc = subtitles.NewService(store)
 		danmuSvc = danmaku.NewService(store)
+		clientLogsSvc = clientlogs.NewService(store)
 	}
 	s := &Server{
-		Store:       store,
-		Meta:        metaSvc,
-		Scraper:     scraper,
-		Hub:         hub,
-		Plat:        platSvc,
-		Acc:         accSvc,
-		Src:         srcSvc,
-		Ing:         ingSvc,
-		Idf:         idfQueue,
-		Sub:         subSvc,
-		Danmu:       danmuSvc,
-		UserData:    udSvc,
-		Feed:        feedSvc,
-		pubRate:     make(map[string]*ipRateBucket),
-		metaLimiter: security.NewLoginLimiter(),
+		Store:         store,
+		Meta:          metaSvc,
+		Scraper:       scraper,
+		Hub:           hub,
+		Plat:          platSvc,
+		Acc:           accSvc,
+		Src:           srcSvc,
+		Ing:           ingSvc,
+		Idf:           idfQueue,
+		Sub:           subSvc,
+		Danmu:         danmuSvc,
+		UserData:      udSvc,
+		Feed:          feedSvc,
+		ClientLogs:    clientLogsSvc,
+		pubRate:       make(map[string]*ipRateBucket),
+		logUploadRate: make(map[string]*ipRateBucket),
+		metaLimiter:   security.NewLoginLimiter(),
 	}
 	s.Mux = s.buildMux()
 	return s
@@ -151,6 +159,10 @@ func (s *Server) buildMux() http.Handler {
 	mux.HandleFunc("GET /healthz", s.handleHealth)
 	mux.HandleFunc("GET /api/v1/health", s.handleHealth)
 	mux.HandleFunc("GET /api/v1/public/bootstrap", s.handleBootstrap)
+
+	// Public client diagnostic log upload (unauthenticated, independent of allow_public_metadata)
+	mux.HandleFunc("POST /logs", s.handleUploadClientLog)
+	mux.HandleFunc("POST /api/v1/public/client-logs", s.handleUploadClientLog)
 
 	// Generic public metadata & recognition service (offline clients + authenticated bypass)
 	mux.HandleFunc("GET /api/v1/public/metadata/config", s.requirePublicMetadata(s.handlePublicMetadataConfig))
@@ -339,6 +351,12 @@ func (s *Server) buildMux() http.Handler {
 	mux.HandleFunc("GET /api/admin/logs", s.requireAdminReady(s.handleAdminGetSystemLogs))
 	mux.HandleFunc("POST /api/admin/logs/clear", s.requireAdminReady(s.handleAdminClearSystemLogs))
 	mux.HandleFunc("GET /api/admin/logs/download", s.requireAdminReady(s.handleAdminDownloadSystemLogs))
+
+	mux.HandleFunc("GET /api/admin/client-logs", s.requireAdminReady(s.handleAdminListClientLogs))
+	mux.HandleFunc("GET /api/admin/client-logs/{id}", s.requireAdminReady(s.handleAdminGetClientLog))
+	mux.HandleFunc("GET /api/admin/client-logs/{id}/download", s.requireAdminReady(s.handleAdminDownloadClientLog))
+	mux.HandleFunc("DELETE /api/admin/client-logs/{id}", s.requireAdminReady(s.handleAdminDeleteClientLog))
+	mux.HandleFunc("POST /api/admin/client-logs/prune", s.requireAdminReady(s.handleAdminPruneClientLogs))
 
 	mux.HandleFunc("GET /", s.handleWebSPA)
 

@@ -76,11 +76,14 @@ def build_artifacts(*, build_web: bool, build_backend: bool, proxy: str) -> None
         run_local(["go", "test", "./..."], cwd=REPO_MEDIA_DIR)
         version = resolve_build_version()
         print(f"[local] build version: {version}")
-        proxy_url = proxy if "://" in proxy else f"http://{proxy}"
         env = os.environ.copy()
+        if proxy.strip():
+            proxy_url = proxy if "://" in proxy else f"http://{proxy}"
+            env.update({
+                "HTTP_PROXY": proxy_url,
+                "HTTPS_PROXY": proxy_url,
+            })
         env.update({
-            "HTTP_PROXY": proxy_url,
-            "HTTPS_PROXY": proxy_url,
             "CGO_ENABLED": "0",
             "GOOS": "linux",
             "GOARCH": "amd64",
@@ -117,6 +120,14 @@ def read_credentials(cred_file: Path) -> tuple[str, str, str]:
     host = lines[0].split(":")[0].strip()
     user, password = lines[1], lines[2]
     return host, user, password
+
+
+def open_direct_ssh(*, host: str, user: str, password: str, port: int = 22) -> paramiko.SSHClient:
+    """Connect an SSH client directly to target host without a proxy."""
+    client = paramiko.SSHClient()
+    client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+    client.connect(host, port=port, username=user, password=password, timeout=15)
+    return client
 
 
 def open_socks5_ssh(*, host: str, user: str, password: str, proxy: str, port: int = 22) -> paramiko.SSHClient:
@@ -245,6 +256,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument("--cred-file", default=r"E:\SSH\47.76.108.192.txt", help="Path to SSH credential file")
     parser.add_argument("--port", type=int, default=DEFAULT_PORT, help="Remote media-library HTTP port for health verification")
     parser.add_argument("--proxy", default="127.0.0.1:7897", help="Local SOCKS5/HTTP proxy host:port")
+    parser.add_argument("--direct", action="store_true", help="Connect SSH directly without SOCKS5 proxy")
     args = parser.parse_args(argv)
     if args.web_only and args.backend_only:
         parser.error("--web-only and --backend-only are mutually exclusive")
@@ -272,8 +284,12 @@ def main(argv: list[str] | None = None) -> int:
             tar_path = Path(temp_dir.name) / "web_dist.tar.gz"
             package_web_dist(tar_path)
 
-        print(f"[ssh] connecting to {host}:22 via SOCKS5 {args.proxy}")
-        client = open_socks5_ssh(host=host, user=user, password=password, proxy=args.proxy)
+        if args.direct or not args.proxy.strip():
+            print(f"[ssh] connecting directly to {host}:22")
+            client = open_direct_ssh(host=host, user=user, password=password)
+        else:
+            print(f"[ssh] connecting to {host}:22 via SOCKS5 {args.proxy}")
+            client = open_socks5_ssh(host=host, user=user, password=password, proxy=args.proxy)
         deploy_remote(
             client,
             deploy_backend=include_backend,

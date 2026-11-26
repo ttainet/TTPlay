@@ -37,9 +37,9 @@ func TestMigrationsIdempotencyAndAllTables(t *testing.T) {
 		t.Fatalf("expected library.db file: %v", err)
 	}
 	ver, err := s1.SchemaVersion()
-	if err != nil || ver != 7 {
+	if err != nil || ver != 8 {
 		_ = s1.Close()
-		t.Fatalf("schema version = %d, err = %v, want 7", ver, err)
+		t.Fatalf("schema version = %d, err = %v, want 8", ver, err)
 	}
 	_ = s1.Close()
 
@@ -50,8 +50,8 @@ func TestMigrationsIdempotencyAndAllTables(t *testing.T) {
 	}
 	defer s2.Close()
 	ver2, err := s2.SchemaVersion()
-	if err != nil || ver2 != 7 {
-		t.Fatalf("schema version on reopen = %d, err = %v, want 7", ver2, err)
+	if err != nil || ver2 != 8 {
+		t.Fatalf("schema version on reopen = %d, err = %v, want 8", ver2, err)
 	}
 
 	expectedTables := []string{
@@ -60,6 +60,7 @@ func TestMigrationsIdempotencyAndAllTables(t *testing.T) {
 		"meta_works_cache", "meta_seasons_cache", "meta_people_cache", "meta_search_cache",
 		"subtitle_search_cache", "subtitle_file_cache",
 		"danmaku_search_cache", "danmaku_comment_cache",
+		"client_logs",
 		"work_id_links", "genres", "people",
 		"accounts", "households", "household_key_wraps", "members", "devices", "sessions",
 		"qr_login_sessions", "account_login_tickets",

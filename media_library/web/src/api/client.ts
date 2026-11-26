@@ -4,6 +4,8 @@ import type {
   AuditLogRecord,
   BootstrapInfo,
   CacheStats,
+  ClientLogDetail,
+  ClientLogListResponse,
   DanmakuCacheStats,
   DanmakuProvider,
   IdentifyQueueStats,
@@ -258,6 +260,54 @@ export const api = {
     if (!resp.ok) throw new Error(`下载失败 (${resp.status})`);
     return resp.blob();
   },
+
+  listClientLogs: (
+    params: {
+      device?: string;
+      platform?: string;
+      is_tv?: boolean;
+      date_from?: string;
+      date_to?: string;
+      tz_offset?: number;
+      q?: string;
+      limit?: number;
+      offset?: number;
+    } = {}
+  ) => {
+    const sp = new URLSearchParams();
+    if (params.device) sp.set('device', params.device);
+    if (params.platform) sp.set('platform', params.platform);
+    if (params.is_tv !== undefined) sp.set('is_tv', String(params.is_tv));
+    if (params.date_from) sp.set('date_from', params.date_from);
+    if (params.date_to) sp.set('date_to', params.date_to);
+    if (params.tz_offset !== undefined) sp.set('tz_offset', String(params.tz_offset));
+    if (params.q) sp.set('q', params.q);
+    if (params.limit) sp.set('limit', String(params.limit));
+    if (params.offset) sp.set('offset', String(params.offset));
+    const qs = sp.toString();
+    return request<ClientLogListResponse>(`/api/admin/client-logs${qs ? `?${qs}` : ''}`);
+  },
+
+  getClientLog: (id: string) =>
+    request<{ log: ClientLogDetail }>(`/api/admin/client-logs/${encodeURIComponent(id)}`),
+
+  downloadClientLogBlob: async (id: string) => {
+    const token = getAdminToken();
+    const resp = await fetch(`/api/admin/client-logs/${encodeURIComponent(id)}/download`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    });
+    if (!resp.ok) throw new Error(`下载失败 (${resp.status})`);
+    return resp.blob();
+  },
+
+  deleteClientLog: (id: string) =>
+    request<{ ok: boolean }>(`/api/admin/client-logs/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+
+  pruneClientLogs: (payload: { older_than_days?: number; device?: string; all?: boolean }) =>
+    request<{ deleted: number }>('/api/admin/client-logs/prune', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
 
   listAuditLogs: (params: { actor_type?: string; action?: string; limit?: number; offset?: number } = {}) => {
     const sp = new URLSearchParams();
