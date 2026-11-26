@@ -100,7 +100,9 @@ class TrackChapterControls extends StatelessWidget {
     }
 
     if (key == LogicalKeyboardKey.arrowDown) {
-      onNavigateDown?.call();
+      if (event is KeyDownEvent) {
+        onNavigateDown?.call();
+      }
       return KeyEventResult.handled;
     }
 

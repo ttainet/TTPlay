@@ -2843,10 +2843,10 @@ class VideoPlayerScreenState extends State<VideoPlayerScreen>
 
   // OS Media Controls Integration
 
-  /// Navigate to a specific queue item (called from QueueSheet)
-  Future<void> navigateToQueueItem(MediaItem metadata) async {
+  /// Navigate to a specific queue item (called from QueueSheet / ContentStrip)
+  Future<void> navigateToQueueItem(MediaItem metadata, {bool hideChrome = false}) async {
     if (!_canNavigateMediaItems()) return;
-    await _navigateToEpisode(metadata);
+    await _navigateToEpisode(metadata, hideChrome: hideChrome);
   }
 
   void _setPlayerState(VoidCallback fn) => setStateIfMounted(fn);

@@ -268,6 +268,9 @@ class DesktopVideoControlsState extends State<DesktopVideoControls> {
   @override
   void didUpdateWidget(DesktopVideoControls oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (oldWidget.metadata.globalKey != widget.metadata.globalKey && _contentStripVisible) {
+      _contentStripVisible = false;
+    }
     if (!identical(oldWidget.player, widget.player) || !identical(oldWidget.chapters, widget.chapters)) {
       _bindChapterLabelStreams();
     }
@@ -455,9 +458,8 @@ class DesktopVideoControlsState extends State<DesktopVideoControls> {
     }
 
     if (key == LogicalKeyboardKey.arrowDown) {
-      if (widget.useDpadNavigation && _hasStripContent) {
+      if (event is KeyDownEvent && widget.useDpadNavigation && _hasStripContent) {
         _showContentStrip();
-        return KeyEventResult.handled;
       }
       return KeyEventResult.handled;
     }

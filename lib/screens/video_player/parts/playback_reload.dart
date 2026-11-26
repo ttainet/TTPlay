@@ -452,6 +452,7 @@ extension _VideoPlayerReloadMethods on VideoPlayerScreenState {
     bool startPaused = false,
     bool useCurrentAudioStreamSelection = true,
     bool showErrorUi = true,
+    bool showChromeOnItemChange = true,
     bool? forceTranscode,
     PlaybackTransitionLease? transitionLease,
     String reason = 'media reload',
@@ -783,7 +784,13 @@ extension _VideoPlayerReloadMethods on VideoPlayerScreenState {
               _resetScrubPreviewForNewItem(metadata: metadata, mediaInfo: result.mediaInfo, mediaClient: mediaClient);
             }
             _clearEpisodeLoadingFlags();
-            if (isItemChange) _showChromeForSwappedItem();
+            if (isItemChange) {
+              if (showChromeOnItemChange) {
+                _showChromeForSwappedItem();
+              } else {
+                _chromeController.setContentStripVisible(false);
+              }
+            }
 
             _trackManager?.dispose();
             return true;

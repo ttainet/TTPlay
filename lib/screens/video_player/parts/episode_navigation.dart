@@ -18,6 +18,7 @@ extension _VideoPlayerEpisodeNavigationMethods on VideoPlayerScreenState {
   /// visuals are keyboard/dpad-gated).
   void _showChromeForSwappedItem() {
     if (!mounted) return;
+    _chromeController.setContentStripVisible(false);
     _chromeController.show(focusPlayPause: true);
   }
 
@@ -133,7 +134,7 @@ extension _VideoPlayerEpisodeNavigationMethods on VideoPlayerScreenState {
   /// in-place swap (previous session still on screen) from rejected or
   /// superseded attempts. The screen-replacement fallback reports
   /// [MediaReloadOutcome.rejected]: no in-place reload ran.
-  Future<MediaReloadOutcome> _navigateToEpisode(MediaItem episodeMetadata) async {
+  Future<MediaReloadOutcome> _navigateToEpisode(MediaItem episodeMetadata, {bool hideChrome = false}) async {
     _episode.lastReloadFailureReason = null;
     final currentPlayer = player;
     if (currentPlayer == null) {
@@ -192,6 +193,7 @@ extension _VideoPlayerEpisodeNavigationMethods on VideoPlayerScreenState {
         preservedAudioTrack: _sessionAudioPreference,
         preservedSubtitleTrack: primarySubtitlePreference,
         preservedSecondarySubtitleTrack: secondarySubtitlePreference,
+        showChromeOnItemChange: !hideChrome,
         reason: 'episode navigation',
       );
     } catch (e, stackTrace) {

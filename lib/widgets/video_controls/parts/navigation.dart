@@ -71,8 +71,11 @@ extension _PlexVideoControlsNavigationMethods on PlexVideoControlsState {
     _hiddenSeek.cancel();
     _desktopControlsKey.currentState?.abandonPendingSeek();
     _dismissSkipFeedback();
+    _desktopControlsKey.currentState?.hideContentStrip();
+    widget.chromeController.setContentStripVisible(false);
+    widget.chromeController.hide();
     final videoPlayerState = context.findAncestorStateOfType<VideoPlayerScreenState>();
-    videoPlayerState?.navigateToQueueItem(item);
+    videoPlayerState?.navigateToQueueItem(item, hideChrome: true);
   }
 
   Future<SubtitleDownloadApplyOutcome> _handleOnlineSubtitleApplied(CachedOnlineSubtitle subtitle) async {
