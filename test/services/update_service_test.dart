@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:crypto/crypto.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:package_info_plus/package_info_plus.dart';
@@ -112,6 +113,7 @@ void main() {
                 'name': 'ttplay-android-arm64-v8a.apk',
                 'browser_download_url': 'https://github.com/ttainet/TTPlay/releases/download/v2.0.0/ttplay-android-arm64-v8a.apk',
                 'size': 123456,
+                'digest': 'sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef',
               },
             ],
           }),
@@ -150,6 +152,7 @@ void main() {
           'name': 'ttplay-android-arm64-v8a.apk',
           'browser_download_url': 'https://github.com/ttainet/TTPlay/releases/download/v2.0.0/ttplay-android-arm64-v8a.apk',
           'size': 200,
+          'digest': 'sha256:0123456789ABCDEF0123456789abcdef0123456789abcdef0123456789abcdef',
         },
         {
           'name': 'ttplay-android-armeabi-v7a.apk',
@@ -163,6 +166,7 @@ void main() {
       expect(selected!.name, 'ttplay-android-arm64-v8a.apk');
       expect(selected.isTarGz, isFalse);
       expect(selected.size, 200);
+      expect(selected.sha256, '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef');
     });
 
     test('prefers primary ABI .tar.gz over secondary ABI .apk', () {
@@ -292,6 +296,53 @@ void main() {
 
       final updatesDir = Directory('${tempDir.path}${Platform.pathSeparator}updates');
       expect(updatesDir.existsSync() ? updatesDir.listSync() : const [], isEmpty);
+    });
+
+    test('verifies matching sha256 and deletes file when sha256 mismatches', () async {
+      final tempDir = await Directory.systemTemp.createTemp('update_download_sha256_');
+      addTearDown(() => tempDir.delete(recursive: true));
+
+      final payload = List<int>.generate(512, (i) => (i * 7) % 256);
+      final expectedHex = sha256.convert(payload).toString();
+      final client = MediaServerHttpClient(
+        client: MockClient.streaming((request, bodyStream) async {
+          return http.StreamedResponse(Stream.value(payload), 200, contentLength: payload.length);
+        }),
+      );
+      addTearDown(client.close);
+
+      final goodAsset = AndroidUpdateAsset(
+        name: 'ttplay-android-arm64-v8a.apk',
+        downloadUrl: 'https://github.com/ttainet/TTPlay/releases/download/v2.0.0/ttplay-android-arm64-v8a.apk',
+        size: payload.length,
+        sha256: expectedHex,
+        isTarGz: false,
+      );
+      final okPath = await UpdateService.downloadAndroidUpdate(
+        asset: goodAsset,
+        version: '2.0.0',
+        client: client,
+        tempDirOverride: tempDir,
+      );
+      expect(File(okPath).existsSync(), isTrue);
+
+      final badAsset = AndroidUpdateAsset(
+        name: 'ttplay-android-arm64-v8a.apk',
+        downloadUrl: 'https://github.com/ttainet/TTPlay/releases/download/v2.0.0/ttplay-android-arm64-v8a.apk',
+        size: payload.length,
+        sha256: '0' * 64,
+        isTarGz: false,
+      );
+      await expectLater(
+        UpdateService.downloadAndroidUpdate(
+          asset: badAsset,
+          version: '2.0.0',
+          client: client,
+          tempDirOverride: tempDir,
+        ),
+        throwsStateError,
+      );
+      expect(File(okPath).existsSync(), isFalse);
     });
 
     test('aborts in-flight download and cleans up temporary file', () async {

@@ -306,7 +306,11 @@ android {
     applicationId = "com.ttai.ttplay"
     minSdk = 25 // Fire OS 6.x (API 25); the mpv-android AAR shares the same floor
     targetSdk = flutter.targetSdkVersion
-    versionCode = flutter.versionCode
+    // Offset Android versionCode above 5000 so split-per-abi releases
+    // (armeabi-v7a = +1000, arm64-v8a = +2000, x86_64 = +4000) cleanly upgrade
+    // devices that previously sideloaded a local fat APK (versionCode 4173).
+    val androidBaseVersionCode = (flutter.versionCode ?: 1) + 5000
+    versionCode = androidBaseVersionCode
     versionName = flutter.versionName
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
@@ -321,7 +325,7 @@ android {
     }
 
     if (System.getenv("AMAZON") != null) {
-      versionCode = (flutter.versionCode ?: 0) + 3000
+      versionCode = androidBaseVersionCode + 3000
       ndk {
         abiFilters += listOf("armeabi-v7a", "arm64-v8a")
       }
@@ -337,6 +341,8 @@ android {
 
   signingConfigs {
     create("release") {
+      enableV1Signing = true
+      enableV2Signing = true
       val keystorePropertiesFile = rootProject.file("key.properties")
       if (keystorePropertiesFile.exists()) {
         val keystoreProperties = Properties()

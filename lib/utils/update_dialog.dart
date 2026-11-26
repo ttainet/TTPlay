@@ -7,6 +7,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../exceptions/media_server_exceptions.dart';
 import '../i18n/strings.g.dart';
 import '../services/update_service.dart';
+import '../utils/app_logger.dart';
 import '../utils/formatters.dart';
 import '../utils/media_server_http_client.dart';
 import '../widgets/dialog_action_button.dart';
@@ -264,7 +265,8 @@ class _UpdateAvailableDialogState extends State<_UpdateAvailableDialog> with Wid
         };
         _errorMessage = null;
       });
-    } catch (_) {
+    } catch (error, stackTrace) {
+      appLogger.w('Failed to launch Android APK installer', error: error, stackTrace: stackTrace);
       if (!mounted) return;
       setState(() {
         _phase = _UpdateDialogPhase.error;
@@ -319,6 +321,10 @@ class _UpdateAvailableDialogState extends State<_UpdateAvailableDialog> with Wid
             Text(t.update.versionAvailable(version: _latestVersion), style: theme.textTheme.titleMedium),
             const SizedBox(height: 8),
             Text(t.update.currentVersion(version: _currentVersion), style: theme.textTheme.bodySmall),
+            if (_asset != null) ...[
+              const SizedBox(height: 4),
+              Text(_asset!.name, style: theme.textTheme.bodySmall),
+            ],
             if (size != null && size > 0) ...[
               const SizedBox(height: 4),
               Text(ByteFormatter.formatBytes(size), style: theme.textTheme.bodySmall),

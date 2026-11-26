@@ -32,6 +32,7 @@ class ApkInstallerChannelTest {
 
     assertEquals(Intent.ACTION_VIEW, intent.action)
     assertEquals(uri, intent.data)
+    assertEquals(uri, intent.clipData?.getItemAt(0)?.uri)
     assertEquals("application/vnd.android.package-archive", intent.type)
     assertTrue((intent.flags and Intent.FLAG_GRANT_READ_URI_PERMISSION) != 0)
     assertTrue((intent.flags and Intent.FLAG_ACTIVITY_NEW_TASK) != 0)

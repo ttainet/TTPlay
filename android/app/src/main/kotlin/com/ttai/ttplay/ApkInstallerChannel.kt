@@ -2,7 +2,9 @@ package com.ttai.ttplay
 
 import android.app.Activity
 import android.content.ActivityNotFoundException
+import android.content.ClipData
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.provider.Settings
@@ -34,8 +36,22 @@ internal class ApkInstallerChannel(private val activity: Activity) {
 
     internal fun buildInstallIntent(uri: Uri): Intent = Intent(Intent.ACTION_VIEW).apply {
       setDataAndType(uri, "application/vnd.android.package-archive")
+      clipData = ClipData.newRawUri("apk", uri)
       addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
       addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+    }
+
+    internal fun grantReadPermissionToHandlers(activity: Activity, intent: Intent, uri: Uri) {
+      try {
+        @Suppress("DEPRECATION")
+        val handlers = activity.packageManager.queryIntentActivities(intent, PackageManager.MATCH_DEFAULT_ONLY)
+        for (resolveInfo in handlers) {
+          val packageName = resolveInfo.activityInfo?.packageName ?: continue
+          activity.grantUriPermission(packageName, uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+      } catch (_: Exception) {
+        // Best-effort: intent FLAG_GRANT_READ_URI_PERMISSION and clipData already cover standard installers.
+      }
     }
 
     internal fun hasZipMagic(file: File): Boolean {
@@ -281,7 +297,9 @@ internal class ApkInstallerChannel(private val activity: Activity) {
 
     try {
       val uri = FileProvider.getUriForFile(activity, "${activity.packageName}.fileprovider", file)
-      activity.startActivity(buildInstallIntent(uri))
+      val installIntent = buildInstallIntent(uri)
+      grantReadPermissionToHandlers(activity, installIntent, uri)
+      activity.startActivity(installIntent)
       result.success(mapOf("status" to "launched"))
     } catch (error: Exception) {
       result.error("INSTALL_FAILED", error.message ?: error.javaClass.simpleName, null)

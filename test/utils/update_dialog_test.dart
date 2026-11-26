@@ -90,6 +90,7 @@ void main() {
     await pumpHostAndOpenDialog(tester, delegate: delegate);
 
     expect(find.text(t.update.downloadAndInstall), findsOneWidget);
+    expect(find.text('ttplay-android-arm64-v8a.apk'), findsOneWidget);
     expect(find.text('1.0 MB'), findsOneWidget);
     expect(find.text('Bug fixes and improvements'), findsOneWidget);
 

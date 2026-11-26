@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:auto_updater/auto_updater.dart';
+import 'package:crypto/crypto.dart';
 import 'package:device_info_plus/device_info_plus.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
@@ -17,12 +18,14 @@ class AndroidUpdateAsset {
   final String name;
   final String downloadUrl;
   final int? size;
+  final String? sha256;
   final bool isTarGz;
 
   const AndroidUpdateAsset({
     required this.name,
     required this.downloadUrl,
     this.size,
+    this.sha256,
     required this.isTarGz,
   });
 }
@@ -213,6 +216,7 @@ class UpdateService {
                       'name': asset['name'],
                       'browser_download_url': asset['browser_download_url'],
                       'size': asset['size'],
+                      'digest': asset['digest'],
                     },
                   )
                   .toList()
@@ -270,6 +274,14 @@ class UpdateService {
     return pattern.hasMatch(lowerName);
   }
 
+  static final RegExp _sha256DigestPattern = RegExp(r'^sha256:([0-9a-fA-F]{64})$');
+
+  static String? _parseSha256Digest(Object? raw) {
+    if (raw is! String) return null;
+    final match = _sha256DigestPattern.firstMatch(raw.trim());
+    return match?.group(1)?.toLowerCase();
+  }
+
   /// Select the best Android update asset for [supportedAbis], preferring raw
   /// `.apk` over `.tar.gz` for each ABI and falling back to a universal `.apk`.
   static AndroidUpdateAsset? selectAndroidAsset(List<dynamic>? rawAssets, List<String> supportedAbis) {
@@ -290,7 +302,10 @@ class UpdateService {
 
       final rawSize = raw['size'];
       final size = rawSize is num ? rawSize.toInt() : null;
-      candidates.add(AndroidUpdateAsset(name: name, downloadUrl: url, size: size, isTarGz: isTarGz));
+      final digestSha256 = _parseSha256Digest(raw['digest']);
+      candidates.add(
+        AndroidUpdateAsset(name: name, downloadUrl: url, size: size, sha256: digestSha256, isTarGz: isTarGz),
+      );
     }
 
     if (candidates.isEmpty) return null;
@@ -328,7 +343,11 @@ class UpdateService {
     if (rawAssets == null || rawAssets.isEmpty) return null;
     try {
       final androidInfo = await DeviceInfoPlugin().androidInfo;
-      return selectAndroidAsset(rawAssets, androidInfo.supportedAbis);
+      final selected = selectAndroidAsset(rawAssets, androidInfo.supportedAbis);
+      appLogger.i(
+        'Resolved Android update asset: ${selected?.name ?? 'none'} (size=${selected?.size}, supportedAbis=${androidInfo.supportedAbis})',
+      );
+      return selected;
     } catch (error, stackTrace) {
       appLogger.e('Failed to resolve Android ABI for update', error: error, stackTrace: stackTrace);
       return null;
@@ -377,6 +396,17 @@ class UpdateService {
       }
     }
 
+    if (asset.sha256 != null && asset.sha256!.isNotEmpty) {
+      final actualSha256 = (await sha256.bind(downloadedFile.openRead()).first).toString().toLowerCase();
+      if (actualSha256 != asset.sha256) {
+        try {
+          if (await downloadedFile.exists()) await downloadedFile.delete();
+        } catch (_) {}
+        throw StateError('Downloaded update checksum mismatch: expected ${asset.sha256}, got $actualSha256');
+      }
+    }
+
+    appLogger.i('Downloaded and verified Android update asset: ${asset.name} -> $targetPath');
     return targetPath;
   }
 
