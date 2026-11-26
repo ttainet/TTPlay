@@ -14,8 +14,15 @@ import 'package:ttplay/media/media_item.dart';
 import 'package:ttplay/media/media_kind.dart';
 import 'package:ttplay/media/work_identity.dart';
 import 'package:ttplay/media/work_skip_settings.dart';
+import 'package:ttplay/models/sync_config_entry.dart';
+import 'package:ttplay/mpv/mpv.dart';
+import 'package:ttplay/services/cloud_synced_settings_bridge.dart';
 import 'package:ttplay/services/multi_server_manager.dart';
+import 'package:ttplay/services/settings_service.dart';
+import 'package:ttplay/services/sync_config_store.dart';
+import 'package:ttplay/services/work_playback_prefs_store.dart';
 import 'package:ttplay/services/work_skip_settings_store.dart';
+import 'package:ttplay/services/work_track_prefs_store.dart';
 import 'package:ttplay/session/app_session_controller.dart';
 import 'package:ttplay/session/app_session_models.dart';
 import 'package:ttplay/storage/mount_manager.dart';
@@ -125,6 +132,8 @@ void main() {
               libraryType: LibraryTypes.movie,
               title: 'Interstellar',
               sortTitle: 'interstellar',
+              tmdbId: const Value('157336'),
+              scrapedAt: const Value(1700000000000),
               addedAt: 1700000000000,
               updatedAt: 1700000000000,
             ),
@@ -151,8 +160,14 @@ void main() {
 
       final pushedProgress = <Map<String, dynamic>>[];
       final pushedFavorites = <String>[];
-      final pushedWorkPrefs = <({String workKey, Map<String, dynamic> body})>[];
+      final pushedKvs = <({String scope, String namespace, String key, Map<String, dynamic> body})>[];
+      final deletedKvs = <({String scope, String namespace, String key})>[];
+      final createdLists = <Map<String, dynamic>>[];
+      final listEntriesAdded = <({String listId, Map<String, dynamic> body})>[];
+      final listEntriesRemoved = <({String listId, String entryKey})>[];
+      final deletedListIds = <String>[];
       final deletedRuleIds = <String>[];
+      var nextCloudListSeq = 1;
 
       final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
       addTearDown(() => server.close(force: true));
@@ -231,8 +246,11 @@ void main() {
               },
             }),
           );
-        } else if (req.method == 'GET' && (path == '/api/v1/progress' || path == '/api/v1/favorites')) {
+        } else if (req.method == 'GET' &&
+            (path == '/api/v1/progress' || path == '/api/v1/favorites' || path == '/api/v1/kv')) {
           req.response.write(jsonEncode({'code': 0, 'items': <Map<String, dynamic>>[]}));
+        } else if (req.method == 'GET' && path == '/api/v1/lists') {
+          req.response.write(jsonEncode({'code': 0, 'lists': <Map<String, dynamic>>[]}));
         } else if (req.method == 'POST' && path == '/api/v1/progress') {
           final m = jsonDecode(bodyText) as Map<String, dynamic>;
           pushedProgress.add(m);
@@ -240,17 +258,56 @@ void main() {
         } else if (req.method == 'PUT' && path.startsWith('/api/v1/favorites/')) {
           pushedFavorites.add(Uri.decodeComponent(path.split('/').last));
           req.response.write(jsonEncode({'code': 0}));
-        } else if (req.method == 'PUT' && path.startsWith('/api/v1/work-prefs/') && path.endsWith('/household')) {
+        } else if (path.startsWith('/api/v1/kv/')) {
           final segments = path.split('/');
-          final workKey = Uri.decodeComponent(segments[segments.length - 2]);
+          final scope = Uri.decodeComponent(segments[4]);
+          final ns = Uri.decodeComponent(segments[5]);
+          final key = Uri.decodeComponent(segments[6]);
+          if (req.method == 'PUT') {
+            final m = jsonDecode(bodyText) as Map<String, dynamic>;
+            pushedKvs.add((scope: scope, namespace: ns, key: key, body: m));
+            req.response.write(
+              jsonEncode({
+                'code': 0,
+                'entry': {'scope': scope, 'namespace': ns, 'item_key': key, ...m},
+              }),
+            );
+          } else if (req.method == 'DELETE') {
+            deletedKvs.add((scope: scope, namespace: ns, key: key));
+            req.response.write(jsonEncode({'code': 0}));
+          } else {
+            req.response.statusCode = 405;
+          }
+        } else if (req.method == 'POST' && path == '/api/v1/lists') {
           final m = jsonDecode(bodyText) as Map<String, dynamic>;
-          pushedWorkPrefs.add((workKey: workKey, body: m));
+          final cloudId = 'cloud_list_${nextCloudListSeq++}';
+          createdLists.add({'id': cloudId, ...m});
           req.response.write(
             jsonEncode({
               'code': 0,
-              'prefs': {'work_key': workKey, ...m},
+              'list': {'id': cloudId, ...m},
             }),
           );
+        } else if (req.method == 'POST' && path.startsWith('/api/v1/lists/') && path.endsWith('/entries')) {
+          final segments = path.split('/');
+          final cloudId = Uri.decodeComponent(segments[4]);
+          final m = jsonDecode(bodyText) as Map<String, dynamic>;
+          listEntriesAdded.add((listId: cloudId, body: m));
+          req.response.write(
+            jsonEncode({
+              'code': 0,
+              'entry': {'list_id': cloudId, ...m},
+            }),
+          );
+        } else if (req.method == 'DELETE' && path.startsWith('/api/v1/lists/') && path.contains('/entries/')) {
+          final segments = path.split('/');
+          final cloudId = Uri.decodeComponent(segments[4]);
+          final entryKey = Uri.decodeComponent(segments[6]);
+          listEntriesRemoved.add((listId: cloudId, entryKey: entryKey));
+          req.response.write(jsonEncode({'code': 0}));
+        } else if (req.method == 'DELETE' && path.startsWith('/api/v1/lists/')) {
+          deletedListIds.add(Uri.decodeComponent(path.split('/').last));
+          req.response.write(jsonEncode({'code': 0}));
         } else if (req.method == 'GET' && path == '/api/v1/match-rules') {
           req.response.write(
             jsonEncode({
@@ -279,11 +336,19 @@ void main() {
       );
       sessionController.debugSetStateForTesting(mode: AppLoginMode.selfHosted, selfHostedSession: session);
 
+      final settings = await SettingsService.getInstance();
+      final syncConfigStore = SyncConfigStore(db);
+      addTearDown(syncConfigStore.dispose);
+      final settingsSyncBridge = CloudSyncedSettingsBridge(settings);
+      addTearDown(settingsSyncBridge.detach);
+
       var localLibraryMutatedCalls = 0;
       final binder = TtplaySessionBinder(
         sessionController: sessionController,
         serverManager: serverManager,
         localLibraryClient: localClient,
+        syncConfigStore: syncConfigStore,
+        settingsSyncBridge: settingsSyncBridge,
         isTv: () => false,
         onLocalLibraryMutated: () => localLibraryMutatedCalls++,
       );
@@ -323,8 +388,8 @@ void main() {
       expect(pushedProgress.any((p) => p['work_key'] == 'tmdb:movie:157336' && p['position_ms'] == 180000), isTrue);
       expect(pushedFavorites, contains('tmdb:movie:157336'));
 
-      // 2b. WorkSkipSettingsStore pushes household skip ranges via LocalCloudUserDataBridge
-      final skipStore = WorkSkipSettingsStore(db, cloudBridge: localClient.cloudUserDataBridge);
+      // 2b. Unified KV sync pushes workSkip, workTracks, workSpeed/subOffset, and appPrefs
+      final skipStore = WorkSkipSettingsStore(db, syncConfigStore: syncConfigStore);
       final skipWork = WorkIdentity.fromCloudWorkKey('tmdb:movie:157336')!;
       await skipStore.save(
         skipWork,
@@ -337,14 +402,80 @@ void main() {
           creditsResumeBeforeEndMs: 10000,
         ),
       );
-      expect(pushedWorkPrefs.length, 1);
-      expect(pushedWorkPrefs.single.workKey, 'tmdb:movie:157336');
-      expect(pushedWorkPrefs.single.body['intro_enabled'], isTrue);
-      expect(pushedWorkPrefs.single.body['intro_start_ms'], 2000);
-      expect(pushedWorkPrefs.single.body['intro_end_ms'], 65000);
-      expect(pushedWorkPrefs.single.body['credits_enabled'], isTrue);
-      expect(pushedWorkPrefs.single.body['credits_from_end_ms'], 100000);
-      expect(pushedWorkPrefs.single.body['keep_easter_egg_ms'], 10000);
+      final localMovieMedia = MediaItem(
+        id: '$localItemId',
+        backend: MediaBackend.jellyfin,
+        kind: MediaKind.movie,
+        title: 'Interstellar',
+        serverId: LocalLibraryClient.localServerId,
+      );
+      final trackStore = WorkTrackPrefsStore(db, syncConfigStore: syncConfigStore);
+      await trackStore.saveAudioForItem(
+        localMovieMedia,
+        const AudioTrack(id: '1', language: 'en', title: 'English Atmos', codec: 'eac3', channels: 6),
+      );
+      final playbackStore = WorkPlaybackPrefsStore(db, syncConfigStore: syncConfigStore);
+      await playbackStore.saveSpeedForItem(localMovieMedia, 1.5);
+      await playbackStore.saveSubtitleOffsetForItem(localMovieMedia, 250);
+      await playbackStore.saveSubtitleOffsetForItem(localMovieMedia, 0);
+      await settings.write(SettingsService.autoPlayNextEpisode, false);
+      await Future<void>.delayed(const Duration(milliseconds: 80));
+
+      expect(
+        pushedKvs.any((p) => p.scope == 'household' && p.namespace == 'work.skip' && p.key == 'tmdb:movie:157336'),
+        isTrue,
+      );
+      expect(
+        pushedKvs.any((p) => p.scope == 'member' && p.namespace == 'work.tracks' && p.key == 'tmdb:movie:157336'),
+        isTrue,
+      );
+      expect(
+        pushedKvs.any((p) => p.scope == 'member' && p.namespace == 'work.speed' && p.body['value']?['speed'] == 1.5),
+        isTrue,
+      );
+      expect(
+        pushedKvs.any(
+          (p) => p.scope == 'member' && p.namespace == 'work.sub_offset' && p.body['value']?['offsetMs'] == 250,
+        ),
+        isTrue,
+      );
+      expect(
+        deletedKvs.any((d) => d.scope == 'member' && d.namespace == 'work.sub_offset' && d.key == 'tmdb:movie:157336'),
+        isTrue,
+      );
+      expect(
+        pushedKvs.any(
+          (p) =>
+              p.scope == 'member' &&
+              p.namespace == 'app.prefs' &&
+              p.key == SettingsService.autoPlayNextEpisode.key &&
+              p.body['value']?['v'] == false,
+        ),
+        isTrue,
+      );
+
+      // 2c. Collections & playlists create/add/remove/delete push through /api/v1/lists
+      final colId = await localClient.createCollection(
+        libraryId: 'movie',
+        title: 'Nolan Collection',
+        items: [localMovieMedia],
+      );
+      expect(colId, isNotNull);
+      await Future<void>.delayed(const Duration(milliseconds: 80));
+      expect(createdLists.single['title'], 'Nolan Collection');
+      expect(createdLists.single['shared'], isTrue);
+      expect(listEntriesAdded.single.body['work_key'], 'tmdb:movie:157336');
+
+      await localClient.removeFromCollection(collectionId: colId!, item: localMovieMedia);
+      await localClient.deleteCollection(
+        MediaItem.jellyfin(id: colId, kind: MediaKind.collection, title: 'Nolan Collection'),
+      );
+      final pl = await localClient.createPlaylist(title: 'Weekend Watch', items: [localMovieMedia]);
+      expect(pl, isNotNull);
+      await Future<void>.delayed(const Duration(milliseconds: 80));
+      expect(listEntriesRemoved.single.entryKey, 'tmdb:movie:157336');
+      expect(deletedListIds, ['cloud_list_1']);
+      expect(createdLists.length, 2);
 
       // 3. Match rules list & delete work through CloudProjectionSyncClient
       final rules = await binder.cloudProjectionSync!.listMatchRules();
@@ -352,12 +483,13 @@ void main() {
       await binder.cloudProjectionSync!.deleteMatchRule('rule_1');
       expect(deletedRuleIds, ['rule_1']);
 
-      // 4. Cloud cleanup removes cloud:* mount & cloud movie while preserving local-disk movie
+      // 4. Cloud cleanup removes cloud:* mount, cloud movie, projected lists, and synced KV while preserving local-disk movie
       await binder.clearCloudProjectionData();
       final remainingMounts = await mounts.registry.list();
       expect(remainingMounts.map((m) => m.id), ['local_disk']);
       final remainingItems = await db.select(db.libraryItems).get();
       expect(remainingItems.map((e) => e.title), ['Interstellar']);
+      expect(await syncConfigStore.readRaw(SyncConfigScope.household, 'work.skip', 'tmdb:movie:157336'), isNull);
     },
   );
 }

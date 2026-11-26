@@ -40,6 +40,7 @@ import '../media/media_version.dart';
 import '../media/stream_quality.dart';
 import '../models/transcode_quality_preset.dart';
 import '../media/media_source_info.dart';
+import '../media/work_identity.dart';
 import '../media/media_part_timeline.dart';
 import '../media/stepped_seek.dart';
 import '../mixins/mounted_set_state_mixin.dart';
@@ -78,7 +79,10 @@ import '../services/scoped_player_prefs.dart';
 import '../services/settings_service.dart';
 import '../services/sleep_timer_service.dart';
 import '../services/subtitle_preference.dart';
+import '../services/sync_config_store.dart';
 import '../services/online_subtitle_store.dart';
+import '../services/work_playback_prefs_store.dart';
+import '../services/work_track_prefs_store.dart';
 import '../services/track_manager.dart';
 import '../services/track_selection_service.dart';
 import '../services/ambient_lighting_service.dart';
@@ -1772,6 +1776,13 @@ class VideoPlayerScreenState extends State<VideoPlayerScreen>
       final debugLoggingEnabled = settingsService.read(SettingsService.enableDebugLogging);
       final useExoPlayer = settingsService.read(SettingsService.useExoPlayer);
 
+      if (!widget.isLive &&
+          _currentMetadata.serverId == WorkIdentity.localSource &&
+          (_preferredAudioTrack == null || _preferredSubtitleTrack == null)) {
+        await _hydrateLocalWorkTrackPreferencesIfNeeded();
+        if (!mounted || !_isPlayerInitializationCurrent(generation)) return;
+      }
+
       // Kick off getPlaybackData() before the Windows display-mode sync, the
       // music-session teardown in claimVideo(), player construction, and the
       // whole mpv property chain below: the resolve depends only on settings +
@@ -2137,7 +2148,11 @@ class VideoPlayerScreenState extends State<VideoPlayerScreen>
         }
       }
 
-      await PlayerSyncOffsets.of(currentPlayer).applyFor(_currentMetadata);
+      final workSubOffset = _currentMetadata.serverId == WorkIdentity.localSource
+          ? await _tryWorkPlaybackPrefsStore()?.readSubtitleOffsetForItem(_currentMetadata)
+          : null;
+      if (!_ownsPlayerInitializationAttempt(generation, currentPlayer)) return;
+      await PlayerSyncOffsets.of(currentPlayer).applyFor(_currentMetadata, subtitleOffsetOverrideMs: workSubOffset);
 
       if (settingsService.read(SettingsService.audioNormalization)) {
         await currentPlayer.setAudioNormalization(true);
@@ -2859,6 +2874,12 @@ class VideoPlayerScreenState extends State<VideoPlayerScreen>
     if (track.id != AudioTrack.auto.id && track.id != AudioTrack.off.id) {
       _sessionAudioPreference = track;
     }
+    if (_currentMetadata.serverId == WorkIdentity.localSource && await TrackManager.shouldPersistTrackSelections()) {
+      final store = _tryWorkTrackPrefsStore();
+      if (store != null) {
+        unawaited(store.saveAudioForItem(_currentMetadata, track));
+      }
+    }
     await _trackManager?.onAudioTrackSelectedByUser(track);
   }
 
@@ -2868,6 +2889,72 @@ class VideoPlayerScreenState extends State<VideoPlayerScreen>
       return db == null ? null : OnlineSubtitleStore(db);
     } catch (_) {
       return null;
+    }
+  }
+
+  WorkTrackPrefsStore? _tryWorkTrackPrefsStore() {
+    try {
+      final db = Provider.of<AppDatabase?>(context, listen: false);
+      if (db == null) return null;
+      SyncConfigStore? syncStore;
+      try {
+        syncStore = Provider.of<SyncConfigStore?>(context, listen: false);
+      } catch (_) {
+        syncStore = null;
+      }
+      return WorkTrackPrefsStore(db, syncConfigStore: syncStore);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  WorkPlaybackPrefsStore? _tryWorkPlaybackPrefsStore() {
+    try {
+      final db = Provider.of<AppDatabase?>(context, listen: false);
+      if (db == null) return null;
+      SyncConfigStore? syncStore;
+      try {
+        syncStore = Provider.of<SyncConfigStore?>(context, listen: false);
+      } catch (_) {
+        syncStore = null;
+      }
+      return WorkPlaybackPrefsStore(db, syncConfigStore: syncStore);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<void> _hydrateLocalWorkTrackPreferencesIfNeeded() async {
+    if (widget.isLive || _currentMetadata.serverId != WorkIdentity.localSource) return;
+    if (_preferredAudioTrack != null && _preferredSubtitleTrack != null) return;
+    if (!await TrackManager.shouldPersistTrackSelections()) return;
+    final store = _tryWorkTrackPrefsStore();
+    if (store == null) return;
+    try {
+      final prefs = await store.readForItem(_currentMetadata);
+      if (prefs == null || !mounted) return;
+      _preferredAudioTrack ??= prefs.toPreferredAudioTrack();
+      _preferredSubtitleTrack ??= prefs.toSubtitlePreference();
+    } catch (e) {
+      appLogger.d('Failed loading synced work track preferences', error: e);
+    }
+  }
+
+  Future<void> _persistLocalWorkSubtitlePref(SubtitleTrack track) async {
+    if (_currentMetadata.serverId != WorkIdentity.localSource) return;
+    if (!await TrackManager.shouldPersistTrackSelections()) return;
+    final store = _tryWorkTrackPrefsStore();
+    if (store == null) return;
+    await store.saveSubtitleForItem(_currentMetadata, track);
+  }
+
+  Future<void> _persistSpeedPreferenceForCurrentItem(double rate) async {
+    var savedPerWork = false;
+    if (_currentMetadata.serverId == WorkIdentity.localSource) {
+      savedPerWork = await _tryWorkPlaybackPrefsStore()?.saveSpeedForItem(_currentMetadata, rate) ?? false;
+    }
+    if (!savedPerWork) {
+      await ScopedPlayerPrefs.write(ScopedPlayerPrefs.playbackSpeed, _currentMetadata, rate);
     }
   }
 
@@ -2988,6 +3075,7 @@ class VideoPlayerScreenState extends State<VideoPlayerScreen>
           appLogger.d('Failed marking online subtitle selected', error: e);
         }
         _rememberNativeSubtitleSelection(track, sourceStreamId: sourceStreamId);
+        unawaited(_persistLocalWorkSubtitlePref(track));
         await _trackManager?.invalidatePendingSelection();
         return;
       }
@@ -3000,6 +3088,7 @@ class VideoPlayerScreenState extends State<VideoPlayerScreen>
     }
 
     _rememberNativeSubtitleSelection(track, sourceStreamId: sourceStreamId);
+    unawaited(_persistLocalWorkSubtitlePref(track));
     await _trackManager?.onSubtitleTrackSelectedByUser(track, sourceStreamId: sourceStreamId);
   }
 

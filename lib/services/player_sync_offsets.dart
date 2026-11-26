@@ -37,9 +37,12 @@ final class PlayerSyncOffsets extends ChangeNotifier {
   /// "Don't save" stays with the item it was made on instead of following the
   /// player into the next episode (#2449). An offset the player already
   /// applies is not rewritten.
-  Future<void> applyFor(MediaItem item) async {
+  Future<void> applyFor(MediaItem item, {int? subtitleOffsetOverrideMs}) async {
     await _apply(audioProperty, ScopedPlayerPrefs.resolve(ScopedPlayerPrefs.audioSyncOffset, item));
-    await _apply(subtitleProperty, ScopedPlayerPrefs.resolve(ScopedPlayerPrefs.subtitleSyncOffset, item));
+    await _apply(
+      subtitleProperty,
+      subtitleOffsetOverrideMs ?? ScopedPlayerPrefs.resolve(ScopedPlayerPrefs.subtitleSyncOffset, item),
+    );
   }
 
   Future<void> _apply(String property, int offsetMs) async {

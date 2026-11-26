@@ -29,15 +29,6 @@ class WorkSkipSettings {
     creditsResumeBeforeEndMs: (json['creditsResumeBeforeEndMs'] as num?)?.toInt() ?? 0,
   );
 
-  factory WorkSkipSettings.fromCloudJson(Map<String, dynamic> json) => WorkSkipSettings(
-    introEnabled: json['intro_enabled'] == true,
-    introStartMs: (json['intro_start_ms'] as num?)?.toInt() ?? 0,
-    introEndMs: (json['intro_end_ms'] as num?)?.toInt() ?? 0,
-    creditsEnabled: json['credits_enabled'] == true,
-    creditsDurationMs: (json['credits_from_end_ms'] as num?)?.toInt() ?? 0,
-    creditsResumeBeforeEndMs: (json['keep_easter_egg_ms'] as num?)?.toInt() ?? 0,
-  );
-
   Map<String, dynamic> toJson() => {
     'introEnabled': introEnabled,
     'introStartMs': introStartMs,
@@ -45,15 +36,6 @@ class WorkSkipSettings {
     'creditsEnabled': creditsEnabled,
     'creditsDurationMs': creditsDurationMs,
     'creditsResumeBeforeEndMs': creditsResumeBeforeEndMs,
-  };
-
-  Map<String, dynamic> toCloudHouseholdJson() => {
-    'intro_enabled': introEnabled,
-    'intro_start_ms': introStartMs,
-    'intro_end_ms': introEndMs,
-    'credits_enabled': creditsEnabled,
-    'credits_from_end_ms': creditsDurationMs,
-    'keep_easter_egg_ms': creditsResumeBeforeEndMs,
   };
 
   bool validFor([int? durationMs]) {

@@ -919,6 +919,74 @@ func (s *Service) ListLists(p *account.Principal, kind string) ([]ListView, erro
 	return out, rows.Err()
 }
 
+func (s *Service) ListListsWithEntries(p *account.Principal, kind string) ([]ListDetailView, error) {
+	lists, err := s.ListLists(p, kind)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]ListDetailView, 0, len(lists))
+	byID := make(map[string]int, len(lists))
+	placeholders := make([]string, 0, len(lists))
+	args := make([]any, 0, len(lists))
+	for i, lv := range lists {
+		byID[lv.ID] = i
+		out = append(out, ListDetailView{
+			ListView: lv,
+			Entries:  make([]ListEntryView, 0),
+		})
+		placeholders = append(placeholders, "?")
+		args = append(args, lv.ID)
+	}
+	if len(out) == 0 {
+		return out, nil
+	}
+
+	rows, err := s.store.ReadDB().Query(`
+		SELECT list_id, entry_key, work_key, season_number, episode_number, sort_order, added_at
+		FROM list_entries
+		WHERE list_id IN (`+strings.Join(placeholders, ",")+`)
+		ORDER BY list_id ASC, sort_order ASC, added_at ASC`,
+		args...,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var e ListEntryView
+		if err := rows.Scan(&e.ListID, &e.EntryKey, &e.WorkKey, &e.SeasonNumber, &e.EpisodeNumber, &e.SortOrder, &e.AddedAt); err != nil {
+			return nil, err
+		}
+		if idx, ok := byID[e.ListID]; ok {
+			out[idx].Entries = append(out[idx].Entries, e)
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	for i := range out {
+		out[i].EntryCount = len(out[i].Entries)
+	}
+	return out, nil
+}
+
+func (s *Service) publishListChanged(householdID, memberID, listID, op string) {
+	if s.hub == nil {
+		return
+	}
+	evData := map[string]any{
+		"entity":  "list",
+		"list_id": listID,
+		"op":      op,
+	}
+	if memberID == "" {
+		s.hub.PublishToHousehold(householdID, "userdata.changed", evData)
+	} else {
+		s.hub.PublishToMember(householdID, memberID, "userdata.changed", evData)
+	}
+}
+
 func (s *Service) CreateList(p *account.Principal, req CreateListRequest) (ListView, error) {
 	if p == nil {
 		return ListView{}, ErrUnauthorized
@@ -967,6 +1035,7 @@ func (s *Service) CreateList(p *account.Principal, req CreateListRequest) (ListV
 	if err != nil {
 		return ListView{}, err
 	}
+	s.publishListChanged(p.HouseholdID, det.MemberID, listID, "upsert")
 	return det.ListView, nil
 }
 
@@ -1083,6 +1152,7 @@ func (s *Service) UpdateList(p *account.Principal, listID string, req UpdateList
 	if err != nil {
 		return ListView{}, err
 	}
+	s.publishListChanged(p.HouseholdID, det.MemberID, listID, "upsert")
 	return updated.ListView, nil
 }
 
@@ -1116,7 +1186,11 @@ func (s *Service) DeleteList(p *account.Principal, listID string) error {
 	if _, err := db.AppendChangeTx(tx, p.HouseholdID, memPtr, "list", listID, "delete", nowMs); err != nil {
 		return err
 	}
-	return tx.Commit()
+	if err := tx.Commit(); err != nil {
+		return err
+	}
+	s.publishListChanged(p.HouseholdID, det.MemberID, listID, "delete")
+	return nil
 }
 
 func (s *Service) AddListEntry(p *account.Principal, listID string, req AddListEntryRequest) (ListEntryView, error) {
@@ -1180,6 +1254,7 @@ func (s *Service) AddListEntry(p *account.Principal, listID string, req AddListE
 		return ListEntryView{}, err
 	}
 
+	s.publishListChanged(p.HouseholdID, det.MemberID, listID, "upsert")
 	return ListEntryView{
 		ListID:        listID,
 		EntryKey:      entryKey,
@@ -1229,7 +1304,11 @@ func (s *Service) RemoveListEntry(p *account.Principal, listID, entryKey string)
 	if _, err := db.AppendChangeTx(tx, p.HouseholdID, memPtr, "list", listID, "upsert", nowMs); err != nil {
 		return err
 	}
-	return tx.Commit()
+	if err := tx.Commit(); err != nil {
+		return err
+	}
+	s.publishListChanged(p.HouseholdID, det.MemberID, listID, "upsert")
+	return nil
 }
 
 func (s *Service) MigrateWorkData(p *account.Principal, fromWorkKey, toWorkKey string) error {

@@ -34,7 +34,6 @@ import '../media/media_version.dart';
 import '../media/playback_report_metadata.dart';
 import '../media/server_capabilities.dart';
 import '../media/stream_quality.dart';
-import '../media/work_skip_settings.dart';
 import '../mpv/mpv.dart';
 import '../services/api_cache.dart';
 import '../services/jellyfin_api_cache.dart';
@@ -1029,6 +1028,113 @@ class LocalLibraryClient implements MediaServerClient, StreamQualityClient {
   Future<List<CollectionMembership>> fetchCollectionMemberships(Set<String> itemIds, {AbortController? abort}) async =>
       const [];
 
+  Future<String?> _cloudListIdForLocal(int localListId) async {
+    final db = _repo.database;
+    final row = await (db.select(
+      db.librarySettings,
+    )..where((t) => t.key.equals('cloud-list-id:$localListId'))).getSingleOrNull();
+    final id = row?.value.trim();
+    return id == null || id.isEmpty ? null : id;
+  }
+
+  Future<void> _bindCloudListMapping(int localListId, String cloudListId) async {
+    final db = _repo.database;
+    await db.transaction(() async {
+      await db
+          .into(db.librarySettings)
+          .insertOnConflictUpdate(
+            LibrarySettingsCompanion.insert(key: 'cloud-list-id:$localListId', value: cloudListId),
+          );
+      await db
+          .into(db.librarySettings)
+          .insertOnConflictUpdate(
+            LibrarySettingsCompanion.insert(key: 'cloud-list-local:$cloudListId', value: '$localListId'),
+          );
+    });
+  }
+
+  Future<void> _deleteCloudListMapping(int localListId, String? cloudListId) async {
+    final db = _repo.database;
+    await (db.delete(db.librarySettings)..where((t) => t.key.equals('cloud-list-id:$localListId'))).go();
+    if (cloudListId != null && cloudListId.isNotEmpty) {
+      await (db.delete(db.librarySettings)..where((t) => t.key.equals('cloud-list-local:$cloudListId'))).go();
+    }
+  }
+
+  Future<void> _pushCloudCreateList(
+    int localListId, {
+    required String kind,
+    required String title,
+    String? summary,
+    String? tmdbId,
+    required bool shared,
+  }) async {
+    final bridge = cloudUserDataBridge;
+    if (bridge == null) return;
+    try {
+      final cloudId = await bridge
+          .createCloudList(kind: kind, title: title, summary: summary, tmdbId: tmdbId, shared: shared)
+          .timeout(const Duration(seconds: 6));
+      if (cloudId != null && cloudId.isNotEmpty) {
+        await _bindCloudListMapping(localListId, cloudId);
+      }
+    } catch (e) {
+      appLogger.d('CloudUserDataBridge createList skipped: $e');
+    }
+  }
+
+  Future<void> _pushCloudAddListEntry(int localListId, int itemId) async {
+    final bridge = cloudUserDataBridge;
+    if (bridge == null) return;
+    try {
+      final cloudListId = await _cloudListIdForLocal(localListId);
+      if (cloudListId == null) return;
+      final coords = await _resolveCloudWorkCoords(itemId);
+      if (coords == null) return;
+      final isEpisode = coords.seasonNumber > 0 || coords.episodeNumber > 0;
+      await bridge
+          .addCloudListEntry(
+            cloudListId: cloudListId,
+            workKey: coords.workKey,
+            seasonNumber: isEpisode ? coords.seasonNumber : null,
+            episodeNumber: isEpisode ? coords.episodeNumber : null,
+          )
+          .timeout(const Duration(seconds: 6));
+    } catch (e) {
+      appLogger.d('CloudUserDataBridge addListEntry skipped: $e');
+    }
+  }
+
+  Future<void> _pushCloudRemoveListEntry(int localListId, int itemId) async {
+    final bridge = cloudUserDataBridge;
+    if (bridge == null) return;
+    try {
+      final cloudListId = await _cloudListIdForLocal(localListId);
+      if (cloudListId == null) return;
+      final coords = await _resolveCloudWorkCoords(itemId);
+      if (coords == null) return;
+      final isEpisode = coords.seasonNumber > 0 || coords.episodeNumber > 0;
+      final entryKey = isEpisode
+          ? '${coords.workKey}:s${coords.seasonNumber}:e${coords.episodeNumber}'
+          : coords.workKey;
+      await bridge
+          .removeCloudListEntry(cloudListId: cloudListId, entryKey: entryKey)
+          .timeout(const Duration(seconds: 6));
+    } catch (e) {
+      appLogger.d('CloudUserDataBridge removeListEntry skipped: $e');
+    }
+  }
+
+  Future<void> _pushCloudDeleteList(String? cloudListId) async {
+    final bridge = cloudUserDataBridge;
+    if (bridge == null || cloudListId == null || cloudListId.isEmpty) return;
+    try {
+      await bridge.deleteCloudList(cloudListId).timeout(const Duration(seconds: 6));
+    } catch (e) {
+      appLogger.d('CloudUserDataBridge deleteList skipped: $e');
+    }
+  }
+
   @override
   Future<String?> createCollection({
     required String libraryId,
@@ -1037,6 +1143,7 @@ class LocalLibraryClient implements MediaServerClient, StreamQualityClient {
     MediaKind? itemKind,
   }) async {
     final id = await _repo.createList(kind: lib.LibraryListKinds.collection, title: title);
+    await _pushCloudCreateList(id, kind: lib.LibraryListKinds.collection, title: title, shared: true);
     await addToCollection(collectionId: '$id', items: items);
     return '$_collectionPrefix$id';
   }
@@ -1046,7 +1153,10 @@ class LocalLibraryClient implements MediaServerClient, StreamQualityClient {
     if (id == null) return false;
     for (final item in items) {
       final itemId = _id(item.id);
-      if (itemId != null) await _repo.addToList(id, itemId);
+      if (itemId != null) {
+        await _repo.addToList(id, itemId);
+        unawaited(_pushCloudAddListEntry(id, itemId));
+      }
     }
     return true;
   }
@@ -1056,6 +1166,7 @@ class LocalLibraryClient implements MediaServerClient, StreamQualityClient {
     final itemId = _id(item.id);
     if (id == null || itemId == null) return false;
     await _repo.removeFromList(id, itemId);
+    unawaited(_pushCloudRemoveListEntry(id, itemId));
     return true;
   }
 
@@ -1071,7 +1182,10 @@ class LocalLibraryClient implements MediaServerClient, StreamQualityClient {
   Future<bool> deleteCollection(MediaItem collection) async {
     final id = _listId(collection.id);
     if (id == null) return false;
+    final cloudId = await _cloudListIdForLocal(id);
     await _repo.deleteList(id);
+    await _deleteCloudListMapping(id, cloudId);
+    unawaited(_pushCloudDeleteList(cloudId));
     return true;
   }
 
@@ -1128,6 +1242,7 @@ class LocalLibraryClient implements MediaServerClient, StreamQualityClient {
   @override
   Future<MediaPlaylist?> createPlaylist({required String title, required List<MediaItem> items}) async {
     final id = await _repo.createList(kind: lib.LibraryListKinds.playlist, title: title);
+    await _pushCloudCreateList(id, kind: lib.LibraryListKinds.playlist, title: title, shared: false);
     await _addToList('$id', items);
     return fetchPlaylistMetadata('$id');
   }
@@ -1140,7 +1255,10 @@ class LocalLibraryClient implements MediaServerClient, StreamQualityClient {
   Future<bool> deletePlaylist(MediaPlaylist playlist) async {
     final id = _listId(playlist.id);
     if (id == null) return false;
+    final cloudId = await _cloudListIdForLocal(id);
     await _repo.deleteList(id);
+    await _deleteCloudListMapping(id, cloudId);
+    unawaited(_pushCloudDeleteList(cloudId));
     return true;
   }
 
@@ -1941,7 +2059,35 @@ abstract class LocalCloudUserDataBridge {
 
   Future<void> pushHideContinue({required String workKey, int seasonNumber = 0, int episodeNumber = 0});
 
-  Future<void> pushWorkSkipSettings({required String workKey, required WorkSkipSettings settings}) async {}
+  Future<void> putCloudKv({
+    required String scope,
+    required String namespace,
+    required String key,
+    required Map<String, dynamic> value,
+    String? workKey,
+  }) async {}
+
+  Future<void> deleteCloudKv({required String scope, required String namespace, required String key}) async {}
+
+  Future<String?> createCloudList({
+    required String kind,
+    required String title,
+    String? summary,
+    String? tmdbId,
+    bool shared = false,
+  }) async => null;
+
+  Future<void> deleteCloudList(String cloudListId) async {}
+
+  Future<void> addCloudListEntry({
+    required String cloudListId,
+    required String workKey,
+    int? seasonNumber,
+    int? episodeNumber,
+    int? sortOrder,
+  }) async {}
+
+  Future<void> removeCloudListEntry({required String cloudListId, required String entryKey}) async {}
 
   Future<bool> hydrateCloudItemDetail(int localItemId, String workKey) async => false;
 }

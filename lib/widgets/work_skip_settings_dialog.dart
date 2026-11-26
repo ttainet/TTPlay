@@ -11,6 +11,7 @@ import '../media/media_kind.dart';
 import '../media/media_server_client.dart';
 import '../media/work_identity.dart';
 import '../media/work_skip_settings.dart';
+import '../services/sync_config_store.dart';
 import '../services/work_skip_settings_store.dart';
 import '../utils/dialogs.dart';
 import '../utils/provider_extensions.dart';
@@ -24,10 +25,18 @@ Future<WorkSkipSettings?> showWorkSkipSettingsDialog(
   Duration? clicked,
 }) {
   final client = context.tryGetMediaClientForServer(serverIdOrNull(item.serverId));
-  final store = WorkSkipSettingsStore(
-    context.read<AppDatabase>(),
+  final db = context.read<AppDatabase>();
+  SyncConfigStore? syncConfigStore;
+  try {
+    syncConfigStore = Provider.of<SyncConfigStore?>(context, listen: false);
+  } on ProviderNotFoundException {
+    syncConfigStore = null;
+  }
+  syncConfigStore ??= SyncConfigStore(
+    db,
     cloudBridge: client is LocalLibraryClient ? client.cloudUserDataBridge : null,
   );
+  final store = WorkSkipSettingsStore(db, syncConfigStore: syncConfigStore);
   return showScopedDialog<WorkSkipSettings>(
     context: context,
     builder: (_) =>

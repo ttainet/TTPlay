@@ -37,9 +37,9 @@ func TestMigrationsIdempotencyAndAllTables(t *testing.T) {
 		t.Fatalf("expected library.db file: %v", err)
 	}
 	ver, err := s1.SchemaVersion()
-	if err != nil || ver != 5 {
+	if err != nil || ver != 6 {
 		_ = s1.Close()
-		t.Fatalf("schema version = %d, err = %v, want 5", ver, err)
+		t.Fatalf("schema version = %d, err = %v, want 6", ver, err)
 	}
 	_ = s1.Close()
 
@@ -50,8 +50,8 @@ func TestMigrationsIdempotencyAndAllTables(t *testing.T) {
 	}
 	defer s2.Close()
 	ver2, err := s2.SchemaVersion()
-	if err != nil || ver2 != 5 {
-		t.Fatalf("schema version on reopen = %d, err = %v, want 5", ver2, err)
+	if err != nil || ver2 != 6 {
+		t.Fatalf("schema version on reopen = %d, err = %v, want 6", ver2, err)
 	}
 
 	expectedTables := []string{
@@ -66,7 +66,7 @@ func TestMigrationsIdempotencyAndAllTables(t *testing.T) {
 		"scan_sessions", "ingest_batches", "sidecars", "pending_deletions", "pending_deletion_files",
 		"media_items", "media_files", "item_genres", "item_credits", "match_rules", "identify_queue",
 		"member_watch_progress", "member_favorites", "household_work_prefs", "member_work_prefs",
-		"lists", "list_entries", "change_log",
+		"sync_kv", "lists", "list_entries", "change_log",
 	}
 	for _, tbl := range expectedTables {
 		var name string

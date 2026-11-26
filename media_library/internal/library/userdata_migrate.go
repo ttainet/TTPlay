@@ -61,6 +61,9 @@ func MigrateWorkUserDataTx(tx *sql.Tx, householdID, fromWorkKey, toWorkKey strin
 	if err := migrateMemberWorkPrefsTx(tx, householdID, fromWorkKey, toWorkKey, nowMs); err != nil {
 		return err
 	}
+	if err := migrateSyncKVTx(tx, householdID, fromWorkKey, toWorkKey, nowMs); err != nil {
+		return err
+	}
 	return migrateListEntriesByWorkTx(tx, householdID, fromWorkKey, toWorkKey, nowMs)
 }
 
@@ -492,6 +495,116 @@ func migrateListEntriesByWorkTx(tx *sql.Tx, householdID, fromWorkKey, toWorkKey 
 			return err
 		}
 		if _, err := db.AppendChangeTx(tx, householdID, midPtr, "list", listID, "upsert", nowMs); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func migrateSyncKVTx(tx *sql.Tx, householdID, fromWorkKey, toWorkKey string, nowMs int64) error {
+	rows, err := tx.Query(`
+		SELECT scope, member_id, namespace, item_key, value_json, updated_at
+		FROM sync_kv
+		WHERE household_id = ? AND work_key = ? AND deleted = 0`,
+		householdID, fromWorkKey,
+	)
+	if err != nil {
+		return err
+	}
+	type kvRow struct {
+		scope     string
+		memberID  string
+		namespace string
+		itemKey   string
+		valueJSON string
+		updatedAt int64
+	}
+	var srcs []kvRow
+	for rows.Next() {
+		var r kvRow
+		if err := rows.Scan(&r.scope, &r.memberID, &r.namespace, &r.itemKey, &r.valueJSON, &r.updatedAt); err != nil {
+			_ = rows.Close()
+			return err
+		}
+		srcs = append(srcs, r)
+	}
+	_ = rows.Close()
+	if err := rows.Err(); err != nil {
+		return err
+	}
+
+	for _, src := range srcs {
+		newItemKey := src.itemKey
+		if src.itemKey == fromWorkKey {
+			newItemKey = toWorkKey
+		} else if strings.HasPrefix(src.itemKey, fromWorkKey+":") {
+			newItemKey = toWorkKey + strings.TrimPrefix(src.itemKey, fromWorkKey)
+		}
+
+		var midPtr *string
+		if src.scope == "member" && src.memberID != "" {
+			v := src.memberID
+			midPtr = &v
+		}
+
+		if newItemKey == src.itemKey {
+			if _, err := tx.Exec(`
+				UPDATE sync_kv SET work_key = ?, updated_at = ?
+				WHERE household_id = ? AND scope = ? AND member_id = ? AND namespace = ? AND item_key = ?`,
+				toWorkKey, nowMs, householdID, src.scope, src.memberID, src.namespace, src.itemKey,
+			); err != nil {
+				return err
+			}
+			if _, err := db.AppendChangeTx(tx, householdID, midPtr, "kv", db.EncodeKVChangeID(src.scope, src.namespace, newItemKey), "upsert", nowMs); err != nil {
+				return err
+			}
+			continue
+		}
+
+		var (
+			tgtVal     string
+			tgtUpdated int64
+			tgtDeleted int
+		)
+		qErr := tx.QueryRow(`
+			SELECT value_json, updated_at, deleted
+			FROM sync_kv
+			WHERE household_id = ? AND scope = ? AND member_id = ? AND namespace = ? AND item_key = ?`,
+			householdID, src.scope, src.memberID, src.namespace, newItemKey,
+		).Scan(&tgtVal, &tgtUpdated, &tgtDeleted)
+		if qErr != nil && !errors.Is(qErr, sql.ErrNoRows) {
+			return qErr
+		}
+
+		mergedVal := src.valueJSON
+		if qErr == nil && tgtDeleted == 0 && tgtUpdated > src.updatedAt {
+			mergedVal = tgtVal
+		}
+
+		if _, err := tx.Exec(`
+			UPDATE sync_kv SET value_json = '{}', updated_at = ?, deleted = 1
+			WHERE household_id = ? AND scope = ? AND member_id = ? AND namespace = ? AND item_key = ?`,
+			nowMs, householdID, src.scope, src.memberID, src.namespace, src.itemKey,
+		); err != nil {
+			return err
+		}
+		if _, err := db.AppendChangeTx(tx, householdID, midPtr, "kv", db.EncodeKVChangeID(src.scope, src.namespace, src.itemKey), "delete", nowMs); err != nil {
+			return err
+		}
+
+		if _, err := tx.Exec(`
+			INSERT INTO sync_kv(household_id, scope, member_id, namespace, item_key, work_key, value_json, updated_at, deleted)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0)
+			ON CONFLICT(household_id, scope, member_id, namespace, item_key) DO UPDATE SET
+				work_key   = excluded.work_key,
+				value_json = excluded.value_json,
+				updated_at = excluded.updated_at,
+				deleted    = 0`,
+			householdID, src.scope, src.memberID, src.namespace, newItemKey, toWorkKey, mergedVal, nowMs,
+		); err != nil {
+			return err
+		}
+		if _, err := db.AppendChangeTx(tx, householdID, midPtr, "kv", db.EncodeKVChangeID(src.scope, src.namespace, newItemKey), "upsert", nowMs); err != nil {
 			return err
 		}
 	}

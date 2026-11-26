@@ -70,6 +70,7 @@ class TrackManager {
   /// the room seeded it from the same saved preference at attach, and a late
   /// local re-apply would move the player underneath the room's agreed rate.
   final bool Function()? playbackRateOwnedExternally;
+  final Future<double?> Function()? resolveWorkPlaybackSpeed;
 
   // ── Mutable configuration (updated on episode navigation) ──────────
 
@@ -138,6 +139,7 @@ class TrackManager {
     this.persistAutomaticSubtitleSelection = true,
     this.showMessage,
     this.playbackRateOwnedExternally,
+    this.resolveWorkPlaybackSpeed,
   });
 
   /// Invalidates every pending automatic selection before the player is
@@ -326,6 +328,14 @@ class TrackManager {
       final profileSettings = getProfileSettings();
       // Keeps the settings singleton live before the synchronous scoped read.
       await SettingsService.getInstance();
+      final double? resolvedPlaybackSpeed;
+      if (playbackRateOwnedExternally?.call() ?? false) {
+        resolvedPlaybackSpeed = null;
+      } else {
+        final resolveSpeed = resolveWorkPlaybackSpeed;
+        final workSpeed = resolveSpeed == null ? null : await resolveSpeed();
+        resolvedPlaybackSpeed = workSpeed ?? ScopedPlayerPrefs.resolve(ScopedPlayerPrefs.playbackSpeed, metadata);
+      }
       if (!selectionIsActive()) return false;
 
       final trackService = TrackSelectionService(
@@ -339,9 +349,7 @@ class TrackManager {
         preferredAudioTrack: preferredAudioTrack,
         preferredSubtitleTrack: preferredSubtitleTrack,
         preferredSecondarySubtitleTrack: preferredSecondarySubtitleTrack,
-        defaultPlaybackSpeed: (playbackRateOwnedExternally?.call() ?? false)
-            ? null
-            : ScopedPlayerPrefs.resolve(ScopedPlayerPrefs.playbackSpeed, metadata),
+        defaultPlaybackSpeed: resolvedPlaybackSpeed,
         onAudioTrackChanged: onAudioTrackChanged,
         onSubtitleTrackChanged: persistAutomaticSubtitleSelection ? onSubtitleTrackChanged : null,
         isActive: selectionIsActive,

@@ -14,6 +14,8 @@ import 'package:ttplay/library_cloud/projection_sync.dart';
 import 'package:ttplay/library_cloud/scan_session_runner.dart';
 import 'package:ttplay/library_cloud/source_repository.dart';
 import 'package:ttplay/media/work_identity.dart';
+import 'package:ttplay/models/sync_config_entry.dart';
+import 'package:ttplay/services/sync_config_store.dart';
 import 'package:ttplay/services/work_skip_settings_store.dart';
 import 'package:ttplay/storage/mount_registry.dart';
 import 'package:ttplay/storage/storage_driver.dart';
@@ -1444,29 +1446,51 @@ void main() {
           req.response.write(jsonEncode({'code': 0, 'items': <Map<String, dynamic>>[], 'total': 0}));
         } else if (req.method == 'GET' && (path == '/api/v1/progress' || path == '/api/v1/favorites')) {
           req.response.write(jsonEncode({'code': 0, 'items': <Map<String, dynamic>>[]}));
-        } else if (req.method == 'GET' && path == '/api/v1/work-prefs') {
+        } else if (req.method == 'GET' && path == '/api/v1/kv') {
           req.response.write(
             jsonEncode({
               'code': 0,
               'items': [
                 {
+                  'scope': 'household',
+                  'namespace': 'work.skip',
+                  'item_key': 'tmdb:movie:27205',
                   'work_key': 'tmdb:movie:27205',
-                  'intro_enabled': true,
-                  'intro_start_ms': 3000,
-                  'intro_end_ms': 85000,
-                  'credits_enabled': true,
-                  'credits_from_end_ms': 120000,
-                  'keep_easter_egg_ms': 15000,
-                  'household_updated_at': 1700000000100,
+                  'value': {
+                    'introEnabled': true,
+                    'introStartMs': 3000,
+                    'introEndMs': 85000,
+                    'creditsEnabled': true,
+                    'creditsDurationMs': 120000,
+                    'creditsResumeBeforeEndMs': 15000,
+                  },
+                  'updated_at': 1700000000100,
                 },
                 {
-                  // Member-only row with no household skip prefs should be skipped
+                  'scope': 'member',
+                  'namespace': 'work.speed',
+                  'item_key': 'tmdb:show:999',
                   'work_key': 'tmdb:show:999',
-                  'intro_enabled': false,
-                  'credits_enabled': false,
-                  'playback_speed': 1.5,
-                  'household_updated_at': 0,
-                  'member_updated_at': 1700000000100,
+                  'value': {'speed': 1.5},
+                  'updated_at': 1700000000100,
+                },
+              ],
+            }),
+          );
+        } else if (req.method == 'GET' && path == '/api/v1/lists') {
+          req.response.write(
+            jsonEncode({
+              'code': 0,
+              'lists': [
+                {
+                  'id': 'clist_1',
+                  'kind': 'collection',
+                  'title': 'Mind Benders',
+                  'created_at': 1700000000000,
+                  'updated_at': 1700000000100,
+                  'entries': [
+                    {'work_key': 'tmdb:movie:27205', 'sort_order': 0},
+                  ],
                 },
               ],
             }),
@@ -1484,18 +1508,23 @@ void main() {
                 'changes': [
                   {
                     'seq': 11,
-                    'entity': 'work_prefs',
-                    'entity_id': 'tmdb:show:999',
+                    'entity': 'kv',
+                    'entity_id': 'household|work.skip|tmdb%3Ashow%3A999',
                     'op': 'upsert',
                     'data': {
+                      'scope': 'household',
+                      'namespace': 'work.skip',
+                      'item_key': 'tmdb:show:999',
                       'work_key': 'tmdb:show:999',
-                      'intro_enabled': true,
-                      'intro_start_ms': 0,
-                      'intro_end_ms': 90000,
-                      'credits_enabled': false,
-                      'credits_from_end_ms': 0,
-                      'keep_easter_egg_ms': 0,
-                      'household_updated_at': 1700000000200,
+                      'value': {
+                        'introEnabled': true,
+                        'introStartMs': 0,
+                        'introEndMs': 90000,
+                        'creditsEnabled': false,
+                        'creditsDurationMs': 0,
+                        'creditsResumeBeforeEndMs': 0,
+                      },
+                      'updated_at': 1700000000200,
                     },
                   },
                 ],
@@ -1506,60 +1535,48 @@ void main() {
               jsonEncode({
                 'code': 0,
                 'reset_required': false,
-                'latest_seq': 12,
+                'latest_seq': 13,
                 'min_retained_seq': 1,
-                'next_since_seq': 12,
+                'next_since_seq': 13,
                 'has_more': false,
                 'changes': [
                   {
                     'seq': 12,
-                    'entity': 'work_prefs',
-                    'entity_id': 'tmdb:show:999',
+                    'entity': 'kv',
+                    'entity_id': 'household|work.skip|tmdb%3Ashow%3A999',
+                    'op': 'delete',
+                    'data': {
+                      'scope': 'household',
+                      'namespace': 'work.skip',
+                      'item_key': 'tmdb:show:999',
+                      'deleted': true,
+                    },
+                  },
+                  {
+                    'seq': 13,
+                    'entity': 'kv',
+                    'entity_id': 'household|work.skip|tmdb%3Ashow%3A999',
                     'op': 'upsert',
                     'data': {
+                      'scope': 'household',
+                      'namespace': 'work.skip',
+                      'item_key': 'tmdb:show:999',
                       'work_key': 'tmdb:show:999',
-                      'intro_enabled': false,
-                      'intro_start_ms': 0,
-                      'intro_end_ms': 90000,
-                      'credits_enabled': false,
-                      'credits_from_end_ms': 0,
-                      'keep_easter_egg_ms': 0,
-                      'household_updated_at': 1700000000300,
+                      'value': {
+                        'introEnabled': true,
+                        'introStartMs': 4000,
+                        'introEndMs': 92000,
+                        'creditsEnabled': false,
+                        'creditsDurationMs': 0,
+                        'creditsResumeBeforeEndMs': 0,
+                      },
+                      'updated_at': 1700000000300,
                     },
                   },
                 ],
               }),
             );
           }
-        } else if (req.method == 'GET' && path == '/api/v1/items/by-work-key') {
-          req.response.write(
-            jsonEncode({
-              'code': 0,
-              'item': {
-                'id': 100,
-                'work_key': 'tmdb:movie:27205',
-                'kind': 'movie',
-                'library_type': 'movie',
-                'title': 'Inception',
-                'sort_title': 'inception',
-                'added_at': 1700000000000,
-                'updated_at': 1700000000000,
-                'files': [
-                  {'id': 500, 'source_id': 'src_dav', 'path': '/Movies/Inception.mkv', 'size': 2048, 'role': 'video'},
-                ],
-                'work_prefs': {
-                  'work_key': 'tmdb:movie:27205',
-                  'intro_enabled': true,
-                  'intro_start_ms': 7000,
-                  'intro_end_ms': 95000,
-                  'credits_enabled': false,
-                  'credits_from_end_ms': 0,
-                  'keep_easter_egg_ms': 0,
-                  'household_updated_at': 1700000000400,
-                },
-              },
-            }),
-          );
         } else {
           req.response.statusCode = 404;
         }
@@ -1571,14 +1588,25 @@ void main() {
       final repo = CloudSourceRepository(api: api, masterKeyProvider: () => hk, keyEpoch: 1);
       final mirror = CloudMountMirror(sourceRepository: repo, mountRegistry: mountRegistry);
       final sync = CloudProjectionSyncClient(api);
-      final engine = CloudProjectionEngine(db: db, syncClient: sync, mountMirror: mirror);
+      final syncConfigStore = SyncConfigStore(db);
+      addTearDown(syncConfigStore.dispose);
+      final engine = CloudProjectionEngine(
+        db: db,
+        syncClient: sync,
+        mountMirror: mirror,
+        syncConfigStore: syncConfigStore,
+      );
       addTearDown(engine.stopListeningEvents);
 
-      final skipStore = WorkSkipSettingsStore(db);
+      final skipStore = WorkSkipSettingsStore(db, syncConfigStore: syncConfigStore);
       final movieWork = WorkIdentity.fromCloudWorkKey('tmdb:movie:27205')!;
       final showWork = WorkIdentity.fromCloudWorkKey('tmdb:show:999')!;
 
-      // 1. Full snapshot syncs movie skip settings and ignores member-only show row
+      // Create an unmapped local-only playlist that must survive clearProjectedLists().
+      final localRepo = LibraryRepository(db);
+      await localRepo.createList(kind: LibraryListKinds.playlist, title: 'Local Only Mix');
+
+      // 1. Full snapshot syncs KV entries and remote lists with entries.
       await engine.syncFullSnapshot();
       final movieRules = await skipStore.read(movieWork);
       expect(movieRules.introEnabled, isTrue);
@@ -1589,7 +1617,19 @@ void main() {
       expect(movieRules.creditsResumeBeforeEndMs, 15000);
       expect((await skipStore.read(showWork)).introEnabled, isFalse);
 
-      // 2. Incremental sync enables show intro, then disables it
+      final speedRaw = await syncConfigStore.readRaw(
+        SyncConfigScope.member,
+        SyncConfigNamespaces.workSpeed,
+        'tmdb:show:999',
+      );
+      expect(speedRaw?['speed'], 1.5);
+
+      final cols = await localRepo.lists(LibraryListKinds.collection);
+      expect(cols.single.title, 'Mind Benders');
+      final colEntries = await localRepo.listItems(cols.single.id);
+      expect(colEntries.single.item.title, 'Inception');
+
+      // 2. Incremental sync enables show intro, then executes ordered delete+upsert on same key.
       final inc1 = await engine.syncIncremental();
       expect(inc1.hasChanges, isTrue);
       expect((await skipStore.read(showWork)).introEnabled, isTrue);
@@ -1598,16 +1638,15 @@ void main() {
       changesPhase = 2;
       final inc2 = await engine.syncIncremental();
       expect(inc2.hasChanges, isTrue);
-      expect((await skipStore.read(showWork)).introEnabled, isFalse);
+      final showAfterOrderedOps = await skipStore.read(showWork);
+      expect(showAfterOrderedOps.introEnabled, isTrue);
+      expect(showAfterOrderedOps.introStartMs, 4000);
+      expect(showAfterOrderedOps.introEndMs, 92000);
 
-      // 3. Detail hydration updates work_prefs locally
-      final item = (await (db.select(db.libraryItems)..where((t) => t.workKey.equals('tmdb:movie:27205'))).getSingle());
-      final hydrated = await engine.hydrateItemDetailFromCloud(item.id, 'tmdb:movie:27205');
-      expect(hydrated, isTrue);
-      final hydratedRules = await skipStore.read(movieWork);
-      expect(hydratedRules.introStartMs, 7000);
-      expect(hydratedRules.introEndMs, 95000);
-      expect(hydratedRules.creditsEnabled, isFalse);
+      // 3. clearProjectedLists removes cloud-mapped lists while keeping local-only lists.
+      await engine.clearProjectedLists();
+      expect(await localRepo.lists(LibraryListKinds.collection), isEmpty);
+      expect((await localRepo.lists(LibraryListKinds.playlist)).single.title, 'Local Only Mix');
     },
   );
 }

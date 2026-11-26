@@ -2,20 +2,30 @@ import 'dart:convert';
 
 import '../database/app_database.dart';
 import '../library/library_watch_state_store.dart';
-import '../library/local_library_client.dart';
 import '../media/media_item.dart';
 import '../media/media_kind.dart';
 import '../media/media_server_client.dart';
 import '../media/work_identity.dart';
 import '../media/work_skip_settings.dart';
-import '../utils/app_logger.dart';
+import '../models/sync_config_entry.dart';
+import 'sync_config_store.dart';
 
 /// One row per work in the account workspace, not per scanned item or file.
 /// Remote identity bindings are a local cache for previously opened downloads.
 class WorkSkipSettingsStore {
-  WorkSkipSettingsStore(this.db, {this.cloudBridge});
+  WorkSkipSettingsStore(this.db, {SyncConfigStore? syncConfigStore})
+    : _syncConfigStore = syncConfigStore ?? SyncConfigStore(db);
+
   final AppDatabase db;
-  final LocalCloudUserDataBridge? cloudBridge;
+  final SyncConfigStore _syncConfigStore;
+
+  static final SyncConfigSpec<WorkSkipSettings> spec = SyncConfigSpec<WorkSkipSettings>(
+    scope: SyncConfigScope.household,
+    namespace: SyncConfigNamespaces.workSkip,
+    encode: (value) => value.toJson(),
+    decode: WorkSkipSettings.fromJson,
+    isValid: (value) => value.validFor(),
+  );
 
   static bool supports(MediaItem item) =>
       const {MediaKind.movie, MediaKind.show, MediaKind.season, MediaKind.episode}.contains(item.kind);
@@ -81,6 +91,9 @@ class WorkSkipSettingsStore {
   }
 
   Future<WorkSkipSettings> read(WorkIdentity work) async {
+    if (work.source == WorkIdentity.localSource) {
+      return (await _syncConfigStore.read(spec, work.cloudWorkKey)) ?? const WorkSkipSettings();
+    }
     final raw = await _get(_key(work));
     if (raw == null) return const WorkSkipSettings();
     try {
@@ -92,15 +105,16 @@ class WorkSkipSettingsStore {
 
   Future<void> save(WorkIdentity work, WorkSkipSettings settings, {bool syncToCloud = true}) async {
     if (!settings.validFor()) throw ArgumentError('Invalid skip ranges');
-    await _put(_key(work), jsonEncode(settings.toJson()));
-    if (syncToCloud && work.source == WorkIdentity.localSource && cloudBridge != null) {
-      try {
-        await cloudBridge!
-            .pushWorkSkipSettings(workKey: work.cloudWorkKey, settings: settings)
-            .timeout(const Duration(seconds: 6));
-      } catch (e) {
-        appLogger.d('Cloud work skip settings sync skipped for ${work.cloudWorkKey}: $e');
-      }
+    if (work.source == WorkIdentity.localSource) {
+      await _syncConfigStore.write(
+        spec,
+        work.cloudWorkKey,
+        settings,
+        workKey: work.cloudWorkKey,
+        syncToCloud: syncToCloud,
+      );
+      return;
     }
+    await _put(_key(work), jsonEncode(settings.toJson()));
   }
 }

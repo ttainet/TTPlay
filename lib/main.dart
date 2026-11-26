@@ -95,6 +95,8 @@ import 'session/app_session_models.dart';
 import 'session/app_session_store.dart';
 import 'iptv/iptv_provider.dart';
 import 'library_cloud/cloud_external_mirror_store.dart';
+import 'services/cloud_synced_settings_bridge.dart';
+import 'services/sync_config_store.dart';
 import 'ttplay/ttplay_session_binder.dart';
 import 'storage/http_range_reader.dart';
 import 'storage/mount_manager.dart';
@@ -1020,13 +1022,7 @@ Future<StartupSessionBootstrap> resolveStartupSessionBootstrap({
   final sessionStore = AppSessionStore(appDatabase);
   final identityStore = LanIdentityStore(appDatabase);
 
-  final (
-    initialMounts,
-    initialConnections,
-    sessionState,
-    trustedPeers,
-    existingLibraryRow,
-  ) = await (
+  final (initialMounts, initialConnections, sessionState, trustedPeers, existingLibraryRow) = await (
     mountRegistry.list(),
     connRegistry.list(),
     sessionStore.load(),
@@ -1593,6 +1589,8 @@ class _MainAppState extends State<MainApp> with WidgetsBindingObserver {
   late final LanIdentityStore _lanIdentityStore;
   late final LanPairingService _lanPairingService;
   late final AppSessionController _appSessionController;
+  late final SyncConfigStore _syncConfigStore;
+  late final CloudSyncedSettingsBridge _cloudSyncedSettingsBridge;
   late final TtplaySessionBinder _ttplaySessionBinder;
   late final IptvProvider _iptvProvider;
   late final DownloadManagerService _downloadManager;
@@ -1718,10 +1716,14 @@ class _MainAppState extends State<MainApp> with WidgetsBindingObserver {
     );
     _iptvProvider = IptvProvider();
     unawaited(_iptvProvider.loadLocalSources());
+    _syncConfigStore = SyncConfigStore(_appDatabase);
+    _cloudSyncedSettingsBridge = CloudSyncedSettingsBridge(widget.settings);
     _ttplaySessionBinder = TtplaySessionBinder(
       sessionController: _appSessionController,
       serverManager: _serverManager,
       localLibraryClient: _localLibraryClient,
+      syncConfigStore: _syncConfigStore,
+      settingsSyncBridge: _cloudSyncedSettingsBridge,
       onLocalLibraryMutated: _libraryScanService.notifyLibraryChanged,
     );
     _ttplaySessionBinder.attachIptvProvider(_iptvProvider);
@@ -1891,7 +1893,9 @@ class _MainAppState extends State<MainApp> with WidgetsBindingObserver {
       ?_autoDeleteRun?.future,
     ]);
     _lanPairingService.dispose();
+    _cloudSyncedSettingsBridge.detach();
     _ttplaySessionBinder.dispose();
+    _syncConfigStore.dispose();
     _iptvProvider.dispose();
     _appSessionController.dispose();
     await _appDatabase.close();
@@ -1910,7 +1914,9 @@ class _MainAppState extends State<MainApp> with WidgetsBindingObserver {
     _libraryScanService.dispose();
     if (_shutdownFuture == null) {
       _lanPairingService.dispose();
+      _cloudSyncedSettingsBridge.detach();
       _ttplaySessionBinder.dispose();
+      _syncConfigStore.dispose();
       _iptvProvider.dispose();
       _appSessionController.dispose();
       _libraryEventService.dispose();
@@ -2159,6 +2165,7 @@ class _MainAppState extends State<MainApp> with WidgetsBindingObserver {
         Provider<LanIdentityStore>.value(value: _lanIdentityStore),
         ChangeNotifierProvider<LanPairingService>.value(value: _lanPairingService),
         ChangeNotifierProvider<AppSessionController>.value(value: _appSessionController),
+        Provider<SyncConfigStore>.value(value: _syncConfigStore),
         ChangeNotifierProvider<TtplaySessionBinder>.value(value: _ttplaySessionBinder),
         ChangeNotifierProvider<IptvProvider>.value(value: _iptvProvider),
         Provider<ConnectionRegistry>.value(value: _connections),

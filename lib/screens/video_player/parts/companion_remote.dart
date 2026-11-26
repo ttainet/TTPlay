@@ -86,7 +86,10 @@ extension _VideoPlayerCompanionRemoteMethods on VideoPlayerScreenState {
   void _remoteSetRate(double rate) {
     unawaited(
       _setPlaybackRate(rate).whenComplete(() {
-        if (mounted && !_shuttingDown) _pushRemotePlayerSnapshot();
+        if (mounted && !_shuttingDown) {
+          unawaited(_persistSpeedPreferenceForCurrentItem(rate));
+          _pushRemotePlayerSnapshot();
+        }
       }),
     );
   }
@@ -181,7 +184,14 @@ extension _VideoPlayerCompanionRemoteMethods on VideoPlayerScreenState {
       if (subtitleMs != null) {
         await currentPlayer.setProperty(PlayerSyncOffsets.subtitleProperty, (subtitleMs / 1000.0).toString());
         offsets.recordApplied(PlayerSyncOffsets.subtitleProperty, subtitleMs);
-        unawaited(ScopedPlayerPrefs.write(ScopedPlayerPrefs.subtitleSyncOffset, _currentMetadata, subtitleMs));
+        var savedPerWork = false;
+        if (_currentMetadata.serverId == WorkIdentity.localSource) {
+          savedPerWork =
+              await _tryWorkPlaybackPrefsStore()?.saveSubtitleOffsetForItem(_currentMetadata, subtitleMs) ?? false;
+        }
+        if (!savedPerWork) {
+          unawaited(ScopedPlayerPrefs.write(ScopedPlayerPrefs.subtitleSyncOffset, _currentMetadata, subtitleMs));
+        }
       }
       if (mounted) {
         _setPlayerState(() {});
@@ -390,8 +400,10 @@ extension _VideoPlayerCompanionRemoteMethods on VideoPlayerScreenState {
     final state = currentPlayer?.state;
     final playing = state?.playing ?? false;
     final buffering = state?.buffering ?? false;
-    final positionMs = (currentPlayer?.currentPosition.inMilliseconds ?? state?.position.inMilliseconds ?? 0)
-        .clamp(0, 1 << 30);
+    final positionMs = (currentPlayer?.currentPosition.inMilliseconds ?? state?.position.inMilliseconds ?? 0).clamp(
+      0,
+      1 << 30,
+    );
     final stateDurationMs = state?.duration.inMilliseconds ?? 0;
     final durationMs = (stateDurationMs > 0 ? stateDurationMs : (_currentMetadata.durationMs ?? 0)).clamp(0, 1 << 30);
     final volume = (_volumeController?.value ?? state?.volume ?? 100.0).clamp(0.0, 100.0).toDouble();

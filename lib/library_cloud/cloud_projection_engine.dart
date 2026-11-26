@@ -5,9 +5,8 @@ import 'package:drift/drift.dart';
 import '../database/app_database.dart';
 import '../library/deterministic_keys.dart';
 import '../library/library_repository.dart';
-import '../media/work_identity.dart';
-import '../media/work_skip_settings.dart';
-import '../services/work_skip_settings_store.dart';
+import '../models/sync_config_entry.dart';
+import '../services/sync_config_store.dart';
 import '../storage/storage_path.dart';
 import '../utils/app_logger.dart';
 import 'cloud_mount_mirror.dart';
@@ -40,13 +39,15 @@ class CloudProjectionEngine {
     required this.db,
     required this.syncClient,
     required this.mountMirror,
+    SyncConfigStore? syncConfigStore,
     this.onLibraryUpdated,
     this.onSyncStateChanged,
-  });
+  }) : _syncConfigStore = syncConfigStore ?? SyncConfigStore(db);
 
   final AppDatabase db;
   final CloudProjectionSyncClient syncClient;
   final CloudMountMirror mountMirror;
+  final SyncConfigStore _syncConfigStore;
   final void Function()? onLibraryUpdated;
   final void Function(bool syncing)? onSyncStateChanged;
 
@@ -248,7 +249,11 @@ class CloudProjectionEngine {
       var hasUserDataChange = false;
       var hasFileChange = false;
       final changedItemsById = <int, Map<String, dynamic>>{};
-      final changedWorkPrefs = <Map<String, dynamic>>[];
+      final kvOps =
+          <
+            ({bool isDelete, Map<String, dynamic>? entry, SyncConfigScope? scope, String? namespace, String? itemKey})
+          >[];
+      final listOps = <({bool isDelete, Map<String, dynamic>? list, String? cloudListId})>[];
 
       for (final c in changesPage.changes) {
         final entity = (c['entity'] as String? ?? '').toLowerCase();
@@ -286,16 +291,47 @@ class CloudProjectionEngine {
           // do not require re-downloading all snapshot pages.
           continue;
         }
-        if (entity == 'work_prefs') {
+        if (entity == 'kv') {
           final data = c['data'];
-          if (op == 'upsert' && data is Map) {
-            changedWorkPrefs.add(Map<String, dynamic>.from(data));
+          if (op == 'delete') {
+            final target = _extractKvDeleteTarget(data, c['entity_id'] as String?);
+            if (target != null) {
+              kvOps.add((
+                isDelete: true,
+                entry: null,
+                scope: target.scope,
+                namespace: target.namespace,
+                itemKey: target.itemKey,
+              ));
+            } else {
+              hasUserDataChange = true;
+            }
+          } else if (op == 'upsert' && data is Map) {
+            kvOps.add((
+              isDelete: false,
+              entry: Map<String, dynamic>.from(data),
+              scope: null,
+              namespace: null,
+              itemKey: null,
+            ));
           } else {
             hasUserDataChange = true;
           }
           continue;
         }
-        if (entity == 'progress' || entity == 'list' || entity == 'favorite') {
+        if (entity == 'list') {
+          final data = c['data'];
+          final eid = (c['entity_id'] as String? ?? '').trim();
+          if (op == 'delete' && eid.isNotEmpty) {
+            listOps.add((isDelete: true, list: null, cloudListId: eid));
+          } else if (op == 'upsert' && data is Map) {
+            listOps.add((isDelete: false, list: Map<String, dynamic>.from(data), cloudListId: null));
+          } else {
+            hasUserDataChange = true;
+          }
+          continue;
+        }
+        if (entity == 'progress' || entity == 'favorite') {
           hasUserDataChange = true;
         }
       }
@@ -321,14 +357,10 @@ class CloudProjectionEngine {
         if (hasUserDataChange) {
           await _syncUserStateFromServer();
         }
-        var workPrefsApplied = false;
-        for (final wp in changedWorkPrefs) {
-          if (await _applyCloudWorkPrefsMap(wp)) {
-            workPrefsApplied = true;
-          }
-        }
+        final kvApplied = await _applyKvDeltas(kvOps);
+        final listApplied = await _applyListDeltas(listOps);
         final hasChanges =
-            hasUserDataChange || workPrefsApplied || itemsProjected > 0 || filesProjected > 0 || pruned > 0;
+            hasUserDataChange || kvApplied || listApplied || itemsProjected > 0 || filesProjected > 0 || pruned > 0;
         if (hasChanges) {
           onLibraryUpdated?.call();
         }
@@ -513,9 +545,8 @@ class CloudProjectionEngine {
       if (hasUserDataChange) {
         await _syncUserStateFromServer();
       }
-      for (final wp in changedWorkPrefs) {
-        await _applyCloudWorkPrefsMap(wp);
-      }
+      await _applyKvDeltas(kvOps);
+      await _applyListDeltas(listOps);
       _lastDetailHydratedAt.clear();
       _lastSeq = changesPage.nextSinceSeq > _lastSeq ? changesPage.nextSinceSeq : changesPage.latestSeq;
       onLibraryUpdated?.call();
@@ -674,13 +705,6 @@ class CloudProjectionEngine {
             ));
           }
           await repo.setCredits(root.localId, credits);
-        }
-
-        final workPrefsRaw = detail['work_prefs'];
-        if (workPrefsRaw is Map) {
-          final prefsMap = Map<String, dynamic>.from(workPrefsRaw);
-          final fallbackWk = _nonEmptyString(detail['show_work_key']) ?? root.workKey;
-          await _applyCloudWorkPrefsMap(prefsMap, fallbackWorkKey: fallbackWk);
         }
 
         _lastDetailHydratedAt[trimmedKey] = DateTime.now();
@@ -1207,33 +1231,245 @@ class CloudProjectionEngine {
     });
   }
 
-  Future<bool> _applyCloudWorkPrefsMap(Map<String, dynamic> raw, {String? fallbackWorkKey}) async {
-    final rawWk = ((raw['work_key'] as String?) ?? fallbackWorkKey ?? '').trim();
-    if (rawWk.isEmpty) return false;
-    final work = WorkIdentity.fromCloudWorkKey(rawWk);
-    if (work == null) return false;
+  static ({SyncConfigScope scope, String namespace, String itemKey})? _extractKvDeleteTarget(
+    Object? data,
+    String? entityId,
+  ) {
+    if (data is Map) {
+      final scope = SyncConfigScope.fromWireName(data['scope'] as String?);
+      final ns = (data['namespace'] as String? ?? '').trim();
+      final key = (data['item_key'] as String? ?? '').trim();
+      if (scope != null && ns.isNotEmpty && key.isNotEmpty) {
+        return (scope: scope, namespace: ns, itemKey: key);
+      }
+    }
+    if (entityId != null && entityId.isNotEmpty) {
+      final parts = entityId.split('|');
+      if (parts.length == 3) {
+        try {
+          final scope = SyncConfigScope.fromWireName(Uri.decodeComponent(parts[0]));
+          final ns = Uri.decodeComponent(parts[1]).trim();
+          final key = Uri.decodeComponent(parts[2]).trim();
+          if (scope != null && ns.isNotEmpty && key.isNotEmpty) {
+            return (scope: scope, namespace: ns, itemKey: key);
+          }
+        } catch (_) {}
+      }
+    }
+    return null;
+  }
 
-    final hhUpdated = (raw['household_updated_at'] as num?)?.toInt() ?? 0;
-    final settings = WorkSkipSettings.fromCloudJson(raw);
-    if (hhUpdated <= 0 && !settings.introEnabled && !settings.creditsEnabled) {
-      return false;
+  Future<bool> _applyKvDeltas(
+    List<({bool isDelete, Map<String, dynamic>? entry, SyncConfigScope? scope, String? namespace, String? itemKey})>
+    ops,
+  ) async {
+    if (ops.isEmpty) return false;
+    var applied = false;
+    for (final op in ops) {
+      if (op.isDelete) {
+        if (await _syncConfigStore.applyRemoteDelete(
+          scope: op.scope!,
+          namespace: op.namespace!,
+          itemKey: op.itemKey!,
+        )) {
+          applied = true;
+        }
+      } else if (op.entry != null) {
+        if (await _syncConfigStore.applyRemoteEntry(op.entry!)) {
+          applied = true;
+        }
+      }
     }
-    if (!settings.validFor()) {
-      appLogger.w('CloudProjectionEngine: ignoring invalid cloud skip settings for $rawWk');
-      return false;
+    return applied;
+  }
+
+  Future<bool> _applyListDeltas(List<({bool isDelete, Map<String, dynamic>? list, String? cloudListId})> ops) async {
+    if (ops.isEmpty) return false;
+    var applied = false;
+    await db.transaction(() async {
+      for (final op in ops) {
+        if (op.isDelete) {
+          if (await _deleteProjectedList(op.cloudListId!)) {
+            applied = true;
+          }
+        } else if (op.list != null) {
+          if (await _upsertProjectedList(op.list!) != null) {
+            applied = true;
+          }
+        }
+      }
+    });
+    return applied;
+  }
+
+  /// Removes all cloud-mapped collections and playlists while preserving
+  /// local-only unmapped lists.
+  Future<void> clearProjectedLists() async {
+    const prefix = 'cloud-list-local:';
+    await db.transaction(() async {
+      final mappingRows = await (db.select(db.librarySettings)..where((t) => t.key.like('$prefix%'))).get();
+      for (final row in mappingRows) {
+        if (!row.key.startsWith(prefix)) continue;
+        final cloudId = row.key.substring(prefix.length);
+        await _deleteProjectedList(cloudId);
+      }
+    });
+  }
+
+  Future<String?> _upsertProjectedList(Map<String, dynamic> raw) async {
+    final cloudId = (raw['id'] as String? ?? '').trim();
+    final kind = (raw['kind'] as String? ?? '').trim().toLowerCase();
+    final title = (raw['title'] as String? ?? '').trim();
+    if (cloudId.isEmpty || title.isEmpty) return null;
+    if (kind != LibraryListKinds.collection && kind != LibraryListKinds.playlist) return null;
+
+    final nowMs = DateTime.now().millisecondsSinceEpoch;
+    final createdAt = (raw['created_at'] as num?)?.toInt() ?? nowMs;
+    final updatedAt = (raw['updated_at'] as num?)?.toInt() ?? nowMs;
+    final summary = _nonEmptyString(raw['summary']);
+    final poster = _nonEmptyString(raw['poster_source']);
+    final tmdbId = _nonEmptyString(raw['tmdb_id']);
+
+    final localMapKey = 'cloud-list-local:$cloudId';
+    final mapRow = await (db.select(db.librarySettings)..where((t) => t.key.equals(localMapKey))).getSingleOrNull();
+    var localListId = mapRow == null ? null : int.tryParse(mapRow.value);
+    if (localListId != null) {
+      final existing = await (db.select(db.libraryLists)..where((t) => t.id.equals(localListId!))).getSingleOrNull();
+      if (existing == null) {
+        localListId = null;
+      }
     }
-    await WorkSkipSettingsStore(db).save(work, settings, syncToCloud: false);
-    return true;
+
+    if (localListId != null) {
+      await (db.update(db.libraryLists)..where((t) => t.id.equals(localListId!))).write(
+        LibraryListsCompanion(
+          kind: Value(kind),
+          title: Value(title),
+          summary: Value(summary),
+          posterSource: Value(poster),
+          tmdbId: Value(tmdbId),
+          updatedAt: Value(updatedAt),
+        ),
+      );
+    } else {
+      localListId = await db
+          .into(db.libraryLists)
+          .insert(
+            LibraryListsCompanion.insert(
+              kind: kind,
+              title: title,
+              summary: Value(summary),
+              posterSource: Value(poster),
+              tmdbId: Value(tmdbId),
+              createdAt: createdAt,
+              updatedAt: updatedAt,
+            ),
+          );
+      await db
+          .into(db.librarySettings)
+          .insertOnConflictUpdate(LibrarySettingsCompanion.insert(key: localMapKey, value: '$localListId'));
+      await db
+          .into(db.librarySettings)
+          .insertOnConflictUpdate(LibrarySettingsCompanion.insert(key: 'cloud-list-id:$localListId', value: cloudId));
+    }
+
+    final entriesRaw = raw['entries'];
+    if (entriesRaw is List) {
+      await (db.delete(db.libraryListItems)..where((t) => t.listId.equals(localListId!))).go();
+      for (var i = 0; i < entriesRaw.length; i++) {
+        final e = entriesRaw[i];
+        if (e is! Map) continue;
+        final wk = (e['work_key'] as String? ?? '').trim();
+        if (wk.isEmpty) continue;
+        final sNum = (e['season_number'] as num?)?.toInt() ?? -1;
+        final eNum = (e['episode_number'] as num?)?.toInt() ?? -1;
+        final sortOrder = (e['sort_order'] as num?)?.toInt() ?? i;
+        final localItem = await _resolveLocalItemForListEntry(wk, sNum, eNum);
+        if (localItem == null) continue;
+        await db
+            .into(db.libraryListItems)
+            .insert(
+              LibraryListItemsCompanion.insert(listId: localListId, itemId: localItem.id, sortOrder: Value(sortOrder)),
+              mode: InsertMode.insertOrIgnore,
+            );
+      }
+    }
+    return cloudId;
+  }
+
+  Future<LibraryItemRow?> _resolveLocalItemForListEntry(String rawWorkKey, int seasonNum, int episodeNum) async {
+    final wk = DeterministicKeys.canonicalizeWorkKey(rawWorkKey);
+    if (wk.isEmpty) return null;
+    if (episodeNum >= 0) {
+      final s = seasonNum < 0 ? 0 : seasonNum;
+      final epKey = '$wk:s$s:e$episodeNum';
+      final ep = await (db.select(db.libraryItems)..where((t) => t.workKey.equals(epKey))).getSingleOrNull();
+      if (ep != null) return ep;
+      final show = await (db.select(db.libraryItems)..where((t) => t.workKey.equals(wk))).getSingleOrNull();
+      if (show != null) {
+        return (db.select(db.libraryItems)..where(
+              (t) =>
+                  t.showId.equals(show.id) &
+                  t.kind.equals(LibraryKinds.episode) &
+                  t.seasonNumber.equals(s) &
+                  t.episodeNumber.equals(episodeNum),
+            ))
+            .getSingleOrNull();
+      }
+      return null;
+    }
+    return (db.select(db.libraryItems)..where((t) => t.workKey.equals(wk))).getSingleOrNull();
+  }
+
+  Future<bool> _deleteProjectedList(String cloudListId) async {
+    final localMapKey = 'cloud-list-local:$cloudListId';
+    final row = await (db.select(db.librarySettings)..where((t) => t.key.equals(localMapKey))).getSingleOrNull();
+    var removed = false;
+    if (row != null) {
+      final localId = int.tryParse(row.value);
+      if (localId != null) {
+        final cnt = await (db.delete(db.libraryLists)..where((t) => t.id.equals(localId))).go();
+        removed = cnt > 0;
+        await (db.delete(db.librarySettings)..where((t) => t.key.equals('cloud-list-id:$localId'))).go();
+      }
+      await (db.delete(db.librarySettings)..where((t) => t.key.equals(localMapKey))).go();
+    }
+    return removed;
+  }
+
+  Future<void> _syncListsFromServer(List<Map<String, dynamic>> remoteLists) async {
+    final activeCloudIds = <String>{};
+    await db.transaction(() async {
+      for (final raw in remoteLists) {
+        final id = await _upsertProjectedList(raw);
+        if (id != null) activeCloudIds.add(id);
+      }
+      const prefix = 'cloud-list-local:';
+      final mappingRows = await (db.select(db.librarySettings)..where((t) => t.key.like('$prefix%'))).get();
+      for (final row in mappingRows) {
+        if (!row.key.startsWith(prefix)) continue;
+        final cloudId = row.key.substring(prefix.length);
+        if (!activeCloudIds.contains(cloudId)) {
+          await _deleteProjectedList(cloudId);
+        }
+      }
+    });
   }
 
   Future<void> _syncUserStateFromServer() async {
     try {
       final (progressList, favList) = await (syncClient.listProgress(limit: 500), syncClient.listFavorites()).wait;
-      List<Map<String, dynamic>> workPrefsList = const [];
+      List<Map<String, dynamic>> kvList = const [];
       try {
-        workPrefsList = await syncClient.listWorkPrefs();
+        kvList = await syncClient.listKv(includeDeleted: true);
       } catch (e) {
-        appLogger.d('CloudProjectionEngine: work_prefs list unavailable, skipping: $e');
+        appLogger.d('CloudProjectionEngine: kv list unavailable, skipping: $e');
+      }
+      List<Map<String, dynamic>>? remoteLists;
+      try {
+        remoteLists = await syncClient.listLists(includeEntries: true);
+      } catch (e) {
+        appLogger.d('CloudProjectionEngine: lists unavailable, skipping: $e');
       }
       final favKeys = <String>{
         for (final f in favList)
@@ -1320,11 +1556,14 @@ class CloudProjectionEngine {
                 );
           }
         }
-
-        for (final wp in workPrefsList) {
-          await _applyCloudWorkPrefsMap(wp);
-        }
       });
+
+      for (final entry in kvList) {
+        await _syncConfigStore.applyRemoteEntry(entry);
+      }
+      if (remoteLists != null) {
+        await _syncListsFromServer(remoteLists);
+      }
     } catch (e) {
       appLogger.d('CloudProjectionEngine: skipped user state sync: $e');
     }

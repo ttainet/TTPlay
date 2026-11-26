@@ -954,7 +954,11 @@ extension _VideoPlayerReloadMethods on VideoPlayerScreenState {
     final currentPlayer = player;
     if (currentPlayer == null) return;
     try {
-      await PlayerSyncOffsets.of(currentPlayer).applyFor(metadata);
+      final workSubOffset = metadata.serverId == WorkIdentity.localSource
+          ? await _tryWorkPlaybackPrefsStore()?.readSubtitleOffsetForItem(metadata)
+          : null;
+      if (!mounted || player != currentPlayer) return;
+      await PlayerSyncOffsets.of(currentPlayer).applyFor(metadata, subtitleOffsetOverrideMs: workSubOffset);
 
       final previousBoxFit = ScopedPlayerPrefs.resolve(ScopedPlayerPrefs.boxFitMode, previousMetadata);
       final boxFit = ScopedPlayerPrefs.resolve(ScopedPlayerPrefs.boxFitMode, metadata);

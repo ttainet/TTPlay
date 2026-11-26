@@ -688,6 +688,26 @@ var migrations = []Migration{
 			`CREATE INDEX IF NOT EXISTS idx_subtitle_file_cache_exp ON subtitle_file_cache(expires_at)`,
 		},
 	},
+	{
+		Version: 6,
+		Name:    "0006_sync_kv",
+		Statements: []string{
+			`CREATE TABLE IF NOT EXISTS sync_kv (
+				household_id TEXT NOT NULL REFERENCES households(id) ON DELETE CASCADE,
+				scope        TEXT NOT NULL,
+				member_id    TEXT NOT NULL DEFAULT '',
+				namespace    TEXT NOT NULL,
+				item_key     TEXT NOT NULL,
+				work_key     TEXT,
+				value_json   TEXT NOT NULL DEFAULT '{}',
+				updated_at   INTEGER NOT NULL,
+				deleted      INTEGER NOT NULL DEFAULT 0,
+				PRIMARY KEY (household_id, scope, member_id, namespace, item_key)
+			)`,
+			`CREATE INDEX IF NOT EXISTS idx_sync_kv_hh_work ON sync_kv(household_id, work_key) WHERE work_key IS NOT NULL AND work_key != ''`,
+			`CREATE INDEX IF NOT EXISTS idx_sync_kv_hh_updated ON sync_kv(household_id, updated_at)`,
+		},
+	},
 }
 
 func (s *Store) runMigrations() error {

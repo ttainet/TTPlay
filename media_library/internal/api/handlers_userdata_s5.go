@@ -240,7 +240,21 @@ func (s *Server) handleListLists(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	p := UserPrincipalFromContext(r.Context())
-	lists, err := s.UserData.ListLists(p, r.URL.Query().Get("kind"))
+	kind := r.URL.Query().Get("kind")
+	incRaw := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("include_entries")))
+	if incRaw == "1" || incRaw == "true" {
+		lists, err := s.UserData.ListListsWithEntries(p, kind)
+		if err != nil {
+			writeMappedError(w, r, err)
+			return
+		}
+		writeJSON(w, r, http.StatusOK, map[string]any{
+			"code":  0,
+			"lists": lists,
+		})
+		return
+	}
+	lists, err := s.UserData.ListLists(p, kind)
 	if err != nil {
 		writeMappedError(w, r, err)
 		return

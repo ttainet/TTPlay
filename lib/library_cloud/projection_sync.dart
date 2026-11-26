@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
 
-import '../media/work_skip_settings.dart';
 import 'cloud_api_client.dart';
 
 class CloudSnapshotPage {
@@ -237,25 +236,113 @@ class CloudProjectionSyncClient {
     await api.deleteJson('/api/v1/favorites/${Uri.encodeComponent(workKey)}');
   }
 
-  Future<List<Map<String, dynamic>>> listWorkPrefs() async {
-    final resp = await api.getJson('/api/v1/work-prefs');
+  Future<List<Map<String, dynamic>>> listKv({
+    String? namespace,
+    int? sinceUpdatedAt,
+    bool includeDeleted = false,
+  }) async {
+    final resp = await api.getJson(
+      '/api/v1/kv',
+      query: {
+        if (namespace != null && namespace.isNotEmpty) 'namespace': namespace,
+        if (sinceUpdatedAt != null && sinceUpdatedAt > 0) 'since_updated_at': '$sinceUpdatedAt',
+        if (includeDeleted) 'include_deleted': '1',
+      },
+    );
     return [
       for (final i in (resp['items'] as List? ?? const []))
         if (i is Map) Map<String, dynamic>.from(i),
     ];
   }
 
-  Future<Map<String, dynamic>> upsertHouseholdWorkPrefs({
-    required String workKey,
-    required WorkSkipSettings settings,
+  Future<Map<String, dynamic>> putKv({
+    required String scope,
+    required String namespace,
+    required String key,
+    required Map<String, dynamic> value,
+    String? workKey,
   }) async {
     final resp = await api.putJson(
-      '/api/v1/work-prefs/${Uri.encodeComponent(workKey)}/household',
-      body: settings.toCloudHouseholdJson(),
+      '/api/v1/kv/${Uri.encodeComponent(scope)}/${Uri.encodeComponent(namespace)}/${Uri.encodeComponent(key)}',
+      body: {if (workKey != null && workKey.isNotEmpty) 'work_key': workKey, 'value': value},
       timeout: const Duration(seconds: 8),
     );
-    final prefs = resp['prefs'];
-    return prefs is Map ? Map<String, dynamic>.from(prefs) : const {};
+    final entry = resp['entry'];
+    return entry is Map ? Map<String, dynamic>.from(entry) : const {};
+  }
+
+  Future<void> deleteKv({required String scope, required String namespace, required String key}) async {
+    await api.deleteJson(
+      '/api/v1/kv/${Uri.encodeComponent(scope)}/${Uri.encodeComponent(namespace)}/${Uri.encodeComponent(key)}',
+      timeout: const Duration(seconds: 8),
+    );
+  }
+
+  Future<List<Map<String, dynamic>>> listLists({String? kind, bool includeEntries = true}) async {
+    final resp = await api.getJson(
+      '/api/v1/lists',
+      query: {if (kind != null && kind.isNotEmpty) 'kind': kind, if (includeEntries) 'include_entries': '1'},
+    );
+    return [
+      for (final i in (resp['lists'] as List? ?? const []))
+        if (i is Map) Map<String, dynamic>.from(i),
+    ];
+  }
+
+  Future<Map<String, dynamic>> createList({
+    required String kind,
+    required String title,
+    String? summary,
+    String? posterSource,
+    String? tmdbId,
+    bool shared = false,
+  }) async {
+    final resp = await api.postJson(
+      '/api/v1/lists',
+      body: {
+        'kind': kind,
+        'title': title,
+        if (summary != null && summary.isNotEmpty) 'summary': summary,
+        if (posterSource != null && posterSource.isNotEmpty) 'poster_source': posterSource,
+        if (tmdbId != null && tmdbId.isNotEmpty) 'tmdb_id': tmdbId,
+        'shared': shared,
+      },
+      timeout: const Duration(seconds: 8),
+    );
+    final lst = resp['list'];
+    return lst is Map ? Map<String, dynamic>.from(lst) : const {};
+  }
+
+  Future<void> deleteList(String listId) async {
+    await api.deleteJson('/api/v1/lists/${Uri.encodeComponent(listId)}', timeout: const Duration(seconds: 8));
+  }
+
+  Future<Map<String, dynamic>> addListEntry({
+    required String listId,
+    required String workKey,
+    int? seasonNumber,
+    int? episodeNumber,
+    int? sortOrder,
+  }) async {
+    final resp = await api.postJson(
+      '/api/v1/lists/${Uri.encodeComponent(listId)}/entries',
+      body: {
+        'work_key': workKey,
+        'season_number': ?seasonNumber,
+        'episode_number': ?episodeNumber,
+        'sort_order': ?sortOrder,
+      },
+      timeout: const Duration(seconds: 8),
+    );
+    final entry = resp['entry'];
+    return entry is Map ? Map<String, dynamic>.from(entry) : const {};
+  }
+
+  Future<void> removeListEntry({required String listId, required String entryKey}) async {
+    await api.deleteJson(
+      '/api/v1/lists/${Uri.encodeComponent(listId)}/entries/${Uri.encodeComponent(entryKey)}',
+      timeout: const Duration(seconds: 8),
+    );
   }
 
   // ─── Unmatched, Metadata Search & Manual Match (S4) ─────────────────────

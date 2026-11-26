@@ -312,6 +312,21 @@ abstract class BaseSharedPreferencesService {
   /// Read a value typed by [pref]; falls back to its `defaultValue`.
   T read<T>(Pref<T> pref) => pref.readFrom(this);
 
+  /// Optional hook invoked after [write] or [reset] when not suppressed by
+  /// [runWithoutMutationHook]. Passes the JSON-encoded value (or null on reset).
+  void Function(Pref<Object?> pref, Object? jsonValue, {required bool isReset})? onPrefMutated;
+  bool _suppressMutationHook = false;
+
+  Future<T> runWithoutMutationHook<T>(Future<T> Function() action) async {
+    final prev = _suppressMutationHook;
+    _suppressMutationHook = true;
+    try {
+      return await action();
+    } finally {
+      _suppressMutationHook = prev;
+    }
+  }
+
   /// Write a value typed by [pref]. Pushes the post-transform value into any
   /// listenable previously vended for this key so widgets rebuild automatically.
   Future<void> write<T>(Pref<T> pref, T value, {void Function()? checkCurrent}) async {
@@ -320,6 +335,9 @@ abstract class BaseSharedPreferencesService {
     checkCurrent?.call();
     final n = _listenables[pref.key];
     if (n != null) (n as ValueNotifier<T>).value = read(pref);
+    if (!_suppressMutationHook) {
+      onPrefMutated?.call(pref, pref.toJsonObject(this), isReset: false);
+    }
   }
 
   /// Remove only this override, then publish its resolved default. Migration
@@ -328,6 +346,9 @@ abstract class BaseSharedPreferencesService {
     await pref.removeFrom(this, checkCurrent: checkCurrent);
     checkCurrent?.call();
     pref.refreshListenable(this);
+    if (!_suppressMutationHook) {
+      onPrefMutated?.call(pref, null, isReset: true);
+    }
   }
 
   /// Lazy per-key [ValueNotifier]. Use with [ValueListenableBuilder] to rebuild
@@ -376,6 +397,14 @@ abstract class Pref<T> {
   T get resolvedDefault => throw UnsupportedError('Preference has no public default');
   T fromJson(Object? value) => value as T;
   Object? toJson(T value) => value is Enum ? value.name : value;
+  Object? toJsonObject(BaseSharedPreferencesService svc) => toJson(readFrom(svc));
+
+  Future<void> applyJsonValue(BaseSharedPreferencesService svc, Object? raw) async {
+    final decoded = fromJson(raw);
+    await writeTo(svc, decoded);
+    refreshListenable(svc);
+  }
+
   List<Object?>? get jsonChoices => null;
   String get jsonType => switch (resolvedDefault) {
     bool() => 'boolean',

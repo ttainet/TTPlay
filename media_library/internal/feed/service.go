@@ -467,6 +467,15 @@ func (s *Service) GetChangesWithOpts(p *account.Principal, sinceSeq int64, limit
 		nextSince = rawEvents[i].Seq
 		if rawEvents[i].Op == "upsert" {
 			s.hydrateChangeEventWithOpts(p, &rawEvents[i], checkSidecars, itemCache, showWKCache)
+		} else if rawEvents[i].Op == "delete" && rawEvents[i].Entity == "kv" {
+			if scope, ns, key, ok := db.DecodeKVChangeID(rawEvents[i].EntityID); ok {
+				rawEvents[i].Data = map[string]any{
+					"scope":     scope,
+					"namespace": ns,
+					"item_key":  key,
+					"deleted":   true,
+				}
+			}
 		}
 	}
 
@@ -1276,6 +1285,22 @@ func (s *Service) hydrateChangeEventWithOpts(
 				ev.Data = lv
 			} else {
 				ev.Op = "delete"
+			}
+		}
+	case "kv":
+		if s.userData != nil {
+			if scope, ns, key, ok := db.DecodeKVChangeID(ev.EntityID); ok {
+				if kv, err := s.userData.LoadKVEntry(p.HouseholdID, p.MemberID, scope, ns, key); err == nil && !kv.Deleted {
+					ev.Data = kv
+				} else {
+					ev.Op = "delete"
+					ev.Data = map[string]any{
+						"scope":     scope,
+						"namespace": ns,
+						"item_key":  key,
+						"deleted":   true,
+					}
+				}
 			}
 		}
 	}

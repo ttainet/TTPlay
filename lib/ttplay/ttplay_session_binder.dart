@@ -19,9 +19,10 @@ import '../library_cloud/scan_session_runner.dart';
 import '../library_cloud/source_repository.dart';
 import '../media/ids.dart';
 import '../media/library_change_event.dart';
-import '../media/work_skip_settings.dart';
 import '../providers/multi_server_provider.dart';
+import '../services/cloud_synced_settings_bridge.dart';
 import '../services/multi_server_manager.dart';
+import '../services/sync_config_store.dart';
 import '../session/app_session_controller.dart';
 import '../session/app_session_models.dart';
 import '../storage/storage_mount.dart';
@@ -40,6 +41,8 @@ class TtplaySessionBinder extends ChangeNotifier {
     required this.sessionController,
     required this.serverManager,
     required this.localLibraryClient,
+    this.syncConfigStore,
+    this.settingsSyncBridge,
     bool Function()? isTv,
     this.httpClientFactory,
     this.onLocalLibraryMutated,
@@ -48,6 +51,8 @@ class TtplaySessionBinder extends ChangeNotifier {
   final AppSessionController sessionController;
   final MultiServerManager serverManager;
   final LocalLibraryClient localLibraryClient;
+  final SyncConfigStore? syncConfigStore;
+  final CloudSyncedSettingsBridge? settingsSyncBridge;
   final bool Function() _isTv;
   final http.Client Function()? httpClientFactory;
   final VoidCallback? onLocalLibraryMutated;
@@ -659,7 +664,9 @@ class TtplaySessionBinder extends ChangeNotifier {
     final engine = _cloudProjectionEngine;
     if (engine != null) {
       await engine.pruneEmptyProjectedItems();
+      await engine.clearProjectedLists();
     }
+    await syncConfigStore?.clearAllLocalKv();
   }
 
   void _bindCloudClients(SelfHostedSession session) {
@@ -696,6 +703,7 @@ class TtplaySessionBinder extends ChangeNotifier {
       db: localLibraryClient.repository.database,
       syncClient: syncClient,
       mountMirror: mirror,
+      syncConfigStore: syncConfigStore,
       onLibraryUpdated: () {
         if (!_disposed) {
           unawaited(_refreshProjectedLibrary());
@@ -745,7 +753,13 @@ class TtplaySessionBinder extends ChangeNotifier {
     _cloudProjectionEngine = engine;
     localLibraryClient.metadataServerUrl = session.serverUrl;
     localLibraryClient.metadataAccessToken = session.accessToken;
-    localLibraryClient.cloudUserDataBridge = _CloudUserDataBridgeImpl(syncClient, engine);
+    final bridge = _CloudUserDataBridgeImpl(syncClient, engine);
+    localLibraryClient.cloudUserDataBridge = bridge;
+    final configStore = syncConfigStore;
+    if (configStore != null) {
+      configStore.cloudBridge = bridge;
+      settingsSyncBridge?.attach(configStore);
+    }
     if (session.householdId != null && session.householdId!.isNotEmpty) {
       engine.startListeningEvents();
       _startCloudIncrementalScheduler();
@@ -760,6 +774,8 @@ class TtplaySessionBinder extends ChangeNotifier {
     _cloudProjectionEngine?.stopListeningEvents();
     _cloudScanRunner?.removeListener(_handleCloudRunnerChanged);
     _cloudScanRunner?.dispose();
+    settingsSyncBridge?.detach();
+    syncConfigStore?.cloudBridge = null;
     localLibraryClient.cloudUserDataBridge = null;
     localLibraryClient.metadataServerUrl = ServerMetadataProvider.defaultOfficialMetadataUrl;
     localLibraryClient.metadataAccessToken = null;
@@ -825,6 +841,8 @@ class TtplaySessionBinder extends ChangeNotifier {
     _cloudProjectionEngine?.stopListeningEvents();
     _cloudScanRunner?.removeListener(_handleCloudRunnerChanged);
     _cloudScanRunner?.dispose();
+    settingsSyncBridge?.detach();
+    syncConfigStore?.cloudBridge = null;
     localLibraryClient.cloudUserDataBridge = null;
     _cloudApiClient?.close();
     _cloudApiClient = null;
@@ -887,6 +905,69 @@ class _CloudUserDataBridgeImpl implements LocalCloudUserDataBridge {
   }
 
   @override
-  Future<void> pushWorkSkipSettings({required String workKey, required WorkSkipSettings settings}) =>
-      _sync.upsertHouseholdWorkPrefs(workKey: workKey, settings: settings);
+  Future<void> putCloudKv({
+    required String scope,
+    required String namespace,
+    required String key,
+    required Map<String, dynamic> value,
+    String? workKey,
+  }) => _sync.putKv(scope: scope, namespace: namespace, key: key, value: value, workKey: workKey);
+
+  @override
+  Future<void> deleteCloudKv({required String scope, required String namespace, required String key}) =>
+      _sync.deleteKv(scope: scope, namespace: namespace, key: key);
+
+  @override
+  Future<String?> createCloudList({
+    required String kind,
+    required String title,
+    String? summary,
+    String? tmdbId,
+    bool shared = false,
+  }) async {
+    try {
+      final created = await _sync.createList(
+        kind: kind,
+        title: title,
+        summary: summary,
+        tmdbId: tmdbId,
+        shared: shared,
+      );
+      return created['id'] as String?;
+    } on CloudApiException catch (e) {
+      if (shared && e.isForbidden) {
+        final created = await _sync.createList(
+          kind: kind,
+          title: title,
+          summary: summary,
+          tmdbId: tmdbId,
+          shared: false,
+        );
+        return created['id'] as String?;
+      }
+      rethrow;
+    }
+  }
+
+  @override
+  Future<void> deleteCloudList(String cloudListId) => _sync.deleteList(cloudListId);
+
+  @override
+  Future<void> addCloudListEntry({
+    required String cloudListId,
+    required String workKey,
+    int? seasonNumber,
+    int? episodeNumber,
+    int? sortOrder,
+  }) => _sync.addListEntry(
+    listId: cloudListId,
+    workKey: workKey,
+    seasonNumber: seasonNumber,
+    episodeNumber: episodeNumber,
+    sortOrder: sortOrder,
+  );
+
+  @override
+  Future<void> removeCloudListEntry({required String cloudListId, required String entryKey}) =>
+      _sync.removeListEntry(listId: cloudListId, entryKey: entryKey);
 }

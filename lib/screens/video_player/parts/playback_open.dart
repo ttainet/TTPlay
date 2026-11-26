@@ -767,6 +767,9 @@ extension _VideoPlayerOpenMethods on VideoPlayerScreenState {
       preferredSecondarySubtitleTrack: preferredSecondarySubtitleTrack,
       primarySubtitleIsServerRendered: primarySubtitleIsServerRendered,
       persistAutomaticSubtitleSelection: persistAutomaticSubtitleSelection,
+      resolveWorkPlaybackSpeed: metadata.serverId == WorkIdentity.localSource
+          ? () => _tryWorkPlaybackPrefsStore()?.readSpeedForItem(metadata) ?? Future<double?>.value(null)
+          : null,
       showMessage: (message, {duration}) {
         if (mounted) showAppSnackBar(context, message, duration: duration);
       },

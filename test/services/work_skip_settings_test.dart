@@ -11,6 +11,7 @@ import 'package:ttplay/media/media_kind.dart';
 import 'package:ttplay/media/media_server_client.dart';
 import 'package:ttplay/media/work_identity.dart';
 import 'package:ttplay/media/work_skip_settings.dart';
+import 'package:ttplay/services/sync_config_store.dart';
 import 'package:ttplay/services/work_skip_settings_store.dart';
 import 'package:ttplay/utils/external_ids.dart';
 import '../test_helpers/media_items.dart';
@@ -33,7 +34,7 @@ class FakeSkipClient implements MediaServerClient {
 }
 
 class _RecordingCloudBridge extends LocalCloudUserDataBridge {
-  final pushed = <({String workKey, WorkSkipSettings settings})>[];
+  final pushed = <({String scope, String namespace, String key, Map<String, dynamic> value, String? workKey})>[];
   bool shouldThrow = false;
 
   @override
@@ -53,9 +54,15 @@ class _RecordingCloudBridge extends LocalCloudUserDataBridge {
   Future<void> pushHideContinue({required String workKey, int seasonNumber = 0, int episodeNumber = 0}) async {}
 
   @override
-  Future<void> pushWorkSkipSettings({required String workKey, required WorkSkipSettings settings}) async {
+  Future<void> putCloudKv({
+    required String scope,
+    required String namespace,
+    required String key,
+    required Map<String, dynamic> value,
+    String? workKey,
+  }) async {
     if (shouldThrow) throw const SocketException('network error');
-    pushed.add((workKey: workKey, settings: settings));
+    pushed.add((scope: scope, namespace: namespace, key: key, value: value, workKey: workKey));
   }
 }
 
@@ -267,50 +274,37 @@ void main() {
       expect(WorkIdentity.fromCloudWorkKey(''), isNull);
     });
 
-    test('WorkSkipSettings cloud JSON mapping handles credits_from_end_ms and keep_easter_egg_ms', () {
-      const s = WorkSkipSettings(
-        introEnabled: true,
-        introStartMs: 5000,
-        introEndMs: 90000,
-        creditsEnabled: true,
-        creditsDurationMs: 120000,
-        creditsResumeBeforeEndMs: 30000,
-      );
-      final cloudJson = s.toCloudHouseholdJson();
-      expect(cloudJson['intro_enabled'], isTrue);
-      expect(cloudJson['intro_start_ms'], 5000);
-      expect(cloudJson['intro_end_ms'], 90000);
-      expect(cloudJson['credits_enabled'], isTrue);
-      expect(cloudJson['credits_from_end_ms'], 120000);
-      expect(cloudJson['keep_easter_egg_ms'], 30000);
+    test(
+      'WorkSkipSettingsStore pushes only local-library changes via SyncConfigStore and keeps local write if cloud fails',
+      () async {
+        final bridge = _RecordingCloudBridge();
+        final syncStore = SyncConfigStore(db, cloudBridge: bridge);
+        addTearDown(syncStore.dispose);
+        final bridgedStore = WorkSkipSettingsStore(db, syncConfigStore: syncStore);
 
-      final parsed = WorkSkipSettings.fromCloudJson(cloudJson);
-      expect(parsed.toJson(), s.toJson());
-    });
+        final localWork = WorkIdentity.resolve(source: WorkIdentity.localSource, kind: 'show', tmdbId: '555')!;
+        await bridgedStore.save(localWork, rules);
+        expect(bridge.pushed.length, 1);
+        expect(bridge.pushed.single.scope, 'household');
+        expect(bridge.pushed.single.namespace, 'work.skip');
+        expect(bridge.pushed.single.key, 'tmdb:show:555');
+        expect(bridge.pushed.single.workKey, 'tmdb:show:555');
 
-    test('WorkSkipSettingsStore pushes only local-library changes and keeps local write if cloud fails', () async {
-      final bridge = _RecordingCloudBridge();
-      final bridgedStore = WorkSkipSettingsStore(db, cloudBridge: bridge);
+        // syncToCloud: false never pushes
+        await bridgedStore.save(localWork, rules, syncToCloud: false);
+        expect(bridge.pushed.length, 1);
 
-      final localWork = WorkIdentity.resolve(source: WorkIdentity.localSource, kind: 'show', tmdbId: '555')!;
-      await bridgedStore.save(localWork, rules);
-      expect(bridge.pushed.length, 1);
-      expect(bridge.pushed.single.workKey, 'tmdb:show:555');
+        // External Emby/Jellyfin work never pushes
+        final embyWork = WorkIdentity.resolve(source: 'emby/srv1', kind: 'movie', tmdbId: '777')!;
+        await bridgedStore.save(embyWork, rules);
+        expect(bridge.pushed.length, 1);
 
-      // syncToCloud: false never pushes
-      await bridgedStore.save(localWork, rules, syncToCloud: false);
-      expect(bridge.pushed.length, 1);
-
-      // External Emby/Jellyfin work never pushes
-      final embyWork = WorkIdentity.resolve(source: 'emby/srv1', kind: 'movie', tmdbId: '777')!;
-      await bridgedStore.save(embyWork, rules);
-      expect(bridge.pushed.length, 1);
-
-      // Cloud failure does not fail local persistence
-      bridge.shouldThrow = true;
-      const updated = WorkSkipSettings(introEnabled: true, introStartMs: 1000, introEndMs: 45000);
-      await bridgedStore.save(localWork, updated);
-      expect((await bridgedStore.read(localWork)).introEndMs, 45000);
-    });
+        // Cloud failure does not fail local persistence
+        bridge.shouldThrow = true;
+        const updated = WorkSkipSettings(introEnabled: true, introStartMs: 1000, introEndMs: 45000);
+        await bridgedStore.save(localWork, updated);
+        expect((await bridgedStore.read(localWork)).introEndMs, 45000);
+      },
+    );
   });
 }

@@ -1,6 +1,30 @@
 part of '../video_controls.dart';
 
 extension _PlexVideoControlsKeyEventMethods on _PlexVideoControlsState {
+  Future<void> _persistKeyboardSpeedPreference(double rate) async {
+    var savedPerWork = false;
+    if (widget.metadata.serverId == WorkIdentity.localSource) {
+      try {
+        final db = Provider.of<AppDatabase?>(context, listen: false);
+        if (db != null) {
+          SyncConfigStore? syncStore;
+          try {
+            syncStore = Provider.of<SyncConfigStore?>(context, listen: false);
+          } catch (_) {
+            syncStore = null;
+          }
+          savedPerWork = await WorkPlaybackPrefsStore(
+            db,
+            syncConfigStore: syncStore,
+          ).saveSpeedForItem(widget.metadata, rate);
+        }
+      } catch (_) {}
+    }
+    if (!savedPerWork) {
+      await ScopedPlayerPrefs.write(ScopedPlayerPrefs.playbackSpeed, widget.metadata, rate);
+    }
+  }
+
   Future<void> _initKeyboardService() async {
     _keyboardService = await KeyboardShortcutsService.getInstance();
   }
@@ -162,8 +186,7 @@ extension _PlexVideoControlsKeyEventMethods on _PlexVideoControlsState {
       onVolumeUp: () => widget.volumeController.adjust(10),
       onVolumeDown: () => widget.volumeController.adjust(-10),
       onToggleMute: widget.volumeController.toggleMute,
-      onSpeedPersist: (rate) =>
-          unawaited(ScopedPlayerPrefs.write(ScopedPlayerPrefs.playbackSpeed, widget.metadata, rate)),
+      onSpeedPersist: (rate) => unawaited(_persistKeyboardSpeedPreference(rate)),
       onSeekRequested: widget.onSeekRequested,
       onRateRequested: widget.onRateRequested,
       onSeekBy: _keyboardSeekBy,

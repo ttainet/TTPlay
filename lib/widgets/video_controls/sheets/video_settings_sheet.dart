@@ -12,11 +12,13 @@ import 'package:path/path.dart' as path;
 import 'package:provider/provider.dart';
 
 import '../../../models/shader_preset.dart';
+import '../../../database/app_database.dart';
 import '../../../media/ids.dart';
 import '../../../media/media_file_info.dart';
 import '../../../media/media_item.dart';
 import '../../../media/media_server_client.dart';
 import '../../../media/playback_rate.dart';
+import '../../../media/work_identity.dart';
 import '../../../mpv/mpv.dart';
 import '../../../mpv/player/player_native.dart';
 import '../../../providers/shader_provider.dart';
@@ -24,7 +26,9 @@ import '../../../services/file_picker_service.dart';
 import '../../../services/scoped_player_prefs.dart';
 import '../../../services/settings_service.dart';
 import '../../../services/sleep_timer_service.dart';
+import '../../../services/sync_config_store.dart';
 import '../../../services/video_filter_manager.dart';
+import '../../../services/work_playback_prefs_store.dart';
 import '../../../focus/focusable_wrapper.dart';
 import '../../../utils/dialogs.dart';
 import '../../../utils/app_logger.dart';
@@ -47,6 +51,22 @@ import '../widgets/sleep_timer_content.dart';
 import '../../../i18n/strings.g.dart';
 import 'base_video_control_sheet.dart';
 import 'version_quality_sheet.dart';
+
+WorkPlaybackPrefsStore? _tryWorkPlaybackPrefsStore(BuildContext context) {
+  try {
+    final db = Provider.of<AppDatabase?>(context, listen: false);
+    if (db == null) return null;
+    SyncConfigStore? syncStore;
+    try {
+      syncStore = Provider.of<SyncConfigStore?>(context, listen: false);
+    } catch (_) {
+      syncStore = null;
+    }
+    return WorkPlaybackPrefsStore(db, syncConfigStore: syncStore);
+  } catch (_) {
+    return null;
+  }
+}
 
 enum _SettingsView {
   menu,
@@ -627,8 +647,14 @@ class _VideoSettingsSheetState extends State<VideoSettingsSheet> {
             initialOffset: initialOffset,
             sliderFocusNode: sliderFocusNode,
             onOffsetChanged: (offset) async {
+              final metadata = _state.metadata;
+              if (isSubtitle && metadata != null && metadata.serverId == WorkIdentity.localSource) {
+                final savedPerWork =
+                    await _tryWorkPlaybackPrefsStore(context)?.saveSubtitleOffsetForItem(metadata, offset) ?? false;
+                if (savedPerWork) return;
+              }
               final pref = isSubtitle ? ScopedPlayerPrefs.subtitleSyncOffset : ScopedPlayerPrefs.audioSyncOffset;
-              await ScopedPlayerPrefs.write(pref, _state.metadata, offset);
+              await ScopedPlayerPrefs.write(pref, metadata, offset);
             },
           ),
         )
@@ -1167,9 +1193,18 @@ class _VideoSettingsSheetState extends State<VideoSettingsSheet> {
               title: Text(label, style: TextStyle(color: isSelected ? primary : null)),
               trailing: isSelected ? AppIcon(Symbols.check_rounded, fill: 1, color: primary) : null,
               onTap: () async {
+                final metadata = _state.metadata;
+                final playbackPrefsStore = metadata != null && metadata.serverId == WorkIdentity.localSource
+                    ? _tryWorkPlaybackPrefsStore(context)
+                    : null;
                 await (_state.onRateRequested ?? widget.player.setRate)(speed);
-                // Save at the configured persistence scope (global by default).
-                await ScopedPlayerPrefs.write(ScopedPlayerPrefs.playbackSpeed, _state.metadata, speed);
+                final savedPerWork = metadata != null
+                    ? (await playbackPrefsStore?.saveSpeedForItem(metadata, speed) ?? false)
+                    : false;
+                if (!savedPerWork) {
+                  // Save at the configured persistence scope (global by default).
+                  await ScopedPlayerPrefs.write(ScopedPlayerPrefs.playbackSpeed, metadata, speed);
+                }
                 if (context.mounted) {
                   OverlaySheetController.of(context).close(); // Close sheet after selection
                 }
