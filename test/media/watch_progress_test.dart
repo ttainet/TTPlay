@@ -23,5 +23,12 @@ void main() {
     test('zero position is not watched', () {
       expect(isWatchedProgress(positionMs: 0, durationMs: 100, threshold: 0.9), isFalse);
     });
+
+    test('disabled or non-finite threshold never marks watched', () {
+      expect(isWatchedProgress(positionMs: 100, durationMs: 100, threshold: 0.0), isFalse);
+      expect(isWatchedProgress(positionMs: 100, durationMs: 100, threshold: -0.5), isFalse);
+      expect(isWatchedProgress(positionMs: 100, durationMs: 100, threshold: double.nan), isFalse);
+      expect(isWatchedProgress(positionMs: 100, durationMs: 100, threshold: double.infinity), isFalse);
+    });
   });
 }

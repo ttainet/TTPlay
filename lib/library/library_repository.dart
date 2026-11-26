@@ -93,12 +93,30 @@ class LibraryQuery {
 /// A title with the user's state for it. For shows and seasons the episode
 /// counts say how much has been watched; for movies and episodes they are 0.
 class LibraryItemView {
-  const LibraryItemView({required this.item, this.state, this.episodeCount = 0, this.watchedEpisodeCount = 0});
+  const LibraryItemView({
+    required this.item,
+    this.state,
+    this.episodeCount = 0,
+    this.watchedEpisodeCount = 0,
+    this.continueRecencyMs,
+  });
 
   final LibraryItemRow item;
   final LibraryUserStateRow? state;
   final int episodeCount;
   final int watchedEpisodeCount;
+
+  /// Effective recency timestamp (ms) used to rank Continue Watching rows,
+  /// including Next Up episodes that have no playback state of their own.
+  final int? continueRecencyMs;
+
+  LibraryItemView withContinueRecency(int recencyMs) => LibraryItemView(
+    item: item,
+    state: state,
+    episodeCount: episodeCount,
+    watchedEpisodeCount: watchedEpisodeCount,
+    continueRecencyMs: recencyMs,
+  );
 
   bool get isContainer => item.kind == LibraryKinds.show || item.kind == LibraryKinds.season;
 
@@ -137,8 +155,9 @@ class LibraryRepository {
 
   late final LibraryWatchStateStore _watchStates = LibraryWatchStateStore(_db);
 
-  /// A playback this far in counts as finished.
-  static const double watchedThreshold = 0.9;
+  /// Automatic watched detection is disabled for the local library (`<= 0`);
+  /// watched state is set only by explicit manual actions ([markWatched]).
+  static const double watchedThreshold = 0.0;
 
   static int _now() => clock.now().millisecondsSinceEpoch;
 
@@ -1004,23 +1023,150 @@ class LibraryRepository {
     );
   }
 
-  /// Movies and episodes that were started and not finished, most recent first.
-  Future<List<LibraryItemView>> continueWatching({int limit = 20}) async {
+  static int _activityMs(LibraryUserStateRow state) => state.lastPlayedAt ?? state.updatedAt;
+
+  static bool _isMoreRecentActivity(LibraryUserStateRow candidate, LibraryUserStateRow current) {
+    final candActivity = _activityMs(candidate);
+    final currActivity = _activityMs(current);
+    if (candActivity != currActivity) return candActivity > currActivity;
+    return candidate.updatedAt >= current.updatedAt;
+  }
+
+  /// Movies and episodes to surface in Continue Watching (resumable items plus
+  /// Next Up episodes after a finished episode), deduplicated to at most one
+  /// entry per show and ordered most recent first.
+  Future<List<LibraryItemView>> continueWatching({
+    int limit = 20,
+    Set<String> excludedLibraryTypes = const {},
+  }) async {
+    if (limit <= 0) return const [];
     final items = _db.libraryItems;
     final states = _db.libraryUserStates;
-    final rows =
+    final effectiveRecency = coalesce([states.lastPlayedAt, states.updatedAt]);
+
+    var movieFilter =
+        items.kind.equals(LibraryKinds.movie) &
+        states.positionMs.isBiggerThanValue(0) &
+        states.watched.equals(false) &
+        states.hiddenFromContinue.equals(false) &
+        _visibilityFilter();
+    if (excludedLibraryTypes.isNotEmpty) {
+      movieFilter = movieFilter & items.libraryType.isNotIn(excludedLibraryTypes);
+    }
+
+    final movieRows =
         await (_viewSelect()
-              ..where(
-                items.kind.isIn([LibraryKinds.movie, LibraryKinds.episode]) &
-                    states.positionMs.isBiggerThanValue(0) &
-                    states.watched.equals(false) &
-                    states.hiddenFromContinue.equals(false) &
-                    _visibilityFilter(),
-              )
-              ..orderBy([OrderingTerm.desc(states.lastPlayedAt)])
+              ..where(movieFilter)
+              ..orderBy([OrderingTerm.desc(effectiveRecency), OrderingTerm.desc(items.id)])
               ..limit(limit))
             .get();
-    return rows.map(_toView).toList();
+
+    final candidates = <LibraryItemView>[
+      for (final row in movieRows)
+        () {
+          final view = _toView(row);
+          return view.withContinueRecency(_activityMs(view.state!));
+        }(),
+    ];
+
+    final excludedList = excludedLibraryTypes.toList(growable: false);
+    final excludeClause = excludedList.isEmpty
+        ? ''
+        : ' AND e.library_type NOT IN (${List.filled(excludedList.length, '?').join(', ')})';
+    final showRows = await _db
+        .customSelect(
+          'SELECT e.show_id AS show_id, '
+          'MAX(COALESCE(us.last_played_at, us.updated_at)) AS max_recency_ms '
+          'FROM library_items e '
+          'JOIN library_user_states us ON us.item_id = e.id '
+          "WHERE e.kind = 'episode' "
+          'AND e.show_id IS NOT NULL '
+          'AND (us.position_ms > 0 OR us.watched = 1)'
+          '$excludeClause '
+          'GROUP BY e.show_id '
+          'ORDER BY max_recency_ms DESC, e.show_id DESC',
+          variables: [for (final t in excludedList) Variable.withString(t)],
+        )
+        .get();
+
+    for (final row in showRows) {
+      final showId = row.read<int>('show_id');
+      final maxRecencyMs = row.read<int>('max_recency_ms');
+      if (candidates.length >= limit) {
+        candidates.sort((a, b) => (b.continueRecencyMs ?? 0).compareTo(a.continueRecencyMs ?? 0));
+        final cutoff = candidates[limit - 1].continueRecencyMs ?? 0;
+        if (maxRecencyMs < cutoff) break;
+      }
+      final entry = await _continueWatchingEpisodeForShow(showId, excludedLibraryTypes);
+      if (entry != null) {
+        candidates.add(entry);
+      }
+    }
+
+    candidates.sort((a, b) {
+      final byRecency = (b.continueRecencyMs ?? 0).compareTo(a.continueRecencyMs ?? 0);
+      if (byRecency != 0) return byRecency;
+      return b.item.id.compareTo(a.item.id);
+    });
+    return candidates.length > limit ? candidates.sublist(0, limit) : candidates;
+  }
+
+  Future<LibraryItemView?> _continueWatchingEpisodeForShow(
+    int showId,
+    Set<String> excludedLibraryTypes,
+  ) async {
+    final episodes = await episodesOfShow(showId);
+    if (episodes.isEmpty) return null;
+    if (excludedLibraryTypes.isNotEmpty && excludedLibraryTypes.contains(episodes.first.item.libraryType)) {
+      return null;
+    }
+
+    LibraryItemView? latestInProgress;
+    LibraryItemView? latestWatched;
+    var latestWatchedIndex = -1;
+
+    for (var i = 0; i < episodes.length; i++) {
+      final ep = episodes[i];
+      final st = ep.state;
+      if (st == null) continue;
+      if (!ep.isWatched && st.positionMs > 0) {
+        if (latestInProgress == null || _isMoreRecentActivity(st, latestInProgress.state!)) {
+          latestInProgress = ep;
+        }
+      }
+      if (ep.isWatched) {
+        if (latestWatched == null || _isMoreRecentActivity(st, latestWatched.state!)) {
+          latestWatched = ep;
+          latestWatchedIndex = i;
+        }
+      }
+    }
+
+    if (latestInProgress != null &&
+        (latestWatched == null || _activityMs(latestInProgress.state!) >= _activityMs(latestWatched.state!))) {
+      if (latestInProgress.state!.hiddenFromContinue) return null;
+      return latestInProgress.withContinueRecency(_activityMs(latestInProgress.state!));
+    }
+
+    if (latestWatched != null) {
+      final anchorTime = _activityMs(latestWatched.state!);
+      final anchorIsRegular = (latestWatched.item.seasonNumber ?? 0) > 0;
+      for (var j = latestWatchedIndex + 1; j < episodes.length; j++) {
+        final candidate = episodes[j];
+        if (anchorIsRegular && (candidate.item.seasonNumber ?? 0) <= 0) {
+          continue;
+        }
+        if (!candidate.isWatched) {
+          final candState = candidate.state;
+          if (candState != null && candState.hiddenFromContinue && candState.updatedAt >= anchorTime) {
+            return null;
+          }
+          return candidate.withContinueRecency(anchorTime);
+        }
+      }
+    }
+
+    return null;
   }
 
   /// Release years present on a shelf, newest first.
@@ -1052,18 +1198,9 @@ class LibraryRepository {
     });
   }
 
-  /// Records where playback of a movie or episode is. Reaching
-  /// [watchedThreshold] of the duration marks it watched and clears the
-  /// resume point.
+  /// Records where playback of a movie or episode is without automatically
+  /// flipping watched state (watched is marked manually via [markWatched]).
   Future<void> setProgress(int itemId, {required int positionMs, int? durationMs}) async {
-    final finished = durationMs != null && durationMs > 0 && positionMs >= durationMs * watchedThreshold;
-    if (finished) {
-      await _db.transaction(() async {
-        await _writeState(itemId, LibraryUserStatesCompanion(durationMs: Value(durationMs)));
-        await markWatched(itemId, watched: true);
-      });
-      return;
-    }
     await _writeState(
       itemId,
       LibraryUserStatesCompanion(
@@ -1110,6 +1247,7 @@ class LibraryRepository {
             positionMs: const Value(0),
             playCount: Value(watched ? (existing?.playCount ?? 0) + (becameWatched ? 1 : 0) : 0),
             lastPlayedAt: watched ? Value(now) : Value(existing?.lastPlayedAt),
+            hiddenFromContinue: watched ? const Value(false) : const Value.absent(),
           ),
         );
       }

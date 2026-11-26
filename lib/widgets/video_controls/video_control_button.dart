@@ -13,7 +13,10 @@ import 'widgets/player_focus_disc.dart';
 /// by [FocusTheme.playerControlFocusScale]. With a [label] it becomes a pill
 /// showing the icon and the label, and the focus fill follows the pill.
 class VideoControlButton extends StatelessWidget {
-  final IconData icon;
+  final IconData? icon;
+
+  /// Optional custom icon builder receiving the resolved foreground [iconColor].
+  final Widget Function(BuildContext context, Color iconColor)? iconBuilder;
 
   final VoidCallback? onPressed;
 
@@ -21,6 +24,24 @@ class VideoControlButton extends StatelessWidget {
   final Color? color;
 
   final double iconSize;
+
+  /// Material Symbol `fill` variation (`0` for outline, `1` for filled).
+  final double iconFill;
+
+  /// Optional Material Symbol `weight` variation.
+  final double? iconWeight;
+
+  /// Whether a labelled button should render as a compact translucent pill.
+  final bool pillSurface;
+
+  /// Optional layout constraints overriding the default 40x40 icon target.
+  final BoxConstraints? constraints;
+
+  /// Optional inner padding for icon buttons.
+  final EdgeInsetsGeometry? padding;
+
+  /// Optional focus disc border radius overriding the default circle/pill shape.
+  final BorderRadius? focusBorderRadius;
 
   /// Optional tooltip text shown on hover or long press.
   final String? tooltip;
@@ -58,10 +79,17 @@ class VideoControlButton extends StatelessWidget {
 
   const VideoControlButton({
     super.key,
-    required this.icon,
+    this.icon,
+    this.iconBuilder,
     required this.onPressed,
     this.color,
     this.iconSize = 24,
+    this.iconFill = 1,
+    this.iconWeight,
+    this.pillSurface = false,
+    this.constraints,
+    this.padding,
+    this.focusBorderRadius,
     this.tooltip,
     this.label,
     this.semanticLabel,
@@ -72,7 +100,17 @@ class VideoControlButton extends StatelessWidget {
     this.onKeyEvent,
     this.onFocusChange,
     this.autofocus = false,
-  });
+  }) : assert(icon != null || iconBuilder != null || label != null, 'Provide icon, iconBuilder, or label');
+
+  Widget? _buildGlyph(BuildContext context, Color iconColor) {
+    if (iconBuilder != null) {
+      return iconBuilder!(context, iconColor);
+    }
+    if (icon != null) {
+      return AppIcon(icon, fill: iconFill, weight: iconWeight, color: iconColor, size: iconSize);
+    }
+    return null;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -80,43 +118,92 @@ class VideoControlButton extends StatelessWidget {
     final label = this.label;
     final effectiveSemanticLabel = semanticLabel ?? label ?? tooltip;
 
-    Widget button(Color iconColor) => label == null
-        ? IconButton(
-            icon: AppIcon(icon, fill: 1, color: iconColor, size: iconSize),
-            iconSize: iconSize,
-            onPressed: onPressed,
-            tooltip: tooltip,
-            constraints: const BoxConstraints(minWidth: 40, minHeight: 40),
-          )
-        : Material(
-            type: MaterialType.transparency,
-            child: InkWell(
-              onTap: onPressed,
-              customBorder: const StadiumBorder(),
-              child: SizedBox(
-                height: 40,
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 12),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      AppIcon(icon, fill: 1, color: iconColor, size: iconSize),
-                      const SizedBox(width: 6),
-                      Flexible(
-                        child: Text(
-                          label,
-                          maxLines: 1,
-                          softWrap: false,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(color: iconColor, fontSize: 14, fontWeight: FontWeight.w600),
-                        ),
-                      ),
-                    ],
+    Widget button(Color iconColor) {
+      final glyph = _buildGlyph(context, iconColor);
+      if (label == null) {
+        return IconButton(
+          icon: glyph!,
+          iconSize: iconSize,
+          onPressed: onPressed,
+          tooltip: tooltip,
+          padding: padding,
+          constraints: constraints ?? const BoxConstraints(minWidth: 40, minHeight: 40),
+          style: constraints != null
+              ? IconButton.styleFrom(
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  padding: padding ?? EdgeInsets.zero,
+                  minimumSize: Size(constraints!.minWidth, constraints!.minHeight),
+                  shape: const StadiumBorder(),
+                )
+              : null,
+        );
+      }
+
+      if (pillSurface) {
+        final pill = Material(
+          type: MaterialType.transparency,
+          child: InkWell(
+            onTap: onPressed,
+            customBorder: RoundedRectangleBorder(borderRadius: BorderRadius.circular(7)),
+            child: Container(
+              height: 26,
+              padding: const EdgeInsets.symmetric(horizontal: 9),
+              decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: 0.14),
+                borderRadius: BorderRadius.circular(7),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  if (glyph != null) ...[glyph, const SizedBox(width: 5)],
+                  Flexible(
+                    child: Text(
+                      label,
+                      maxLines: 1,
+                      softWrap: false,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(color: iconColor, fontSize: 13, fontWeight: FontWeight.w700, height: 1.05),
+                    ),
                   ),
-                ),
+                ],
               ),
             ),
-          );
+          ),
+        );
+        return tooltip != null ? Tooltip(message: tooltip!, excludeFromSemantics: true, child: pill) : pill;
+      }
+
+      final labelled = Material(
+        type: MaterialType.transparency,
+        child: InkWell(
+          onTap: onPressed,
+          customBorder: const StadiumBorder(),
+          child: SizedBox(
+            height: 40,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (glyph != null) ...[glyph, const SizedBox(width: 6)],
+                  Flexible(
+                    child: Text(
+                      label,
+                      maxLines: 1,
+                      softWrap: false,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(color: iconColor, fontSize: 14, fontWeight: FontWeight.w600),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+      return tooltip != null ? Tooltip(message: tooltip!, excludeFromSemantics: true, child: labelled) : labelled;
+    }
 
     if (focusNode != null) {
       return FocusableWrapper(
@@ -134,7 +221,7 @@ class VideoControlButton extends StatelessWidget {
         child: PlayerFocusDisc(
           iconColor: idleColor,
           isActive: isActive,
-          borderRadius: label == null ? null : const BorderRadius.all(Radius.circular(20)),
+          borderRadius: focusBorderRadius ?? (label == null ? null : const BorderRadius.all(Radius.circular(20))),
           builder: (context, iconColor) => button(iconColor),
         ),
       );

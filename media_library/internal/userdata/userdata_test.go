@@ -2,6 +2,7 @@ package userdata
 
 import (
 	"testing"
+	"time"
 
 	"ttplay/media_library/internal/account"
 	"ttplay/media_library/internal/db"
@@ -137,5 +138,81 @@ func TestUserDataProgressFavoritesPrefsListsAndMigration(t *testing.T) {
 	det, _ := svc.GetList(p, lst.ID)
 	if len(det.Entries) != 1 || det.Entries[0].WorkKey != "tmdb:show:100" {
 		t.Fatalf("expected list entry migrated to tmdb:show:100, got %+v", det.Entries)
+	}
+
+	// 4. >=90% progress does not auto-mark watched; explicit watched=true marks watched, Next-Up hide upserts and emits SSE, and CW dedups per work_key
+	dur := int64(1000000)
+	s1e1 := 1
+	unwatchedHighEp, err := svc.UpsertProgress(p, UpsertProgressRequest{
+		WorkKey:       "tmdb:show:203483",
+		SeasonNumber:  &s1,
+		EpisodeNumber: &s1e1,
+		PositionMs:    950000,
+		DurationMs:    &dur,
+	})
+	if err != nil || unwatchedHighEp.Watched || unwatchedHighEp.PositionMs != 950000 || unwatchedHighEp.PlayCount != 0 {
+		t.Fatalf("expected >=90%% progress without watched flag to stay unwatched, got %+v err=%v", unwatchedHighEp, err)
+	}
+	watchedTrue := true
+	finishedEp, err := svc.UpsertProgress(p, UpsertProgressRequest{
+		WorkKey:       "tmdb:show:203483",
+		SeasonNumber:  &s1,
+		EpisodeNumber: &s1e1,
+		PositionMs:    0,
+		DurationMs:    &dur,
+		Watched:       &watchedTrue,
+	})
+	if err != nil || !finishedEp.Watched || finishedEp.PositionMs != 0 || finishedEp.PlayCount != 1 {
+		t.Fatalf("expected explicit watched=true to mark watched, got %+v err=%v", finishedEp, err)
+	}
+
+	// Multiple in-progress episodes of the same work_key collapse to 1 CW entry before LIMIT
+	e3, e4 := 3, 4
+	baseTime := time.UnixMilli(now + 1000)
+	svc.SetClock(func() time.Time { return baseTime })
+	_, _ = svc.UpsertProgress(p, UpsertProgressRequest{
+		WorkKey: "tmdb:show:500", SeasonNumber: &s1, EpisodeNumber: &e3, PositionMs: 10000, DurationMs: &dur,
+	})
+	svc.SetClock(func() time.Time { return baseTime.Add(time.Second) })
+	_, _ = svc.UpsertProgress(p, UpsertProgressRequest{
+		WorkKey: "tmdb:show:500", SeasonNumber: &s1, EpisodeNumber: &e4, PositionMs: 20000, DurationMs: &dur,
+	})
+	cwDedup, err := svc.ListContinueWatching(p, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	show500Count := 0
+	for _, item := range cwDedup {
+		if item.WorkKey == "tmdb:show:500" {
+			show500Count++
+			if item.EpisodeNumber != 4 {
+				t.Fatalf("expected latest episode 4 for tmdb:show:500, got %+v", item)
+			}
+		}
+		if item.WorkKey == "tmdb:show:203483" {
+			t.Fatalf("finished episode must not appear in ListContinueWatching: %+v", item)
+		}
+	}
+	if show500Count != 1 {
+		t.Fatalf("expected 1 deduped CW entry for tmdb:show:500, got %d", show500Count)
+	}
+
+	// HideFromContinue on a Next Up episode with no prior row succeeds and emits userdata.changed
+	m1Ch, m1Unsub := hub.Subscribe("hh1", "m1")
+	defer m1Unsub()
+	if err := svc.HideFromContinue(p, "tmdb:show:203483:s1:e2"); err != nil {
+		t.Fatalf("HideFromContinue for Next Up episode failed: %v", err)
+	}
+	select {
+	case ev := <-m1Ch:
+		if ev.Type != "userdata.changed" {
+			t.Fatalf("unexpected event type after HideFromContinue: %+v", ev)
+		}
+	default:
+		t.Fatalf("expected userdata.changed SSE event for HideFromContinue")
+	}
+	nextUpHidden, err := svc.GetProgressByKey(p.HouseholdID, p.MemberID, "tmdb:show:203483:s1:e2")
+	if err != nil || !nextUpHidden.HiddenFromContinue || nextUpHidden.WorkKey != "tmdb:show:203483" || nextUpHidden.SeasonNumber != 1 || nextUpHidden.EpisodeNumber != 2 {
+		t.Fatalf("unexpected upserted Next Up hide row: %+v err=%v", nextUpHidden, err)
 	}
 }

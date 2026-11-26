@@ -104,7 +104,11 @@ class _QueueSheetState extends State<QueueSheet> {
             );
           }
 
-          return BaseVideoControlSheet(title: t.videoControls.queue, icon: Symbols.queue_rounded, child: content);
+          return BaseVideoControlSheet(
+            title: t.videoControls.queue,
+            icon: Symbols.playlist_play_rounded,
+            child: content,
+          );
         },
       ),
     );

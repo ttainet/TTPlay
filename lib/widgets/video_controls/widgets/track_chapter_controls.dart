@@ -14,6 +14,7 @@ import '../../../utils/platform_detector.dart';
 import '../../../utils/quality_preset_labels.dart';
 import '../../../i18n/strings.g.dart';
 import '../../../widgets/overlay_sheet.dart';
+import '../../danmaku/danmaku_badge_icon.dart';
 import '../models/track_controls_state.dart';
 import '../sheets/base_video_control_sheet.dart';
 import '../sheets/chapter_sheet.dart';
@@ -109,12 +110,19 @@ class TrackChapterControls extends StatelessWidget {
   /// Build a track control button with consistent focus handling
   Widget _buildTrackButton({
     required int buttonIndex,
-    required IconData icon,
     required String semanticLabel,
     required VoidCallback? onPressed,
-    // The row being built. Arrow-key navigation reads its length lazily, so
-    // by event time it reflects every button that build() actually added.
-    required List<Widget> buttons,
+    required int Function() getTotalButtons,
+    IconData? icon,
+    Widget Function(BuildContext context, Color iconColor)? iconBuilder,
+    Color? color,
+    double iconSize = 24,
+    double iconFill = 1,
+    double? iconWeight = 700,
+    bool pillSurface = false,
+    BoxConstraints? constraints,
+    EdgeInsetsGeometry? padding,
+    BorderRadius? focusBorderRadius,
     String? tooltip,
     String? label,
     String? semanticValue,
@@ -123,6 +131,15 @@ class TrackChapterControls extends StatelessWidget {
   }) {
     return VideoControlButton(
       icon: icon,
+      iconBuilder: iconBuilder,
+      color: color,
+      iconSize: iconSize,
+      iconFill: iconFill,
+      iconWeight: iconWeight,
+      pillSurface: pillSurface,
+      constraints: constraints,
+      padding: padding,
+      focusBorderRadius: focusBorderRadius,
       tooltip: tooltip,
       label: label,
       semanticLabel: semanticLabel,
@@ -131,10 +148,21 @@ class TrackChapterControls extends StatelessWidget {
       isActive: isActive,
       focusNode: focusNodes != null && focusNodes!.length > buttonIndex ? focusNodes![buttonIndex] : null,
       onKeyEvent: focusNodes != null
-          ? (node, event) => _handleButtonKeyEvent(node, event, buttonIndex, buttons.length)
+          ? (node, event) => _handleButtonKeyEvent(node, event, buttonIndex, getTotalButtons())
           : null,
       onFocusChange: onFocusChange,
       onPressed: onPressed,
+    );
+  }
+
+  Widget _buildGroupDivider(bool isMobile) {
+    return Center(
+      child: Container(
+        width: 1,
+        height: 16,
+        margin: EdgeInsets.symmetric(horizontal: isMobile ? 2 : 4),
+        color: Colors.white.withValues(alpha: 0.16),
+      ),
     );
   }
 
@@ -149,45 +177,74 @@ class TrackChapterControls extends StatelessWidget {
         final isMobile = PlatformDetector.isMobile(context);
         final isDesktop = PlatformDetector.isDesktopOS();
 
-        final buttons = <Widget>[];
-        int buttonIndex = 0;
+        final contentGroup = <Widget>[];
+        final settingsGroup = <Widget>[];
+        final windowGroup = <Widget>[];
+        int totalFocusable = 0;
         final showText = !isMobile && MediaQuery.sizeOf(context).width >= 850;
 
         final danmakuController = state.danmakuController;
         if (state.danmakuSupported && danmakuController != null) {
-          final toggleIndex = buttonIndex++;
-          final settingsIndex = buttonIndex++;
-          buttons.add(
-            ListenableBuilder(
-              listenable: danmakuController,
-              builder: (context, _) {
-                final enabled = danmakuController.enabled;
-                return _buildTrackButton(
-                  buttonIndex: toggleIndex,
-                  icon: enabled ? Symbols.comment_rounded : Symbols.comments_disabled_rounded,
-                  isActive: enabled,
-                  checked: enabled,
-                  tooltip: enabled ? t.danmaku.toggleOff : t.danmaku.toggleOn,
-                  semanticLabel: enabled ? t.danmaku.toggleOff : t.danmaku.toggleOn,
-                  buttons: buttons,
-                  onPressed: () => danmakuController.toggleEnabled(),
-                );
-              },
-            ),
-          );
-          buttons.add(
-            _buildTrackButton(
-              buttonIndex: settingsIndex,
-              icon: Symbols.display_settings_rounded,
-              tooltip: t.danmaku.settings,
-              semanticLabel: t.danmaku.settings,
-              buttons: buttons,
-              onPressed: () {
-                state.onCancelAutoHide?.call();
-                OverlaySheetController.of(context)
-                    .show(builder: (_) => DanmakuSheet(controller: danmakuController))
-                    .whenComplete(() => state.onStartAutoHide?.call());
-              },
+          final toggleIndex = totalFocusable++;
+          final settingsIndex = totalFocusable++;
+          contentGroup.add(
+            Center(
+              child: Padding(
+                padding: const EdgeInsets.only(right: 4),
+                child: Container(
+                  height: 32,
+                  padding: const EdgeInsets.symmetric(horizontal: 3),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.10),
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      ListenableBuilder(
+                        listenable: danmakuController,
+                        builder: (context, _) {
+                          final enabled = danmakuController.enabled;
+                          return _buildTrackButton(
+                            buttonIndex: toggleIndex,
+                            iconBuilder: (_, color) => DanmakuBadgeIcon(enabled: enabled, color: color, size: 22),
+                            color: enabled ? null : Colors.white.withValues(alpha: 0.85),
+                            isActive: enabled,
+                            checked: enabled,
+                            tooltip: enabled ? t.danmaku.toggleOff : t.danmaku.toggleOn,
+                            semanticLabel: enabled ? t.danmaku.toggleOff : t.danmaku.toggleOn,
+                            constraints: const BoxConstraints(minWidth: 34, minHeight: 28),
+                            padding: EdgeInsets.zero,
+                            focusBorderRadius: const BorderRadius.all(Radius.circular(14)),
+                            getTotalButtons: () => totalFocusable,
+                            onPressed: () => danmakuController.toggleEnabled(),
+                          );
+                        },
+                      ),
+                      Container(width: 1, height: 14, color: Colors.white.withValues(alpha: 0.18)),
+                      _buildTrackButton(
+                        buttonIndex: settingsIndex,
+                        icon: Symbols.tune_rounded,
+                        iconSize: 20,
+                        iconFill: 1,
+                        iconWeight: 700,
+                        tooltip: t.danmaku.settings,
+                        semanticLabel: t.danmaku.settings,
+                        constraints: const BoxConstraints(minWidth: 32, minHeight: 28),
+                        padding: EdgeInsets.zero,
+                        focusBorderRadius: const BorderRadius.all(Radius.circular(14)),
+                        getTotalButtons: () => totalFocusable,
+                        onPressed: () {
+                          state.onCancelAutoHide?.call();
+                          OverlaySheetController.of(context)
+                              .show(builder: (_) => DanmakuSheet(controller: danmakuController))
+                              .whenComplete(() => state.onStartAutoHide?.call());
+                        },
+                      ),
+                    ],
+                  ),
+                ),
+              ),
             ),
           );
         }
@@ -195,15 +252,18 @@ class TrackChapterControls extends StatelessWidget {
         if (state.serverId == LocalLibraryClient.localServerId &&
             state.availableVersions.length > 1 &&
             state.onSwitchVersion != null) {
-          buttons.add(
+          contentGroup.add(
             _buildTrackButton(
-              buttonIndex: buttonIndex++,
+              buttonIndex: totalFocusable++,
               icon: Symbols.video_file_rounded,
+              iconSize: 24,
+              iconFill: 1,
+              iconWeight: 700,
               label: showText ? t.videoControls.versionColumnHeader : null,
               tooltip: t.mediaMenu.playVersion,
               semanticLabel: t.videoControls.versionColumnHeader,
               semanticValue: _selectedVersion(state)?.displayLabel,
-              buttons: buttons,
+              getTotalButtons: () => totalFocusable,
               onPressed: () {
                 state.onCancelAutoHide?.call();
                 OverlaySheetController.of(context)
@@ -226,91 +286,58 @@ class TrackChapterControls extends StatelessWidget {
             ),
           );
         }
+
         if (state.hasStreamQualities) {
-          final currentIndex = buttonIndex;
-          buttons.add(
-            ConstrainedBox(
-              // A labelled button needs a bounded width to ellipsize in.
-              constraints: const BoxConstraints(maxWidth: 160),
-              child: _buildTrackButton(
-                buttonIndex: currentIndex,
-                icon: Symbols.high_quality_rounded,
-                label: streamQualityName(state.selectedStreamQuality),
-                tooltip: t.videoControls.qualityColumnHeader,
-                semanticLabel: t.videoControls.qualityColumnHeader,
-                semanticValue: streamQualityName(state.selectedStreamQuality),
-                buttons: buttons,
-                onPressed: () {
-                  state.onCancelAutoHide?.call();
-                  OverlaySheetController.of(context)
-                      .show(
-                        builder: (_) => BaseVideoControlSheet(
-                          title: t.videoControls.qualityColumnHeader,
-                          icon: Symbols.high_quality_rounded,
-                          child: VersionQualityPicker(
-                            // Quality only: this acts on the current file.
-                            availableVersions: [?_selectedVersion(state)],
-                            selectedMediaIndex: 0,
-                            selectedQualityPreset: state.selectedQualityPreset,
-                            serverSupportsTranscoding: false,
-                            onVersionSelected: (_) {},
-                            onQualitySelected: (_) {},
-                            streamQualities: state.streamQualities,
-                            selectedStreamQuality: state.selectedStreamQuality,
-                            onStreamQualitySelected: (id) => state.onSwitchStreamQuality?.call(id),
-                          ),
-                        ),
-                      )
-                      .whenComplete(() => state.onStartAutoHide?.call());
-                },
+          final currentIndex = totalFocusable++;
+          contentGroup.add(
+            Center(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 4),
+                child: ConstrainedBox(
+                  // A labelled button needs a bounded width to ellipsize in.
+                  constraints: const BoxConstraints(maxWidth: 140),
+                  child: _buildTrackButton(
+                    buttonIndex: currentIndex,
+                    label: streamQualityName(state.selectedStreamQuality),
+                    pillSurface: true,
+                    focusBorderRadius: const BorderRadius.all(Radius.circular(7)),
+                    tooltip: t.videoControls.qualityColumnHeader,
+                    semanticLabel: t.videoControls.qualityColumnHeader,
+                    semanticValue: streamQualityName(state.selectedStreamQuality),
+                    getTotalButtons: () => totalFocusable,
+                    onPressed: () {
+                      state.onCancelAutoHide?.call();
+                      OverlaySheetController.of(context)
+                          .show(
+                            builder: (_) => BaseVideoControlSheet(
+                              title: t.videoControls.qualityColumnHeader,
+                              icon: Symbols.high_quality_rounded,
+                              child: VersionQualityPicker(
+                                // Quality only: this acts on the current file.
+                                availableVersions: [?_selectedVersion(state)],
+                                selectedMediaIndex: 0,
+                                selectedQualityPreset: state.selectedQualityPreset,
+                                serverSupportsTranscoding: false,
+                                onVersionSelected: (_) {},
+                                onQualitySelected: (_) {},
+                                streamQualities: state.streamQualities,
+                                selectedStreamQuality: state.selectedStreamQuality,
+                                onStreamQualitySelected: (id) => state.onSwitchStreamQuality?.call(id),
+                              ),
+                            ),
+                          )
+                          .whenComplete(() => state.onStartAutoHide?.call());
+                    },
+                  ),
+                ),
               ),
             ),
           );
-          buttonIndex++;
         }
 
-        final settingsIndex = buttonIndex;
-        buttons.add(
-          ListenableBuilder(
-            listenable: SleepTimerService(),
-            builder: (context, _) {
-              final sleepTimer = SleepTimerService();
-              final shaderService = state.shaderService;
-              final isShaderActive =
-                  shaderService != null && shaderService.isSupported && shaderService.currentPreset.isEnabled;
-              final isZoomActive = (state.videoZoomScale - 1.0).abs() > 0.0001;
-              final isActive =
-                  sleepTimer.isActive ||
-                  state.audioSyncOffset != 0 ||
-                  state.subtitleSyncOffset != 0 ||
-                  isShaderActive ||
-                  isZoomActive;
-              return _buildTrackButton(
-                buttonIndex: settingsIndex,
-                icon: Symbols.tune_rounded,
-                isActive: isActive,
-                checked: isActive,
-                tooltip: t.videoControls.settingsButton,
-                semanticValue: _versionQualitySemanticValue(),
-                semanticLabel: t.videoControls.settingsButton,
-                buttons: buttons,
-                onPressed: () {
-                  state.onCancelAutoHide?.call();
-                  OverlaySheetController.of(context)
-                      .show(
-                        builder: (_) => VideoSettingsSheet(player: player, trackControlsState: state),
-                      )
-                      .whenComplete(() => state.onStartAutoHide?.call());
-                },
-              );
-            },
-          ),
-        );
-        buttonIndex++;
-
         {
-          final currentIndex = buttonIndex;
-          buttons.add(
+          final currentIndex = totalFocusable++;
+          contentGroup.add(
             StreamBuilder<TrackSelection>(
               stream: player.streams.track,
               initialData: player.state.track,
@@ -321,15 +348,18 @@ class TrackChapterControls extends StatelessWidget {
                 final hasActiveSubtitle = selectedSub != null && selectedSub.id != SubtitleTrack.off.id;
                 final isHidden = hasSubtitleControls && hasActiveSubtitle && !state.subtitlesVisible;
                 final icon = hasSubtitleControls
-                    ? (isHidden ? Symbols.subtitles_off_rounded : Symbols.subtitles_rounded)
+                    ? (isHidden ? Symbols.closed_caption_disabled_rounded : Symbols.closed_caption_rounded)
                     : Symbols.audiotrack_rounded;
                 return _buildTrackButton(
                   buttonIndex: currentIndex,
                   icon: icon,
+                  iconSize: 24,
+                  iconFill: 1,
+                  iconWeight: 700,
                   tooltip: t.videoControls.tracksButton,
                   semanticLabel: t.videoControls.tracksButton,
                   semanticValue: _selectionSemanticValue(tracks, selection),
-                  buttons: buttons,
+                  getTotalButtons: () => totalFocusable,
                   onPressed: () {
                     state.onCancelAutoHide?.call();
                     OverlaySheetController.of(context)
@@ -342,18 +372,20 @@ class TrackChapterControls extends StatelessWidget {
               },
             ),
           );
-          buttonIndex++;
         }
 
         if (chapters.isNotEmpty && !hideChaptersAndQueue) {
-          final currentIndex = buttonIndex;
-          buttons.add(
+          final currentIndex = totalFocusable++;
+          contentGroup.add(
             _buildTrackButton(
               buttonIndex: currentIndex,
               icon: Symbols.bookmarks_rounded,
+              iconSize: 24,
+              iconFill: 1,
+              iconWeight: 700,
               tooltip: t.videoControls.chaptersButton,
               semanticLabel: t.videoControls.chaptersButton,
-              buttons: buttons,
+              getTotalButtons: () => totalFocusable,
               onPressed: () {
                 state.onCancelAutoHide?.call();
                 OverlaySheetController.of(context)
@@ -372,18 +404,20 @@ class TrackChapterControls extends StatelessWidget {
               },
             ),
           );
-          buttonIndex++;
         }
 
         if (state.showQueueButton && state.onQueueItemSelected != null && !hideChaptersAndQueue) {
-          final currentIndex = buttonIndex;
-          buttons.add(
+          final currentIndex = totalFocusable++;
+          contentGroup.add(
             _buildTrackButton(
               buttonIndex: currentIndex,
-              icon: Symbols.queue_rounded,
+              icon: Symbols.playlist_play_rounded,
+              iconSize: 26,
+              iconFill: 1,
+              iconWeight: 700,
               tooltip: t.videoControls.queue,
               semanticLabel: t.videoControls.queue,
-              buttons: buttons,
+              getTotalButtons: () => totalFocusable,
               onPressed: () {
                 state.onCancelAutoHide?.call();
                 OverlaySheetController.of(context)
@@ -392,19 +426,64 @@ class TrackChapterControls extends StatelessWidget {
               },
             ),
           );
-          buttonIndex++;
         }
 
-        if (state.onRemoteHandoff != null && !state.isLive) {
-          final currentIndex = buttonIndex;
-          buttons.add(
+        {
+          final settingsIndex = totalFocusable++;
+          settingsGroup.add(
+            ListenableBuilder(
+              listenable: SleepTimerService(),
+              builder: (context, _) {
+                final sleepTimer = SleepTimerService();
+                final shaderService = state.shaderService;
+                final isShaderActive =
+                    shaderService != null && shaderService.isSupported && shaderService.currentPreset.isEnabled;
+                final isZoomActive = (state.videoZoomScale - 1.0).abs() > 0.0001;
+                final isActive =
+                    sleepTimer.isActive ||
+                    state.audioSyncOffset != 0 ||
+                    state.subtitleSyncOffset != 0 ||
+                    isShaderActive ||
+                    isZoomActive;
+                return _buildTrackButton(
+                  buttonIndex: settingsIndex,
+                  icon: Symbols.settings_rounded,
+                  iconSize: 24,
+                  iconFill: 1,
+                  iconWeight: 700,
+                  isActive: isActive,
+                  checked: isActive,
+                  tooltip: t.videoControls.settingsButton,
+                  semanticValue: _versionQualitySemanticValue(),
+                  semanticLabel: t.videoControls.settingsButton,
+                  getTotalButtons: () => totalFocusable,
+                  onPressed: () {
+                    state.onCancelAutoHide?.call();
+                    OverlaySheetController.of(context)
+                        .show(
+                          builder: (_) => VideoSettingsSheet(player: player, trackControlsState: state),
+                        )
+                        .whenComplete(() => state.onStartAutoHide?.call());
+                  },
+                );
+              },
+            ),
+          );
+        }
+
+        if (!isDesktop && !PlatformDetector.isTV() && state.onRemoteHandoff != null && !state.isLive) {
+          final currentIndex = totalFocusable++;
+          windowGroup.add(
             Builder(
               builder: (btnContext) => _buildTrackButton(
                 buttonIndex: currentIndex,
-                icon: Symbols.connected_tv_rounded,
+                icon: Symbols.cast_rounded,
+                iconSize: 24,
+                iconFill: 1,
+                iconWeight: 700,
                 tooltip: t.companionRemote.handoffToRemote,
                 semanticLabel: t.companionRemote.handoffToRemote,
-                buttons: buttons,
+                getTotalButtons: () => totalFocusable,
                 onPressed: () {
                   state.onCancelAutoHide?.call();
                   unawaited(state.onRemoteHandoff!(btnContext).whenComplete(() => state.onStartAutoHide?.call()));
@@ -412,108 +491,107 @@ class TrackChapterControls extends StatelessWidget {
               ),
             ),
           );
-          buttonIndex++;
         }
 
         if (state.onTogglePIPMode != null) {
-          final currentIndex = buttonIndex;
-          buttons.add(
+          final currentIndex = totalFocusable++;
+          windowGroup.add(
             _buildTrackButton(
               buttonIndex: currentIndex,
               icon: Symbols.picture_in_picture_alt_rounded,
+              iconSize: 24,
+              iconFill: 1,
+              iconWeight: 700,
               tooltip: t.videoControls.pipButton,
               semanticLabel: t.videoControls.pipButton,
-              buttons: buttons,
+              getTotalButtons: () => totalFocusable,
               onPressed: state.onTogglePIPMode,
             ),
           );
-          buttonIndex++;
         }
 
         // BoxFit mode button
         if (state.onCycleBoxFitMode != null) {
-          final currentIndex = buttonIndex;
-          buttons.add(
+          final currentIndex = totalFocusable++;
+          windowGroup.add(
             _buildTrackButton(
               buttonIndex: currentIndex,
               icon: _getBoxFitIcon(state.boxFitMode),
+              iconSize: 24,
+              iconFill: state.boxFitMode == 0 ? 0 : 1,
+              iconWeight: 700,
               tooltip: _getBoxFitTooltip(state.boxFitMode),
               semanticLabel: t.videoControls.aspectRatioButton,
               semanticValue: _getBoxFitTooltip(state.boxFitMode),
-              buttons: buttons,
+              getTotalButtons: () => totalFocusable,
               onPressed: state.onCycleBoxFitMode,
             ),
           );
-          buttonIndex++;
         }
 
         // Rotation lock button (mobile only, not on TV since screens don't rotate)
         if (isMobile && !PlatformDetector.isTV()) {
-          final currentIndex = buttonIndex;
-          buttons.add(
+          final currentIndex = totalFocusable++;
+          windowGroup.add(
             _buildTrackButton(
               buttonIndex: currentIndex,
               icon: state.isRotationLocked ? Symbols.screen_lock_rotation_rounded : Symbols.screen_rotation_rounded,
+              iconSize: 24,
+              iconFill: 1,
+              iconWeight: 700,
               tooltip: state.isRotationLocked ? t.videoControls.unlockRotation : t.videoControls.lockRotation,
               semanticLabel: t.videoControls.rotationLockButton,
               checked: state.isRotationLocked,
-              buttons: buttons,
+              getTotalButtons: () => totalFocusable,
               onPressed: state.onToggleRotationLock,
             ),
           );
-          buttonIndex++;
         }
 
         // Screen lock button (mobile only, not on TV)
         if (isMobile && !PlatformDetector.isTV()) {
-          final currentIndex = buttonIndex;
-          buttons.add(
+          final currentIndex = totalFocusable++;
+          windowGroup.add(
             _buildTrackButton(
               buttonIndex: currentIndex,
               icon: Symbols.lock_rounded,
+              iconSize: 24,
+              iconFill: 1,
+              iconWeight: 700,
               tooltip: t.videoControls.lockScreen,
               semanticLabel: t.videoControls.screenLockButton,
-              buttons: buttons,
+              getTotalButtons: () => totalFocusable,
               onPressed: state.onToggleScreenLock,
             ),
           );
-          buttonIndex++;
-        }
-
-        // Always on top button (desktop only, not TV)
-        if (isDesktop && state.onToggleAlwaysOnTop != null) {
-          final currentIndex = buttonIndex;
-          buttons.add(
-            _buildTrackButton(
-              buttonIndex: currentIndex,
-              icon: Symbols.layers_rounded,
-              tooltip: t.videoControls.alwaysOnTopButton,
-              semanticLabel: t.videoControls.alwaysOnTopButton,
-              isActive: state.isAlwaysOnTop,
-              checked: state.isAlwaysOnTop,
-              buttons: buttons,
-              onPressed: state.onToggleAlwaysOnTop,
-            ),
-          );
-          buttonIndex++;
         }
 
         // Fullscreen button (desktop only)
         if (isDesktop) {
-          final currentIndex = buttonIndex;
-          buttons.add(
+          final currentIndex = totalFocusable++;
+          windowGroup.add(
             _buildTrackButton(
               buttonIndex: currentIndex,
               icon: state.isFullscreen ? Symbols.fullscreen_exit_rounded : Symbols.fullscreen_rounded,
+              iconSize: 24,
+              iconFill: 1,
+              iconWeight: 700,
               tooltip: state.isFullscreen ? t.videoControls.exitFullscreenButton : t.videoControls.fullscreenButton,
               semanticLabel: state.isFullscreen
                   ? t.videoControls.exitFullscreenButton
                   : t.videoControls.fullscreenButton,
               checked: state.isFullscreen,
-              buttons: buttons,
+              getTotalButtons: () => totalFocusable,
               onPressed: state.onToggleFullscreen,
             ),
           );
+        }
+
+        final groups = [contentGroup, settingsGroup, windowGroup].where((g) => g.isNotEmpty).toList();
+        final buttons = <Widget>[];
+        for (var i = 0; i < groups.length; i++) {
+          if (i > 0) buttons.add(_buildGroupDivider(isMobile));
+          buttons.addAll(groups[i]);
         }
 
         return IntrinsicHeight(
@@ -598,13 +676,13 @@ class TrackChapterControls extends StatelessWidget {
   IconData _getBoxFitIcon(int mode) {
     switch (mode) {
       case 0:
-        return Symbols.fit_screen_rounded; // contain (letterbox)
+        return Symbols.aspect_ratio_rounded; // contain (letterbox)
       case 1:
-        return Symbols.aspect_ratio_rounded; // cover (fill screen)
+        return Symbols.zoom_out_map_rounded; // cover (fill screen)
       case 2:
         return Symbols.settings_overscan_rounded; // fill (stretch)
       default:
-        return Symbols.fit_screen_rounded;
+        return Symbols.aspect_ratio_rounded;
     }
   }
 

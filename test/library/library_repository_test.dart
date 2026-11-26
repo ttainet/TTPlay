@@ -267,7 +267,7 @@ void main() {
       final e22 = show.episodes[3];
 
       // Skip S1E1 and finish S1E2 -> returns S2E1.
-      await timed(() => repo.setProgress(e12, positionMs: 590000, durationMs: 600000));
+      await timed(() => repo.markWatched(e12, watched: true));
       expect((await repo.nextUnwatchedEpisode(show.show))!.item.title, 'S2E1');
 
       // Mark S2E1 watched too -> advances to S2E2.
@@ -302,18 +302,25 @@ void main() {
       expect(rows.first.state!.positionMs, 30000);
     });
 
-    test('reaching the threshold marks watched and clears the resume point', () async {
+    test('progress does not auto-mark watched; only manual markWatched marks watched and clears resume point', () async {
       final a = await addTitle('A');
       await repo.setProgress(a, positionMs: 60000, durationMs: 600000);
-      await repo.setProgress(a, positionMs: 590000, durationMs: 600000);
+      await repo.setProgress(a, positionMs: 600000, durationMs: 600000);
 
-      final view = (await repo.getItem(a))!;
-      expect(view.isWatched, isTrue);
-      expect(view.state!.positionMs, 0);
-      expect(view.state!.playCount, 1);
+      final inProgress = (await repo.getItem(a))!;
+      expect(inProgress.isWatched, isFalse);
+      expect(inProgress.state!.positionMs, 600000);
+      expect(inProgress.state!.playCount, 0);
+      expect((await repo.continueWatching()).single.item.title, 'A');
+
+      await repo.markWatched(a, watched: true);
+      final watchedView = (await repo.getItem(a))!;
+      expect(watchedView.isWatched, isTrue);
+      expect(watchedView.state!.positionMs, 0);
+      expect(watchedView.state!.playCount, 1);
       expect(await repo.continueWatching(), isEmpty);
 
-      // Watching it again counts a second play only once it finishes again.
+      // Re-marking an already watched item does not inflate playCount.
       await repo.markWatched(a, watched: true);
       expect((await repo.getItem(a))!.state!.playCount, 1);
     });
@@ -336,6 +343,90 @@ void main() {
       final state = (await repo.getItem(a))!.state!;
       expect(state.favorite, isTrue);
       expect(state.positionMs, 1000);
+    });
+
+    test('playing an episode to 100% keeps it in continueWatching without auto-marking watched', () async {
+      final show = await addShow();
+      await timed(() => repo.setProgress(show.episodes[0], positionMs: 600000, durationMs: 600000));
+
+      final ep1 = (await repo.getItem(show.episodes[0]))!;
+      expect(ep1.isWatched, isFalse);
+      expect(ep1.state!.positionMs, 600000);
+
+      final cw = await repo.continueWatching();
+      expect(cw.single.item.title, 'S1E1');
+    });
+
+    test('marking an episode watched surfaces Next Up in continueWatching with show recency', () async {
+      final movie = await addTitle('Old Movie');
+      await timed(() => repo.setProgress(movie, positionMs: 60000, durationMs: 600000));
+
+      final show = await addShow();
+      // Manually mark S1E1 watched after Old Movie -> Next Up S1E2 should appear ahead of Old Movie.
+      await timed(() => repo.markWatched(show.episodes[0], watched: true));
+
+      final cw = await repo.continueWatching();
+      expect(cw.map((v) => v.item.title).toList(), ['S1E2', 'Old Movie']);
+      final s1e1State = (await repo.getItem(show.episodes[0]))!.state!;
+      expect(cw.first.continueRecencyMs, s1e1State.lastPlayedAt);
+      expect(cw.first.state, isNull);
+    });
+
+    test('marking final regular episode watched removes show even when specials exist', () async {
+      final show = await addShow();
+      // Mark S2E2 (last regular episode) watched. S0E1 is unwatched but must not become Next Up.
+      await timed(() => repo.markWatched(show.episodes[3], watched: true));
+      expect(await repo.continueWatching(), isEmpty);
+    });
+
+    test('batch-marking show watched removes it; marking season 1 watched surfaces S2E1', () async {
+      final show = await addShow();
+      await timed(() => repo.markWatched(show.s1, watched: true));
+      final cwSeason = await repo.continueWatching();
+      expect(cwSeason.map((v) => v.item.title).toList(), ['S2E1']);
+
+      await timed(() => repo.markWatched(show.show, watched: true));
+      expect(await repo.continueWatching(), isEmpty);
+    });
+
+    test('multiple in-progress episodes of one show collapse to one entry before limit', () async {
+      final oldMovie = await addTitle('Old Movie');
+      await timed(() => repo.setProgress(oldMovie, positionMs: 60000, durationMs: 600000));
+
+      final show = await addShow();
+      await timed(() => repo.setProgress(show.episodes[0], positionMs: 100000, durationMs: 600000));
+      await timed(() => repo.setProgress(show.episodes[1], positionMs: 120000, durationMs: 600000));
+
+      final cw = await repo.continueWatching(limit: 2);
+      expect(cw.map((v) => v.item.title).toList(), ['S1E2', 'Old Movie']);
+    });
+
+    test('hiding Next Up or latest in-progress episode removes show until played again', () async {
+      final show = await addShow();
+      await timed(() => repo.markWatched(show.episodes[0], watched: true));
+      expect((await repo.continueWatching()).single.item.title, 'S1E2');
+
+      await timed(() => repo.hideFromContinueWatching(show.episodes[1]));
+      expect(await repo.continueWatching(), isEmpty);
+
+      // Playing the hidden Next Up episode restores it.
+      await timed(() => repo.setProgress(show.episodes[1], positionMs: 30000, durationMs: 600000));
+      expect((await repo.continueWatching()).single.item.title, 'S1E2');
+
+      // Hiding the latest in-progress episode hides the show (does not fall back).
+      await timed(() => repo.setProgress(show.episodes[0], positionMs: 50000, durationMs: 600000));
+      await timed(() => repo.setProgress(show.episodes[1], positionMs: 60000, durationMs: 600000));
+      await timed(() => repo.hideFromContinueWatching(show.episodes[1]));
+      expect(await repo.continueWatching(), isEmpty);
+    });
+
+    test('marking the only watched episode unwatched removes show from continueWatching', () async {
+      final show = await addShow();
+      await timed(() => repo.markWatched(show.episodes[0], watched: true));
+      expect((await repo.continueWatching()).single.item.title, 'S1E2');
+
+      await timed(() => repo.markWatched(show.episodes[0], watched: false));
+      expect(await repo.continueWatching(), isEmpty);
     });
   });
 

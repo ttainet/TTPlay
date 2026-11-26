@@ -388,6 +388,117 @@ void main() {
       expect(pushedProgress.any((p) => p['work_key'] == 'tmdb:movie:157336' && p['position_ms'] == 180000), isTrue);
       expect(pushedFavorites, contains('tmdb:movie:157336'));
 
+      // 2a. Stopping at >= 90% pushes exact position without auto-marking watched; manual markWatched surfaces S1E2 Next Up
+      final showId = await db
+          .into(db.libraryItems)
+          .insert(
+            LibraryItemsCompanion.insert(
+              workKey: const Value('tmdb:show:203483'),
+              kind: LibraryKinds.show,
+              libraryType: LibraryTypes.show,
+              title: '两京十五日',
+              sortTitle: 'liang jing shi wu ri',
+              tmdbId: const Value('203483'),
+              scrapedAt: const Value(1700000000000),
+              addedAt: 1700000000000,
+              updatedAt: 1700000000000,
+            ),
+          );
+      final seasonId = await db
+          .into(db.libraryItems)
+          .insert(
+            LibraryItemsCompanion.insert(
+              workKey: const Value('tmdb:show:203483:s1'),
+              kind: LibraryKinds.season,
+              libraryType: LibraryTypes.show,
+              parentId: Value(showId),
+              showId: Value(showId),
+              title: '第1季',
+              sortTitle: 'season 1',
+              seasonNumber: const Value(1),
+              scrapedAt: const Value(1700000000000),
+              addedAt: 1700000000000,
+              updatedAt: 1700000000000,
+            ),
+          );
+      final ep1Id = await db
+          .into(db.libraryItems)
+          .insert(
+            LibraryItemsCompanion.insert(
+              workKey: const Value('tmdb:show:203483:s1:e1'),
+              kind: LibraryKinds.episode,
+              libraryType: LibraryTypes.show,
+              parentId: Value(seasonId),
+              showId: Value(showId),
+              title: '虎硫药',
+              sortTitle: 'ep 1',
+              seasonNumber: const Value(1),
+              episodeNumber: const Value(1),
+              scrapedAt: const Value(1700000000000),
+              addedAt: 1700000000000,
+              updatedAt: 1700000000000,
+            ),
+          );
+      await db
+          .into(db.libraryItems)
+          .insert(
+            LibraryItemsCompanion.insert(
+              workKey: const Value('tmdb:show:203483:s1:e2'),
+              kind: LibraryKinds.episode,
+              libraryType: LibraryTypes.show,
+              parentId: Value(seasonId),
+              showId: Value(showId),
+              title: '太子和捕快',
+              sortTitle: 'ep 2',
+              seasonNumber: const Value(1),
+              episodeNumber: const Value(2),
+              scrapedAt: const Value(1700000000000),
+              addedAt: 1700000000000,
+              updatedAt: 1700000000000,
+            ),
+          );
+
+      const dur45 = Duration(minutes: 45);
+      const pos42 = Duration(minutes: 42);
+      await localClient.reportPlaybackStopped(itemId: '$ep1Id', position: pos42, duration: dur45);
+      expect(
+        pushedProgress.any(
+          (p) =>
+              p['work_key'] == 'tmdb:show:203483' &&
+              p['season_number'] == 1 &&
+              p['episode_number'] == 1 &&
+              p['position_ms'] == pos42.inMilliseconds &&
+              p['watched'] == null,
+        ),
+        isTrue,
+      );
+      final cwBeforeMark = await localClient.fetchContinueWatching();
+      final ep1Item = cwBeforeMark.firstWhere((item) => item.grandparentTitle == '两京十五日');
+      expect(ep1Item.title, '虎硫药');
+      expect(ep1Item.isWatched, isFalse);
+      expect(ep1Item.viewOffsetMs, pos42.inMilliseconds);
+
+      await localClient.markWatched(ep1Item);
+      await Future<void>.delayed(const Duration(milliseconds: 80));
+      expect(
+        pushedProgress.any(
+          (p) =>
+              p['work_key'] == 'tmdb:show:203483' &&
+              p['season_number'] == 1 &&
+              p['episode_number'] == 1 &&
+              p['position_ms'] == 0 &&
+              p['watched'] == true,
+        ),
+        isTrue,
+      );
+      final cwItems = await localClient.fetchContinueWatching();
+      final nextUp = cwItems.firstWhere((item) => item.grandparentTitle == '两京十五日');
+      expect(nextUp.title, '太子和捕快');
+      expect(nextUp.viewOffsetMs, isNull);
+      expect(nextUp.isWatched, isFalse);
+      expect(nextUp.lastViewedAt, isNotNull);
+      expect(nextUp.lastViewedAt! > 1700000000, isTrue);
+
       // 2b. Unified KV sync pushes workSkip, workTracks, workSpeed/subOffset, and appPrefs
       final skipStore = WorkSkipSettingsStore(db, syncConfigStore: syncConfigStore);
       final skipWork = WorkIdentity.fromCloudWorkKey('tmdb:movie:157336')!;

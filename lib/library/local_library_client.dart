@@ -190,9 +190,9 @@ class LocalLibraryClient implements MediaServerClient, StreamQualityClient {
   @override
   double get watchedThreshold => lib.LibraryRepository.watchedThreshold;
 
-  /// Progress reports decide watched state themselves (see [reportPlaybackStopped]).
+  /// Local library only marks watched manually, never automatically on stop.
   @override
-  bool get marksWatchedOnPlaybackStopped => true;
+  bool get marksWatchedOnPlaybackStopped => false;
 
   @override
   LiveTvSupport get liveTv => const _NoLiveTv();
@@ -321,7 +321,7 @@ class LocalLibraryClient implements MediaServerClient, StreamQualityClient {
       viewCount: view.isContainer
           ? null
           : (state?.watched ?? false ? (state!.playCount == 0 ? 1 : state.playCount) : 0),
-      lastViewedAt: _seconds(state?.lastPlayedAt),
+      lastViewedAt: _seconds(view.continueRecencyMs ?? state?.lastPlayedAt),
       leafCount: view.isContainer ? view.episodeCount : null,
       viewedLeafCount: view.isContainer ? view.watchedEpisodeCount : null,
       totalEpisodes: view.isContainer ? row.totalEpisodes : null,
@@ -708,8 +708,8 @@ class LocalLibraryClient implements MediaServerClient, StreamQualityClient {
 
   @override
   Future<List<MediaItem>> fetchContinueWatching({int? count = 20, Set<String> excludedLibraryIds = const {}}) async {
-    final rows = await _repo.continueWatching(limit: count ?? 50);
-    return _toItems(rows.where((v) => !excludedLibraryIds.contains(v.item.libraryType)).toList());
+    final rows = await _repo.continueWatching(limit: count ?? 50, excludedLibraryTypes: excludedLibraryIds);
+    return _toItems(rows);
   }
 
   /// Hub titles shown by the UI; `{shelf}` is replaced by the shelf's title.
@@ -905,14 +905,30 @@ class LocalLibraryClient implements MediaServerClient, StreamQualityClient {
     int? audioStreamIndex,
     int? subtitleStreamIndex,
     PlaybackReportMetadata report = const PlaybackReportMetadata.live(),
-  }) => _saveProgress(itemId, position, duration);
+  }) => _saveProgress(itemId, position, duration, awaitCloudPush: true);
 
-  Future<void> _saveProgress(String itemId, Duration position, Duration? duration) async {
+  Future<void> _saveProgress(
+    String itemId,
+    Duration position,
+    Duration? duration, {
+    bool awaitCloudPush = false,
+  }) async {
     if (_closed) return;
     final id = _id(itemId);
     if (id == null) return;
-    await _repo.setProgress(id, positionMs: position.inMilliseconds, durationMs: duration?.inMilliseconds);
-    unawaited(_pushCloudWatchMutation(id, positionMs: position.inMilliseconds, durationMs: duration?.inMilliseconds));
+    final positionMs = position.inMilliseconds;
+    final durationMs = duration?.inMilliseconds;
+    await _repo.setProgress(id, positionMs: positionMs, durationMs: durationMs);
+    final pushFuture = _pushCloudWatchMutation(id, positionMs: positionMs, durationMs: durationMs);
+    if (awaitCloudPush) {
+      try {
+        await pushFuture.timeout(const Duration(seconds: 4));
+      } catch (e) {
+        appLogger.d('CloudUserDataBridge stopped progress sync timed out/skipped: $e');
+      }
+    } else {
+      unawaited(pushFuture);
+    }
   }
 
   Future<({String workKey, int seasonNumber, int episodeNumber})?> _resolveCloudWorkCoords(int itemId) async {

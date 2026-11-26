@@ -163,15 +163,24 @@ void main() {
     expect(await db.select(db.libraryUserStates).get(), isEmpty);
   });
 
-  test('completed playback retains duration and watched state after rebuilding', () async {
+  test('progress at 100% stays resumable and only manual markWatched persists watched across rebuild', () async {
     final id = await movie();
     await repo.setProgress(id, positionMs: 3600000, durationMs: 3600000);
     await repo.deleteItem(id);
     final next = await movie();
     final state = (await repo.getItem(next))!.state!;
-    expect(state.watched, isTrue);
-    expect(state.positionMs, 0);
+    expect(state.watched, isFalse);
+    expect(state.positionMs, 3600000);
     expect(state.durationMs, 3600000);
+    expect((await repo.continueWatching()).single.item.id, next);
+
+    await repo.markWatched(next, watched: true);
+    await repo.deleteItem(next);
+    final afterMark = await movie();
+    final watchedState = (await repo.getItem(afterMark))!.state!;
+    expect(watchedState.watched, isTrue);
+    expect(watchedState.positionMs, 0);
+    expect(watchedState.durationMs, 3600000);
     expect(await repo.continueWatching(), isEmpty);
   });
 

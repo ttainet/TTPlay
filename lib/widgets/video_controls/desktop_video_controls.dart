@@ -32,6 +32,7 @@ import 'widgets/video_controls_header.dart';
 import 'widgets/video_timeline_bar.dart';
 import 'widgets/volume_control.dart';
 import 'widgets/track_chapter_controls.dart';
+import '../app_icon.dart';
 import 'video_control_button.dart';
 
 /// Desktop-specific video controls layout with top bar and bottom controls
@@ -694,6 +695,52 @@ class DesktopVideoControlsState extends State<DesktopVideoControls> {
     );
   }
 
+  Widget? _buildTopBarActions() {
+    if (!PlatformDetector.isDesktopOS() || PlatformDetector.isTV()) {
+      return null;
+    }
+
+    final state = _trackControlsState;
+    final showRemoteHandoff = state.onRemoteHandoff != null && !state.isLive;
+    final showAlwaysOnTop = state.onToggleAlwaysOnTop != null;
+    if (!showRemoteHandoff && !showAlwaysOnTop) {
+      return null;
+    }
+
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        if (showRemoteHandoff)
+          Builder(
+            builder: (btnContext) => VideoControlButton(
+              icon: Symbols.cast_rounded,
+              iconSize: 22,
+              iconFill: 1,
+              iconWeight: 700,
+              tooltip: t.companionRemote.handoffToRemote,
+              semanticLabel: t.companionRemote.handoffToRemote,
+              onPressed: () {
+                state.onCancelAutoHide?.call();
+                unawaited(state.onRemoteHandoff!(btnContext).whenComplete(() => state.onStartAutoHide?.call()));
+              },
+            ),
+          ),
+        if (showAlwaysOnTop)
+          VideoControlButton(
+            iconBuilder: (_, iconColor) => Transform.rotate(
+              angle: state.isAlwaysOnTop ? 0 : 0.6,
+              child: AppIcon(Symbols.keep_rounded, fill: 1, weight: 700, color: iconColor, size: 22),
+            ),
+            tooltip: t.videoControls.alwaysOnTopButton,
+            semanticLabel: t.videoControls.alwaysOnTopButton,
+            isActive: state.isAlwaysOnTop,
+            checked: state.isAlwaysOnTop,
+            onPressed: state.onToggleAlwaysOnTop,
+          ),
+      ],
+    );
+  }
+
   Widget _buildTopBarContent(BuildContext _, double leftPadding) {
     final topBar = Padding(
       padding: .only(left: leftPadding, right: 16),
@@ -703,6 +750,7 @@ class DesktopVideoControlsState extends State<DesktopVideoControls> {
             child: VideoControlsHeader(
               metadata: widget.metadata,
               style: Platform.isMacOS ? VideoHeaderStyle.singleLine : VideoHeaderStyle.multiLine,
+              beforeClock: _buildTopBarActions(),
               onBack: widget.onBack,
               onCancelAutoHide: widget.onCancelAutoHide,
               onStartAutoHide: widget.onStartAutoHide,

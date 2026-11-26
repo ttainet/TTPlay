@@ -1911,9 +1911,7 @@ void main() {
 
       await tester.pumpWidget(
         MultiProvider(
-          providers: [
-            ChangeNotifierProvider<PlaybackStateProvider>.value(value: playbackState),
-          ],
+          providers: [ChangeNotifierProvider<PlaybackStateProvider>.value(value: playbackState)],
           child: MaterialApp(
             theme: ThemeData(platform: TargetPlatform.macOS, extensions: const [testMonoTokens]),
             home: Scaffold(
@@ -1935,17 +1933,17 @@ void main() {
         ),
       );
       await tester.pump();
-      expect(find.byIcon(Symbols.subtitles_rounded), findsOneWidget);
+      expect(find.byIcon(Symbols.closed_caption_rounded), findsOneWidget);
 
       await tester.sendKeyEvent(LogicalKeyboardKey.keyS);
       await tester.pump();
       expect(player.propertyValues, ['no']);
-      expect(find.byIcon(Symbols.subtitles_off_rounded), findsOneWidget);
+      expect(find.byIcon(Symbols.closed_caption_disabled_rounded), findsOneWidget);
 
       await tester.sendKeyEvent(LogicalKeyboardKey.keyS);
       await tester.pump();
       expect(player.propertyValues, ['no'], reason: 'the latest toggle must wait for the in-flight native write');
-      expect(find.byIcon(Symbols.subtitles_rounded), findsOneWidget);
+      expect(find.byIcon(Symbols.closed_caption_rounded), findsOneWidget);
 
       firstWrite.complete();
       await tester.pump();
@@ -1957,7 +1955,7 @@ void main() {
       await tester.pump();
 
       expect(tester.takeException(), isNull);
-      expect(find.byIcon(Symbols.subtitles_off_rounded), findsOneWidget);
+      expect(find.byIcon(Symbols.closed_caption_disabled_rounded), findsOneWidget);
       chrome.cancelAutoHide();
       await tester.pumpWidget(const SizedBox.shrink());
     });

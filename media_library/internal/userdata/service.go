@@ -4,7 +4,9 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -22,6 +24,19 @@ var (
 	ErrNotFound     = db.ErrNotFound
 	ErrInvalidInput = db.ErrInvalidInput
 )
+
+var progressKeyEpisodeSuffixPattern = regexp.MustCompile(`^(.+):s(\d+):e(\d+)$`)
+
+func parseProgressKey(key string) (workKey string, seasonNum, episodeNum int) {
+	if m := progressKeyEpisodeSuffixPattern.FindStringSubmatch(key); len(m) == 4 {
+		s, err1 := strconv.Atoi(m[2])
+		e, err2 := strconv.Atoi(m[3])
+		if err1 == nil && err2 == nil {
+			return m[1], s, e
+		}
+	}
+	return key, -1, -1
+}
 
 type Service struct {
 	store *db.Store
@@ -231,6 +246,15 @@ func (s *Service) UpsertProgress(p *account.Principal, req UpsertProgressRequest
 		return WatchProgressView{}, qErr
 	}
 
+	lastFileID := prevFileID
+	if req.FileID != nil && *req.FileID > 0 {
+		lastFileID = sql.NullInt64{Int64: *req.FileID, Valid: true}
+	}
+	dur := prevDur
+	if req.DurationMs != nil && *req.DurationMs > 0 {
+		dur = sql.NullInt64{Int64: *req.DurationMs, Valid: true}
+	}
+
 	watchedInt := prevWatched
 	if req.Watched != nil {
 		if *req.Watched {
@@ -253,17 +277,8 @@ func (s *Service) UpsertProgress(p *account.Principal, req UpsertProgressRequest
 		} else {
 			hiddenInt = 0
 		}
-	} else if req.PositionMs > 0 && watchedInt == 0 {
+	} else if (req.PositionMs > 0 && watchedInt == 0) || watchedInt == 1 {
 		hiddenInt = 0
-	}
-
-	lastFileID := prevFileID
-	if req.FileID != nil && *req.FileID > 0 {
-		lastFileID = sql.NullInt64{Int64: *req.FileID, Valid: true}
-	}
-	dur := prevDur
-	if req.DurationMs != nil && *req.DurationMs > 0 {
-		dur = sql.NullInt64{Int64: *req.DurationMs, Valid: true}
 	}
 
 	if _, err := tx.Exec(`
@@ -388,12 +403,23 @@ func (s *Service) ListContinueWatching(p *account.Principal, limit int) ([]Watch
 		limit = 100
 	}
 	rows, err := s.store.ReadDB().Query(`
-		SELECT progress_key, COALESCE(work_key, ''), season_number, episode_number,
+		WITH ranked AS (
+			SELECT progress_key, COALESCE(work_key, '') AS work_key, season_number, episode_number,
+			       last_file_id, position_ms, duration_ms, watched, play_count,
+			       last_played_at, hidden_from_continue, updated_at,
+			       ROW_NUMBER() OVER (
+			           PARTITION BY COALESCE(NULLIF(work_key, ''), progress_key)
+			           ORDER BY COALESCE(last_played_at, updated_at) DESC, updated_at DESC, season_number DESC, episode_number DESC
+			       ) AS rn
+			FROM member_watch_progress
+			WHERE household_id = ? AND member_id = ?
+			  AND watched = 0 AND hidden_from_continue = 0 AND position_ms > 0
+		)
+		SELECT progress_key, work_key, season_number, episode_number,
 		       last_file_id, position_ms, duration_ms, watched, play_count,
 		       last_played_at, hidden_from_continue, updated_at
-		FROM member_watch_progress
-		WHERE household_id = ? AND member_id = ?
-		  AND watched = 0 AND hidden_from_continue = 0 AND position_ms > 0
+		FROM ranked
+		WHERE rn = 1
 		ORDER BY COALESCE(last_played_at, updated_at) DESC
 		LIMIT ?`,
 		p.HouseholdID, p.MemberID, limit,
@@ -440,13 +466,37 @@ func (s *Service) HideFromContinue(p *account.Principal, progressKey string) err
 	}
 	n, _ := res.RowsAffected()
 	if n == 0 {
-		return ErrNotFound
+		if strings.HasPrefix(key, "file:") {
+			return ErrNotFound
+		}
+		workKey, sNum, eNum := parseProgressKey(key)
+		if _, err := tx.Exec(`
+			INSERT INTO member_watch_progress(
+				household_id, member_id, progress_key, work_key, season_number, episode_number,
+				position_ms, watched, play_count, last_played_at, hidden_from_continue, updated_at
+			) VALUES (?, ?, ?, ?, ?, ?, 0, 0, 0, NULL, 1, ?)
+			ON CONFLICT(member_id, progress_key) DO UPDATE SET
+				hidden_from_continue = 1,
+				updated_at           = excluded.updated_at`,
+			p.HouseholdID, p.MemberID, key, workKey, sNum, eNum, nowMs,
+		); err != nil {
+			return err
+		}
 	}
 	mid := p.MemberID
 	if _, err := db.AppendChangeTx(tx, p.HouseholdID, &mid, "progress", key, "upsert", nowMs); err != nil {
 		return err
 	}
-	return tx.Commit()
+	if err := tx.Commit(); err != nil {
+		return err
+	}
+	if s.hub != nil {
+		s.hub.PublishToMember(p.HouseholdID, p.MemberID, "userdata.changed", map[string]any{
+			"entity":       "progress",
+			"progress_key": key,
+		})
+	}
+	return nil
 }
 
 func (s *Service) DeleteProgress(p *account.Principal, progressKey string) error {

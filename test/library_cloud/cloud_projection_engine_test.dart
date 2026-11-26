@@ -2065,6 +2065,195 @@ void main() {
       expect(cw.map((e) => e.item.title).toSet(), {'TVDB Ep 1', 'TMDB Ep 1'});
     },
   );
+
+  test('remote progress >=90% is preserved verbatim as unwatched and explicit watched=true advances to Next Up', () async {
+    resetSharedPreferencesForTest();
+    final prevOverrides = HttpOverrides.current;
+    HttpOverrides.global = null;
+    addTearDown(() => HttpOverrides.global = prevOverrides);
+
+    final db = AppDatabase.forTesting(NativeDatabase.memory());
+    addTearDown(db.close);
+    final mountRegistry = MountRegistry(db);
+
+    final hk = CloudKeyring.generateMasterKey();
+    final quarkCipher = await CloudKeyring.encryptCredentialJson(
+      masterKey: hk,
+      payload: {'cookie': 'uid=u789; pus=ghi', 'root_id': '0'},
+    );
+    var ep1Watched = false;
+    var ep1PositionMs = 2600000;
+    var progressUpdatedAt = 1700000900000;
+    final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+    addTearDown(() => server.close(force: true));
+    server.listen((req) async {
+      final path = req.uri.path;
+      if (req.method == 'GET' && path == '/api/v1/sources') {
+        req.response.write(
+          jsonEncode({
+            'code': 0,
+            'sources': [
+              {
+                'id': 'src_norm',
+                'kind': 'quark',
+                'name': 'NAS',
+                'identity_key': 'quark:u789',
+                'status': 'active',
+                'folders': [
+                  {'id': 'f1', 'source_id': 'src_norm', 'path': '/TV'},
+                ],
+              },
+            ],
+          }),
+        );
+      } else if (req.method == 'GET' && path == '/api/v1/sources/src_norm/credential') {
+        req.response.write(
+          jsonEncode({
+            'code': 0,
+            'credential': {
+              'source_id': 'src_norm',
+              'ciphertext': quarkCipher,
+              'version': 1,
+              'key_epoch': 1,
+              'status': 'valid',
+            },
+          }),
+        );
+      } else if (req.method == 'GET' && path == '/api/v1/library/snapshot') {
+        final kind = req.uri.queryParameters['kind'];
+        final items = switch (kind) {
+          'show' => [
+            {
+              'id': 500,
+              'work_key': 'tmdb:show:203483',
+              'kind': 'show',
+              'library_type': 'show',
+              'title': '两京十五日',
+              'tmdb_id': '203483',
+              'updated_at': 1000,
+            },
+          ],
+          'season' => [
+            {
+              'id': 501,
+              'work_key': 'tmdb:show:203483:s1',
+              'kind': 'season',
+              'library_type': 'show',
+              'parent_id': 500,
+              'show_id': 500,
+              'title': '第1季',
+              'season_number': 1,
+              'updated_at': 1000,
+            },
+          ],
+          'episode' => [
+            {
+              'id': 502,
+              'work_key': 'tmdb:show:203483:s1:e1',
+              'kind': 'episode',
+              'library_type': 'show',
+              'parent_id': 501,
+              'show_id': 500,
+              'title': '虎硫药',
+              'season_number': 1,
+              'episode_number': 1,
+              'runtime_ms': 2767098,
+              'updated_at': 1000,
+              'files': [
+                {'id': 21, 'source_id': 'src_norm', 'path': '/TV/LiangJing/S01E01.mkv', 'role': 'video', 'size': 1024},
+              ],
+            },
+            {
+              'id': 503,
+              'work_key': 'tmdb:show:203483:s1:e2',
+              'kind': 'episode',
+              'library_type': 'show',
+              'parent_id': 501,
+              'show_id': 500,
+              'title': '太子和捕快',
+              'season_number': 1,
+              'episode_number': 2,
+              'runtime_ms': 2767098,
+              'updated_at': 1000,
+              'files': [
+                {'id': 22, 'source_id': 'src_norm', 'path': '/TV/LiangJing/S01E02.mkv', 'role': 'video', 'size': 1024},
+              ],
+            },
+          ],
+          _ => <Map<String, dynamic>>[],
+        };
+        req.response.write(jsonEncode({'code': 0, 'snapshot_seq': 30, 'items': items, 'has_more': false}));
+      } else if (req.method == 'GET' && path == '/api/v1/progress') {
+        req.response.write(
+          jsonEncode({
+            'code': 0,
+            'items': [
+              {
+                'progress_key': 'tmdb:show:203483:s1:e1',
+                'work_key': 'tmdb:show:203483',
+                'season_number': 1,
+                'episode_number': 1,
+                'position_ms': ep1PositionMs,
+                'duration_ms': 2767098,
+                'watched': ep1Watched,
+                'play_count': ep1Watched ? 1 : 0,
+                'last_played_at': progressUpdatedAt,
+                'updated_at': progressUpdatedAt,
+              },
+            ],
+          }),
+        );
+      } else if (req.method == 'GET' && path == '/api/v1/favorites') {
+        req.response.write(jsonEncode({'code': 0, 'items': <Map<String, dynamic>>[]}));
+      } else if (req.method == 'GET' && path == '/api/v1/kv') {
+        req.response.write(jsonEncode({'code': 0, 'items': <Map<String, dynamic>>[]}));
+      } else if (req.method == 'GET' && path == '/api/v1/lists') {
+        req.response.write(jsonEncode({'code': 0, 'items': <Map<String, dynamic>>[]}));
+      } else {
+        req.response.statusCode = 404;
+      }
+      await req.response.close();
+    });
+
+    final api = CloudApiClient(baseUrl: 'http://127.0.0.1:${server.port}', accessToken: 'usr_norm');
+    addTearDown(api.close);
+    final engine = CloudProjectionEngine(
+      db: db,
+      syncClient: CloudProjectionSyncClient(api),
+      mountMirror: CloudMountMirror(
+        sourceRepository: CloudSourceRepository(api: api, masterKeyProvider: () => hk),
+        mountRegistry: mountRegistry,
+      ),
+    );
+
+    await engine.syncFullSnapshot();
+    final repo = LibraryRepository(db);
+    final ep1 = await (db.select(
+      db.libraryItems,
+    )..where((t) => t.workKey.equals('tmdb:show:203483:s1:e1'))).getSingle();
+    final ep1State = (await repo.getItem(ep1.id))!.state!;
+    expect(ep1State.watched, isFalse);
+    expect(ep1State.positionMs, 2600000);
+    expect(ep1State.playCount, 0);
+
+    var cw = await repo.continueWatching();
+    expect(cw, hasLength(1));
+    expect(cw.single.item.title, '虎硫药');
+
+    // Explicit watched=true from server advances Continue Watching to Next Up (S1E2).
+    ep1Watched = true;
+    ep1PositionMs = 0;
+    progressUpdatedAt = 1700001000000;
+    await engine.syncFullSnapshot();
+    final ep1WatchedState = (await repo.getItem(ep1.id))!.state!;
+    expect(ep1WatchedState.watched, isTrue);
+    expect(ep1WatchedState.playCount, 1);
+
+    cw = await repo.continueWatching();
+    expect(cw, hasLength(1));
+    expect(cw.single.item.title, '太子和捕快');
+    expect(cw.single.continueRecencyMs, 1700001000000);
+  });
 }
 
 class _FakeQuarkIncrementalDriver implements StorageDriver {

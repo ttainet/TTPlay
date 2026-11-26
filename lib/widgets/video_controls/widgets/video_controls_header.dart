@@ -23,6 +23,9 @@ class VideoControlsHeader extends StatelessWidget {
   final MediaItem metadata;
   final VideoHeaderStyle style;
 
+  /// Optional widget placed directly before the system clock on the right.
+  final Widget? beforeClock;
+
   /// Optional trailing widget (e.g., track/chapter controls)
   final Widget? trailing;
 
@@ -40,6 +43,7 @@ class VideoControlsHeader extends StatelessWidget {
     super.key,
     required this.metadata,
     this.style = VideoHeaderStyle.multiLine,
+    this.beforeClock,
     this.trailing,
     this.onBack,
     this.onCancelAutoHide,
@@ -59,6 +63,7 @@ class VideoControlsHeader extends StatelessWidget {
               ? _buildSingleLineTitle(itemTitle)
               : _buildMultiLineTitle(itemTitle),
         ),
+        if (beforeClock != null) ...[beforeClock!, if (showClock) const SizedBox(width: 8)],
         if (showClock)
           const Padding(
             padding: EdgeInsets.only(right: 8),
