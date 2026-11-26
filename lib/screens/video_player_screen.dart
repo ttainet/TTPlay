@@ -2151,7 +2151,7 @@ class VideoPlayerScreenState extends State<VideoPlayerScreen>
       final workSubOffset = _currentMetadata.serverId == WorkIdentity.localSource
           ? await _tryWorkPlaybackPrefsStore()?.readSubtitleOffsetForItem(_currentMetadata)
           : null;
-      if (!_ownsPlayerInitializationAttempt(generation, currentPlayer)) return;
+      if (!_isPlayerInitializationCurrent(generation)) return;
       await PlayerSyncOffsets.of(currentPlayer).applyFor(_currentMetadata, subtitleOffsetOverrideMs: workSubOffset);
 
       if (settingsService.read(SettingsService.audioNormalization)) {
