@@ -35,6 +35,17 @@ const (
 	currentProtocolVersion = 1
 )
 
+// ServerVersion is injected at link time via `-ldflags "-X ttplay/media_library/internal/api.ServerVersion=..."`.
+var ServerVersion = "dev"
+
+// CurrentServerVersion returns the trimmed server build version string.
+func CurrentServerVersion() string {
+	if v := strings.TrimSpace(ServerVersion); v != "" {
+		return v
+	}
+	return "dev"
+}
+
 type ctxKey string
 
 const (
@@ -610,9 +621,10 @@ func (s *Server) withRequestLogging(next http.Handler) http.Handler {
 
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, r, http.StatusOK, map[string]any{
-		"code":   0,
-		"status": "ok",
-		"role":   "media_library",
+		"code":    0,
+		"status":  "ok",
+		"role":    "media_library",
+		"version": CurrentServerVersion(),
 	})
 }
 
@@ -622,7 +634,7 @@ func (s *Server) handleBootstrap(w http.ResponseWriter, r *http.Request) {
 		"code":                 0,
 		"server_name":          cfg.ServerName,
 		"accent_theme":         cfg.AccentTheme,
-		"version":              "1.0.0",
+		"version":              CurrentServerVersion(),
 		"protocol_version":     currentProtocolVersion,
 		"min_protocol_version": cfg.MinProtocolVersion,
 		"registration_mode":    cfg.RegistrationMode,

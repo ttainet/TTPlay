@@ -38,6 +38,35 @@ def run_local(cmd: list[str] | str, *, cwd: Path, env: dict[str, str] | None = N
         raise RuntimeError(f"Command failed with exit code {proc.returncode}: {cmd}")
 
 
+def resolve_build_version() -> str:
+    """Resolve `<pubspec_version>-<git_short_sha>` for link-time injection."""
+    repo_root = REPO_MEDIA_DIR.parent
+    base_ver = ""
+    pubspec = repo_root / "pubspec.yaml"
+    if pubspec.is_file():
+        for line in pubspec.read_text(encoding="utf-8").splitlines():
+            stripped = line.strip()
+            if stripped.startswith("version:"):
+                raw = stripped.split(":", 1)[1].strip().strip("\"'")
+                base_ver = raw.split("+", 1)[0].strip()
+                break
+
+    git_sha = ""
+    proc = subprocess.run(
+        ["git", "rev-parse", "--short", "HEAD"],
+        cwd=str(repo_root),
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if proc.returncode == 0:
+        git_sha = proc.stdout.strip()
+
+    if base_ver and git_sha:
+        return f"{base_ver}-{git_sha}"
+    return base_ver or git_sha or "dev"
+
+
 def build_artifacts(*, build_web: bool, build_backend: bool, proxy: str) -> None:
     """Build Web SPA and cross-compile Linux amd64 static Go binary."""
     if build_web:
@@ -45,6 +74,8 @@ def build_artifacts(*, build_web: bool, build_backend: bool, proxy: str) -> None
 
     if build_backend:
         run_local(["go", "test", "./..."], cwd=REPO_MEDIA_DIR)
+        version = resolve_build_version()
+        print(f"[local] build version: {version}")
         proxy_url = proxy if "://" in proxy else f"http://{proxy}"
         env = os.environ.copy()
         env.update({
@@ -56,7 +87,15 @@ def build_artifacts(*, build_web: bool, build_backend: bool, proxy: str) -> None
         })
         LINUX_BIN_PATH.parent.mkdir(parents=True, exist_ok=True)
         run_local(
-            ["go", "build", "-trimpath", "-ldflags=-s -w", "-o", str(LINUX_BIN_PATH), "./cmd/media-library"],
+            [
+                "go",
+                "build",
+                "-trimpath",
+                f"-ldflags=-s -w -X ttplay/media_library/internal/api.ServerVersion={version}",
+                "-o",
+                str(LINUX_BIN_PATH),
+                "./cmd/media-library",
+            ],
             cwd=REPO_MEDIA_DIR,
             env=env,
         )

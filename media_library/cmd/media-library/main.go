@@ -162,7 +162,7 @@ func main() {
 	if strings.TrimSpace(cfg.MetadataProxy) != "" {
 		proxyDesc = applog.RedactURL(cfg.MetadataProxy)
 	}
-	applog.Infof("system", "服务启动完成: listen=http://%s data_dir=%s log_file=%s level=%s", ln.Addr().String(), *dataDir, logPath, *logLevel)
+	applog.Infof("system", "服务启动完成: version=%s listen=http://%s data_dir=%s log_file=%s level=%s", api.CurrentServerVersion(), ln.Addr().String(), *dataDir, logPath, *logLevel)
 	applog.Infof("system", "环境参数: tmdb_key=%v tmdb_base=%s bangumi=%v proxy=%s", strings.TrimSpace(cfg.TmdbAPIKey) != "", cfg.TmdbAPIBase, cfg.BangumiEnabled, proxyDesc)
 
 	go func() {
