@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"ttplay/media_library/internal/applog"
+	"ttplay/media_library/internal/danmaku"
 	"ttplay/media_library/internal/metadata"
 	"ttplay/media_library/internal/security"
 	"ttplay/media_library/internal/subtitles"
@@ -122,6 +123,28 @@ func (s *Server) handleAdminTestProvider(w http.ResponseWriter, r *http.Request)
 	}
 	if err := decodeJSON(w, r, &req); err != nil {
 		writeErrCode(w, r, http.StatusBadRequest, "invalid_input", "invalid JSON payload")
+		return
+	}
+	if danmaku.NormalizeProviderName(req.Provider) == danmaku.ProviderDanmuAPI {
+		if s.Danmu == nil {
+			writeErrCode(w, r, http.StatusServiceUnavailable, "unavailable", "danmu service unavailable")
+			return
+		}
+		latencyMs, msg, err := s.Danmu.TestConnection(r.Context(), danmaku.ProviderTestOverrides{
+			APIBase:       req.APIBase,
+			Token:         req.Token,
+			MetadataProxy: req.MetadataProxy,
+		})
+		if err != nil {
+			writeDanmakuError(w, r, err)
+			return
+		}
+		writeJSON(w, r, http.StatusOK, map[string]any{
+			"code":       0,
+			"ok":         true,
+			"latency_ms": latencyMs,
+			"message":    msg,
+		})
 		return
 	}
 	switch subtitles.NormalizeProviderName(req.Provider) {

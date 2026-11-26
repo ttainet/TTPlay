@@ -4,6 +4,8 @@ import type {
   AuditLogRecord,
   BootstrapInfo,
   CacheStats,
+  DanmakuCacheStats,
+  DanmakuProvider,
   IdentifyQueueStats,
   ImageCacheSummary,
   InspectTableInfo,
@@ -177,7 +179,7 @@ export const api = {
     }),
 
   testProvider: (payload: {
-    provider: MetadataProvider | SubtitleProvider;
+    provider: MetadataProvider | SubtitleProvider | DanmakuProvider;
     api_key?: string;
     pin?: string;
     token?: string;
@@ -192,6 +194,14 @@ export const api = {
 
   clearMetaCache: (scope = 'all') =>
     request<{ deleted: number; cache_stats: CacheStats }>('/api/admin/settings/clear-cache', {
+      method: 'POST',
+      body: JSON.stringify({ scope }),
+    }),
+
+  danmakuStats: () => request<{ stats: DanmakuCacheStats }>('/api/admin/danmaku/stats'),
+
+  clearDanmakuCache: (scope: 'all' | 'search' | 'comments' = 'all') =>
+    request<{ deleted: number; stats: DanmakuCacheStats }>('/api/admin/danmaku/clear-cache', {
       method: 'POST',
       body: JSON.stringify({ scope }),
     }),

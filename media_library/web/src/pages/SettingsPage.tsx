@@ -13,7 +13,7 @@ import { api } from '../api/client';
 import { CustomSelect, RadioCardGroup } from '../components/CustomSelect';
 import { CardListSkeleton } from '../components/Skeletons';
 import { useApp } from '../contexts/AppContext';
-import type { AccentTheme, MetadataProvider, ServerSettings, SubtitleProvider } from '../types';
+import type { AccentTheme, DanmakuCacheStats, DanmakuProvider, MetadataProvider, ServerSettings, SubtitleProvider } from '../types';
 
 const LANG_OPTIONS = [
   { value: 'zh-CN', label: '简体中文 (zh-CN)', description: '优先拉取中文标题、简介与海报' },
@@ -41,7 +41,7 @@ export const SettingsPage: React.FC = () => {
   const [saving, setSaving] = useState(false);
 
   const [testingTmdb, setTestingTmdb] = useState(false);
-  const [testingProvider, setTestingProvider] = useState<MetadataProvider | SubtitleProvider | ''>('');
+  const [testingProvider, setTestingProvider] = useState<MetadataProvider | SubtitleProvider | DanmakuProvider | ''>('');
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
 
   // Basic & TMDB
@@ -88,6 +88,19 @@ export const SettingsPage: React.FC = () => {
   const [openSub, setOpenSub] = useState(true);
   const [openSubBase, setOpenSubBase] = useState('');
   const [openSubKey, setOpenSubKey] = useState('');
+
+  // Danmaku provider
+  const [danmuEnabled, setDanmuEnabled] = useState(false);
+  const [danmuBase, setDanmuBase] = useState('');
+  const [danmuToken, setDanmuToken] = useState('');
+  const [clearDanmuToken, setClearDanmuToken] = useState(false);
+  const [danmuPreferredPlatforms, setDanmuPreferredPlatforms] = useState('');
+  const [danmuTimeoutSec, setDanmuTimeoutSec] = useState(30);
+  const [danmuSearchCacheHours, setDanmuSearchCacheHours] = useState(6);
+  const [danmuCommentCacheHours, setDanmuCommentCacheHours] = useState(168);
+  const [danmuMaxComments, setDanmuMaxComments] = useState(0);
+  const [danmuStats, setDanmuStats] = useState<DanmakuCacheStats | null>(null);
+  const [clearingDanmuCache, setClearingDanmuCache] = useState(false);
 
   const [customWords, setCustomWords] = useState('');
 
@@ -139,6 +152,15 @@ export const SettingsPage: React.FC = () => {
       setOpenSub(s.opensubtitles_enabled !== false);
       setOpenSubBase(s.opensubtitles_api_base || '');
       setOpenSubKey('');
+      setDanmuEnabled(Boolean(s.danmu_enabled));
+      setDanmuBase(s.danmu_api_base || '');
+      setDanmuToken('');
+      setClearDanmuToken(false);
+      setDanmuPreferredPlatforms(s.danmu_preferred_platforms || '');
+      setDanmuTimeoutSec(s.danmu_timeout_sec || 30);
+      setDanmuSearchCacheHours(s.danmu_search_cache_hours ?? 6);
+      setDanmuCommentCacheHours(s.danmu_comment_cache_hours ?? 168);
+      setDanmuMaxComments(s.danmu_max_comments ?? 0);
       setCustomWords(s.custom_recognition_words || '');
     },
     [setAccentTheme]
@@ -147,8 +169,14 @@ export const SettingsPage: React.FC = () => {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await api.getSettings();
+      const [res, dmStatsRes] = await Promise.all([
+        api.getSettings(),
+        api.danmakuStats().catch(() => null),
+      ]);
       apply(res.settings);
+      if (dmStatsRes?.stats) {
+        setDanmuStats(dmStatsRes.stats);
+      }
     } catch (err) {
       toast((err as Error).message, 'error');
     } finally {
@@ -195,6 +223,13 @@ export const SettingsPage: React.FC = () => {
         subdl_api_base: subdlBase.trim(),
         opensubtitles_enabled: openSub,
         opensubtitles_api_base: openSubBase.trim(),
+        danmu_enabled: danmuEnabled,
+        danmu_api_base: danmuBase.trim(),
+        danmu_preferred_platforms: danmuPreferredPlatforms.trim(),
+        danmu_timeout_sec: Math.min(120, Math.max(5, Number(danmuTimeoutSec) || 30)),
+        danmu_search_cache_hours: Math.min(168, Math.max(0, Number(danmuSearchCacheHours) || 0)),
+        danmu_comment_cache_hours: Math.min(720, Math.max(0, Number(danmuCommentCacheHours) || 0)),
+        danmu_max_comments: Math.min(200000, Math.max(0, Number(danmuMaxComments) || 0)),
         custom_recognition_words: customWords,
       };
       if (tmdbKey.trim()) patch.tmdb_api_key = tmdbKey.trim();
@@ -205,6 +240,11 @@ export const SettingsPage: React.FC = () => {
       if (assrtToken.trim()) patch.assrt_token = assrtToken.trim();
       if (subdlKey.trim()) patch.subdl_api_key = subdlKey.trim();
       if (openSubKey.trim()) patch.opensubtitles_api_key = openSubKey.trim();
+      if (clearDanmuToken) {
+        patch.clear_danmu_token = true;
+      } else if (danmuToken.trim()) {
+        patch.danmu_token = danmuToken.trim();
+      }
       const res = await api.updateSettings(patch);
       apply(res.settings);
       if (res.settings.server_name) {
@@ -235,7 +275,7 @@ export const SettingsPage: React.FC = () => {
     }
   };
 
-  const testProv = async (provider: MetadataProvider | SubtitleProvider) => {
+  const testProv = async (provider: MetadataProvider | SubtitleProvider | DanmakuProvider) => {
     if (testingProvider) return;
     setTestingProvider(provider);
     try {
@@ -261,12 +301,16 @@ export const SettingsPage: React.FC = () => {
             ? subdlBase.trim() || undefined
             : provider === 'opensubtitles'
             ? openSubBase.trim() || undefined
+            : provider === 'danmu_api'
+            ? danmuBase.trim() || undefined
             : undefined,
         token:
           provider === 'bangumi'
             ? bangumiToken.trim() || undefined
             : provider === 'assrt'
             ? assrtToken.trim() || undefined
+            : provider === 'danmu_api'
+            ? danmuToken.trim() || undefined
             : undefined,
         cookie: provider === 'douban' ? doubanCookie.trim() || undefined : undefined,
         api_key:
@@ -284,6 +328,20 @@ export const SettingsPage: React.FC = () => {
       toast(`${provider.toUpperCase()} 测试失败：${(err as Error).message}`, 'error');
     } finally {
       setTestingProvider('');
+    }
+  };
+
+  const handleClearDanmuCache = async () => {
+    if (clearingDanmuCache) return;
+    setClearingDanmuCache(true);
+    try {
+      const res = await api.clearDanmakuCache('all');
+      setDanmuStats(res.stats);
+      toast(`已清空 ${res.deleted} 条弹幕缓存`, 'success');
+    } catch (err) {
+      toast(`清空弹幕缓存失败：${(err as Error).message}`, 'error');
+    } finally {
+      setClearingDanmuCache(false);
     }
   };
 
@@ -765,6 +823,151 @@ export const SettingsPage: React.FC = () => {
                       </div>
                     );
                   })}
+                </div>
+              </div>
+
+              {/* Danmaku Provider Card */}
+              <div className="card-box" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+                <div className="card-title-row" style={{ marginBottom: 0 }}>
+                  <div>
+                    <h3 className="card-title">
+                      弹幕聚合服务 (danmu_api)
+                      {danmuEnabled ? (
+                        settings?.danmu_token_set ? (
+                          <span className="tag success">已启用 · 已配置 Token</span>
+                        ) : (
+                          <span className="tag accent">已启用</span>
+                        )
+                      ) : (
+                        <span className="tag">未启用</span>
+                      )}
+                      {danmuStats && (
+                        <span className="tag">
+                          搜索缓存 {danmuStats.searches} / 弹幕缓存 {danmuStats.comments}
+                        </span>
+                      )}
+                    </h3>
+                    <div className="muted-sm" style={{ marginTop: 4 }}>
+                      对接自建或远程 danmu_api 服务（兼容弹弹play v2 接口），统一提供剧集匹配、平台优选、限流采样与服务端 SQLite 弹幕缓存
+                    </div>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                    <button
+                      type="button"
+                      className="btn btn-sm"
+                      disabled={clearingDanmuCache}
+                      onClick={() => void handleClearDanmuCache()}
+                    >
+                      {clearingDanmuCache ? <Loader2 size={14} className="spin" /> : null}
+                      清空弹幕缓存
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn-sm"
+                      disabled={testingProvider === 'danmu_api'}
+                      onClick={() => void testProv('danmu_api')}
+                    >
+                      {testingProvider === 'danmu_api' ? <Loader2 size={14} className="spin" /> : <Wifi size={14} />}
+                      测试连通
+                    </button>
+                    <ToggleSwitch checked={danmuEnabled} onChange={setDanmuEnabled} />
+                  </div>
+                </div>
+
+                <div className="grid-2">
+                  <div className="field">
+                    <label>danmu_api 服务地址</label>
+                    <input
+                      className="input"
+                      placeholder="例如：http://127.0.0.1:20016"
+                      value={danmuBase}
+                      onChange={(e) => setDanmuBase(e.target.value)}
+                    />
+                  </div>
+                  <div className="field">
+                    <label>访问 Token</label>
+                    <input
+                      className="input"
+                      type="password"
+                      disabled={clearDanmuToken}
+                      placeholder={
+                        settings?.danmu_token_set
+                          ? `当前已保存 (${settings.danmu_token_masked || '****'})，留空保持不变`
+                          : '填写 danmu_api TOKEN（默认 87654321 可留空）'
+                      }
+                      value={danmuToken}
+                      onChange={(e) => setDanmuToken(e.target.value)}
+                    />
+                    {settings?.danmu_token_set && (
+                      <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, marginTop: 6, fontSize: 12 }}>
+                        <input
+                          type="checkbox"
+                          checked={clearDanmuToken}
+                          onChange={(e) => setClearDanmuToken(e.target.checked)}
+                        />
+                        清除已保存 Token
+                      </label>
+                    )}
+                  </div>
+                </div>
+
+                <div className="grid-2">
+                  <div className="field">
+                    <label>默认平台优先级（逗号分隔，留空按上游默认）</label>
+                    <input
+                      className="input"
+                      placeholder="例如：qq,iqiyi,bilibili1,youku,imgo"
+                      value={danmuPreferredPlatforms}
+                      onChange={(e) => setDanmuPreferredPlatforms(e.target.value)}
+                    />
+                  </div>
+                  <div className="field">
+                    <label>单集最大弹幕条数（0 表示不限，超限自动均匀采样）</label>
+                    <input
+                      className="input"
+                      type="number"
+                      min={0}
+                      max={200000}
+                      value={danmuMaxComments}
+                      onChange={(e) => setDanmuMaxComments(Math.max(0, Number(e.target.value) || 0))}
+                    />
+                  </div>
+                </div>
+
+                <div className="grid-3">
+                  <div className="field">
+                    <label>上游请求超时（秒，5–120）</label>
+                    <input
+                      className="input"
+                      type="number"
+                      min={5}
+                      max={120}
+                      value={danmuTimeoutSec}
+                      onChange={(e) => setDanmuTimeoutSec(Math.min(120, Math.max(5, Number(e.target.value) || 30)))}
+                    />
+                  </div>
+                  <div className="field">
+                    <label>匹配与搜索缓存（小时，0 关闭）</label>
+                    <input
+                      className="input"
+                      type="number"
+                      min={0}
+                      max={168}
+                      value={danmuSearchCacheHours}
+                      onChange={(e) => setDanmuSearchCacheHours(Math.min(168, Math.max(0, Number(e.target.value) || 0)))}
+                    />
+                  </div>
+                  <div className="field">
+                    <label>弹幕正文缓存（小时，0 关闭）</label>
+                    <input
+                      className="input"
+                      type="number"
+                      min={0}
+                      max={720}
+                      value={danmuCommentCacheHours}
+                      onChange={(e) => setDanmuCommentCacheHours(Math.min(720, Math.max(0, Number(e.target.value) || 0)))}
+                    />
+                  </div>
                 </div>
               </div>
             </div>

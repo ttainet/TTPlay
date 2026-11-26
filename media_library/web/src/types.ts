@@ -1,6 +1,7 @@
 export type AccentTheme = 'glacier' | 'neutral' | 'ember' | 'plum';
 export type MetadataProvider = 'tmdb' | 'bangumi' | 'douban' | 'anilist' | 'imdb' | 'tvdb';
 export type SubtitleProvider = 'xunlei' | 'assrt' | 'subdl' | 'opensubtitles';
+export type DanmakuProvider = 'danmu_api';
 
 export interface BootstrapInfo {
   server_name: string;
@@ -34,6 +35,11 @@ export interface PlatformOverview {
   files_total: number;
   sidecar_bytes: number;
   db_bytes: number;
+}
+
+export interface DanmakuCacheStats {
+  searches: number;
+  comments: number;
 }
 
 export interface CacheStats {
@@ -150,6 +156,15 @@ export interface ServerSettings {
   opensubtitles_api_base: string;
   opensubtitles_api_key_set: boolean;
   opensubtitles_api_key_masked?: string;
+  danmu_enabled: boolean;
+  danmu_api_base: string;
+  danmu_token_set: boolean;
+  danmu_token_masked?: string;
+  danmu_preferred_platforms: string;
+  danmu_timeout_sec: number;
+  danmu_search_cache_hours: number;
+  danmu_comment_cache_hours: number;
+  danmu_max_comments: number;
   allow_public_metadata: boolean;
   allow_fallback_metadata: boolean;
   custom_recognition_words: string;

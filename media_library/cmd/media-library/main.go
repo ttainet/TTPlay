@@ -19,6 +19,7 @@ import (
 	"ttplay/media_library/internal/account"
 	"ttplay/media_library/internal/api"
 	"ttplay/media_library/internal/applog"
+	"ttplay/media_library/internal/danmaku"
 	"ttplay/media_library/internal/db"
 	"ttplay/media_library/internal/events"
 	"ttplay/media_library/internal/ingest"
@@ -45,6 +46,9 @@ func main() {
 	metadataProxy := flag.String("metadata-proxy", os.Getenv("LIBRARY_METADATA_PROXY"), "HTTP/SOCKS5 proxy for TMDB/Bangumi and artwork proxy")
 	bangumiEnabled := flag.String("bangumi-enabled", os.Getenv("LIBRARY_BANGUMI_ENABLED"), "Default bangumi_enabled ('true' or 'false')")
 	allowPublicMetadata := flag.String("allow-public-metadata", os.Getenv("LIBRARY_ALLOW_PUBLIC_METADATA"), "Default allow_public_metadata ('true' or 'false')")
+	danmuEnabled := flag.String("danmu-enabled", os.Getenv("LIBRARY_DANMU_ENABLED"), "Default danmu_enabled ('true' or 'false')")
+	danmuAPIBase := flag.String("danmu-api-base", os.Getenv("LIBRARY_DANMU_API_BASE"), "Default danmu_api base URL")
+	danmuToken := flag.String("danmu-token", os.Getenv("LIBRARY_DANMU_TOKEN"), "Default danmu_api access token")
 	adminUser := flag.String("admin-user", envOr("LIBRARY_ADMIN_USER", "admin"), "Initial platform admin username")
 	adminPassword := flag.String("admin-password", os.Getenv("LIBRARY_ADMIN_PASSWORD"), "Initial platform admin password (defaults to 'admin' with forced change on first login)")
 	adminAllowedCIDRs := flag.String("admin-allowed-cidrs", os.Getenv("LIBRARY_ADMIN_ALLOWED_CIDRS"), "Optional comma-separated IP/CIDR allowlist for /api/admin/*")
@@ -94,6 +98,17 @@ func main() {
 	}
 	if err := store.SeedPublicMetadataIfAbsent(pubPtr); err != nil {
 		log.Fatalf("seed public metadata setting: %v", err)
+	}
+	var danmuPtr *bool
+	if raw := strings.TrimSpace(*danmuEnabled); raw != "" {
+		parsed, pErr := strconv.ParseBool(raw)
+		if pErr != nil {
+			log.Fatalf("invalid -danmu-enabled value %q: %v", raw, pErr)
+		}
+		danmuPtr = &parsed
+	}
+	if err := store.SeedDanmuSettingsIfAbsent(*danmuAPIBase, *danmuToken, danmuPtr); err != nil {
+		log.Fatalf("seed danmu settings: %v", err)
 	}
 
 	limiter := security.NewLoginLimiter()
@@ -150,7 +165,7 @@ func main() {
 	bgWG.Add(1)
 	go func() {
 		defer bgWG.Done()
-		runPeriodicCleanup(ctx, accSvc, platSvc, srcSvc, ingSvc, srvHandler.Sub)
+		runPeriodicCleanup(ctx, accSvc, platSvc, srcSvc, ingSvc, srvHandler.Sub, srvHandler.Danmu)
 	}()
 
 	fmt.Printf("LISTENING http://%s\n", ln.Addr().String())
@@ -182,7 +197,7 @@ func main() {
 	applog.Infof("system", "服务已关闭")
 }
 
-func runPeriodicCleanup(ctx context.Context, accSvc *account.Service, platSvc *platform.Service, srcSvc *source.Service, ingSvc *ingest.Service, subSvc *subtitles.Service) {
+func runPeriodicCleanup(ctx context.Context, accSvc *account.Service, platSvc *platform.Service, srcSvc *source.Service, ingSvc *ingest.Service, subSvc *subtitles.Service, danmuSvc *danmaku.Service) {
 	ticker := time.NewTicker(10 * time.Minute)
 	defer ticker.Stop()
 	for {
@@ -193,6 +208,11 @@ func runPeriodicCleanup(ctx context.Context, accSvc *account.Service, platSvc *p
 			if subSvc != nil {
 				if err := subSvc.CleanupExpiredCache(); err != nil {
 					applog.Warnf("cleanup", "subtitle cache cleanup error: %v", err)
+				}
+			}
+			if danmuSvc != nil {
+				if err := danmuSvc.CleanupExpiredCache(); err != nil {
+					applog.Warnf("cleanup", "danmaku cache cleanup error: %v", err)
 				}
 			}
 			if err := accSvc.CleanupExpired(); err != nil {

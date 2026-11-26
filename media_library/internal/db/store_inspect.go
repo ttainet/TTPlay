@@ -114,6 +114,30 @@ var inspectableTables = []inspectTableSpec{
 		OrderBy:     "updated_at DESC",
 		PKCols:      []string{"kind", "provider", "external_id"},
 	},
+	{
+		Name:        "danmaku_search_cache",
+		Label:       "弹幕匹配与搜索缓存",
+		Group:       "cache",
+		Description: "danmu_api 匹配、剧集搜索与番剧详情缓存数据",
+		Columns:     []string{"cache_key", "fetched_at", "expires_at", "payload_json"},
+		SearchCols:  []string{"cache_key", "payload_json"},
+		JSONCols:    []string{"payload_json"},
+		TimeCols:    []string{"fetched_at", "expires_at"},
+		OrderBy:     "fetched_at DESC",
+		PKCols:      []string{"cache_key"},
+	},
+	{
+		Name:        "danmaku_comment_cache",
+		Label:       "弹幕正文缓存",
+		Group:       "cache",
+		Description: "单集完整弹幕列表缓存（按原站链接或剧集 ID 索引）",
+		Columns:     []string{"cache_key", "episode_id", "source_url", "video_duration", "comment_count", "fetched_at", "expires_at", "payload_json"},
+		SearchCols:  []string{"episode_id", "source_url", "cache_key"},
+		JSONCols:    []string{"payload_json"},
+		TimeCols:    []string{"fetched_at", "expires_at"},
+		OrderBy:     "fetched_at DESC",
+		PKCols:      []string{"cache_key"},
+	},
 }
 
 func likeEscapePattern(q string) string {

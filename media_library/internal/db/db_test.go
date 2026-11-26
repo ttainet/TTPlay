@@ -37,9 +37,9 @@ func TestMigrationsIdempotencyAndAllTables(t *testing.T) {
 		t.Fatalf("expected library.db file: %v", err)
 	}
 	ver, err := s1.SchemaVersion()
-	if err != nil || ver != 6 {
+	if err != nil || ver != 7 {
 		_ = s1.Close()
-		t.Fatalf("schema version = %d, err = %v, want 6", ver, err)
+		t.Fatalf("schema version = %d, err = %v, want 7", ver, err)
 	}
 	_ = s1.Close()
 
@@ -50,8 +50,8 @@ func TestMigrationsIdempotencyAndAllTables(t *testing.T) {
 	}
 	defer s2.Close()
 	ver2, err := s2.SchemaVersion()
-	if err != nil || ver2 != 6 {
-		t.Fatalf("schema version on reopen = %d, err = %v, want 6", ver2, err)
+	if err != nil || ver2 != 7 {
+		t.Fatalf("schema version on reopen = %d, err = %v, want 7", ver2, err)
 	}
 
 	expectedTables := []string{
@@ -59,6 +59,7 @@ func TestMigrationsIdempotencyAndAllTables(t *testing.T) {
 		"platform_admins", "admin_sessions", "server_settings", "invite_codes", "audit_logs",
 		"meta_works_cache", "meta_seasons_cache", "meta_people_cache", "meta_search_cache",
 		"subtitle_search_cache", "subtitle_file_cache",
+		"danmaku_search_cache", "danmaku_comment_cache",
 		"work_id_links", "genres", "people",
 		"accounts", "households", "household_key_wraps", "members", "devices", "sessions",
 		"qr_login_sessions", "account_login_tickets",
@@ -196,8 +197,8 @@ func TestSettingsEncryptionAndInspectableTablesAllowlist(t *testing.T) {
 	if err != nil {
 		t.Fatalf("list inspectable tables: %v", err)
 	}
-	if len(tables) != 5 {
-		t.Fatalf("expected 5 public inspectable tables, got %d", len(tables))
+	if len(tables) != 7 {
+		t.Fatalf("expected 7 public inspectable tables, got %d", len(tables))
 	}
 	for _, tbl := range tables {
 		if tbl.Group != "cache" && tbl.Group != "link" {

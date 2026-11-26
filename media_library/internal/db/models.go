@@ -103,6 +103,16 @@ type ServerSettings struct {
 	OpenSubtitlesAPIKeySet     bool    `json:"opensubtitles_api_key_set"`
 	OpenSubtitlesAPIKeyMasked  string  `json:"opensubtitles_api_key_masked"`
 	OpenSubtitlesAPIKey        string  `json:"-"`
+	DanmuEnabled               bool    `json:"danmu_enabled"`
+	DanmuAPIBase               string  `json:"danmu_api_base"`
+	DanmuTokenSet              bool    `json:"danmu_token_set"`
+	DanmuTokenMasked           string  `json:"danmu_token_masked"`
+	DanmuToken                 string  `json:"-"`
+	DanmuPreferredPlatforms    string  `json:"danmu_preferred_platforms"`
+	DanmuTimeoutSec            int     `json:"danmu_timeout_sec"`
+	DanmuSearchCacheHours      int     `json:"danmu_search_cache_hours"`
+	DanmuCommentCacheHours     int     `json:"danmu_comment_cache_hours"`
+	DanmuMaxComments           int     `json:"danmu_max_comments"`
 	AllowPublicMetadata        bool    `json:"allow_public_metadata"`
 	AllowFallbackMetadata      bool    `json:"allow_fallback_metadata"`
 	CustomRecognitionWords     string  `json:"custom_recognition_words"`
@@ -156,6 +166,15 @@ type ServerSettingsUpdate struct {
 	OpenSubtitlesAPIBase       *string  `json:"opensubtitles_api_base,omitempty"`
 	OpenSubtitlesAPIKey        *string  `json:"opensubtitles_api_key,omitempty"`
 	ClearOpenSubtitlesAPIKey   bool     `json:"clear_opensubtitles_api_key,omitempty"`
+	DanmuEnabled               *bool    `json:"danmu_enabled,omitempty"`
+	DanmuAPIBase               *string  `json:"danmu_api_base,omitempty"`
+	DanmuToken                 *string  `json:"danmu_token,omitempty"`
+	ClearDanmuToken            bool     `json:"clear_danmu_token,omitempty"`
+	DanmuPreferredPlatforms    *string  `json:"danmu_preferred_platforms,omitempty"`
+	DanmuTimeoutSec            *int     `json:"danmu_timeout_sec,omitempty"`
+	DanmuSearchCacheHours      *int     `json:"danmu_search_cache_hours,omitempty"`
+	DanmuCommentCacheHours     *int     `json:"danmu_comment_cache_hours,omitempty"`
+	DanmuMaxComments           *int     `json:"danmu_max_comments,omitempty"`
 	AllowPublicMetadata        *bool    `json:"allow_public_metadata,omitempty"`
 	AllowFallbackMetadata      *bool    `json:"allow_fallback_metadata,omitempty"`
 	CustomRecognitionWords     *string  `json:"custom_recognition_words,omitempty"`

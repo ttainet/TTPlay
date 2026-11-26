@@ -708,6 +708,30 @@ var migrations = []Migration{
 			`CREATE INDEX IF NOT EXISTS idx_sync_kv_hh_updated ON sync_kv(household_id, updated_at)`,
 		},
 	},
+	{
+		Version: 7,
+		Name:    "0007_danmaku_cache",
+		Statements: []string{
+			`CREATE TABLE IF NOT EXISTS danmaku_search_cache (
+				cache_key    TEXT PRIMARY KEY,
+				payload_json TEXT NOT NULL,
+				fetched_at   INTEGER NOT NULL,
+				expires_at   INTEGER NOT NULL
+			)`,
+			`CREATE INDEX IF NOT EXISTS idx_danmaku_search_cache_exp ON danmaku_search_cache(expires_at)`,
+			`CREATE TABLE IF NOT EXISTS danmaku_comment_cache (
+				cache_key      TEXT PRIMARY KEY,
+				episode_id     TEXT NOT NULL,
+				source_url     TEXT NOT NULL DEFAULT '',
+				video_duration REAL NOT NULL DEFAULT 0,
+				comment_count  INTEGER NOT NULL DEFAULT 0,
+				payload_json   TEXT NOT NULL,
+				fetched_at     INTEGER NOT NULL,
+				expires_at     INTEGER NOT NULL
+			)`,
+			`CREATE INDEX IF NOT EXISTS idx_danmaku_comment_cache_exp ON danmaku_comment_cache(expires_at)`,
+		},
+	},
 }
 
 func (s *Store) runMigrations() error {

@@ -15,6 +15,7 @@ import (
 
 	"ttplay/media_library/internal/account"
 	"ttplay/media_library/internal/applog"
+	"ttplay/media_library/internal/danmaku"
 	"ttplay/media_library/internal/db"
 	"ttplay/media_library/internal/events"
 	"ttplay/media_library/internal/feed"
@@ -64,6 +65,7 @@ type Server struct {
 	Ing      *ingest.Service
 	Idf      *identify.Queue
 	Sub      *subtitles.Service
+	Danmu    *danmaku.Service
 	UserData *userdata.Service
 	Feed     *feed.Service
 	Mux      http.Handler
@@ -110,10 +112,12 @@ func NewServer(
 	var udSvc *userdata.Service
 	var feedSvc *feed.Service
 	var subSvc *subtitles.Service
+	var danmuSvc *danmaku.Service
 	if store != nil {
 		udSvc = userdata.NewService(store, hub)
 		feedSvc = feed.NewService(store, udSvc)
 		subSvc = subtitles.NewService(store)
+		danmuSvc = danmaku.NewService(store)
 	}
 	s := &Server{
 		Store:       store,
@@ -126,6 +130,7 @@ func NewServer(
 		Ing:         ingSvc,
 		Idf:         idfQueue,
 		Sub:         subSvc,
+		Danmu:       danmuSvc,
 		UserData:    udSvc,
 		Feed:        feedSvc,
 		pubRate:     make(map[string]*ipRateBucket),
@@ -165,6 +170,20 @@ func (s *Server) buildMux() http.Handler {
 	mux.HandleFunc("GET /api/v1/subtitles/config", s.requireUserMetadataQuota(s.handleSubtitlesConfig))
 	mux.HandleFunc("GET /api/v1/subtitles/search", s.requireUserMetadataQuota(s.handleSubtitlesSearch))
 	mux.HandleFunc("POST /api/v1/subtitles/download", s.requireUserMetadataQuota(s.handleSubtitlesDownload))
+
+	// Public danmaku search, match & comments proxy (offline clients + authenticated bypass)
+	mux.HandleFunc("GET /api/v1/public/danmaku/config", s.requirePublicMetadata(s.handleDanmakuConfig))
+	mux.HandleFunc("POST /api/v1/public/danmaku/match", s.requirePublicMetadata(s.handleDanmakuMatch))
+	mux.HandleFunc("GET /api/v1/public/danmaku/search", s.requirePublicMetadata(s.handleDanmakuSearch))
+	mux.HandleFunc("GET /api/v1/public/danmaku/bangumi/{id}", s.requirePublicMetadata(s.handleDanmakuBangumi))
+	mux.HandleFunc("GET /api/v1/public/danmaku/comments", s.requirePublicMetadata(s.handleDanmakuComments))
+
+	// Authenticated danmaku search, match & comments proxy
+	mux.HandleFunc("GET /api/v1/danmaku/config", s.requireUserMetadataQuota(s.handleDanmakuConfig))
+	mux.HandleFunc("POST /api/v1/danmaku/match", s.requireUserMetadataQuota(s.handleDanmakuMatch))
+	mux.HandleFunc("GET /api/v1/danmaku/search", s.requireUserMetadataQuota(s.handleDanmakuSearch))
+	mux.HandleFunc("GET /api/v1/danmaku/bangumi/{id}", s.requireUserMetadataQuota(s.handleDanmakuBangumi))
+	mux.HandleFunc("GET /api/v1/danmaku/comments", s.requireUserMetadataQuota(s.handleDanmakuComments))
 
 	// User account authentication & recovery
 	mux.HandleFunc("POST /api/v1/auth/register", s.handleUserRegister)
@@ -305,6 +324,8 @@ func (s *Server) buildMux() http.Handler {
 	mux.HandleFunc("POST /api/admin/settings/test-tmdb", s.requireAdminReady(s.handleAdminTestTmdb))
 	mux.HandleFunc("POST /api/admin/settings/test-provider", s.requireAdminReady(s.handleAdminTestProvider))
 	mux.HandleFunc("POST /api/admin/settings/clear-cache", s.requireAdminReady(s.handleAdminClearMetaCache))
+	mux.HandleFunc("GET /api/admin/danmaku/stats", s.requireAdminReady(s.handleAdminDanmakuStats))
+	mux.HandleFunc("POST /api/admin/danmaku/clear-cache", s.requireAdminReady(s.handleAdminClearDanmakuCache))
 
 	mux.HandleFunc("GET /api/admin/metadata/tables", s.requireAdminReady(s.handleAdminListMetadataTables))
 	mux.HandleFunc("GET /api/admin/metadata/tables/{table}", s.requireAdminReady(s.handleAdminQueryMetadataTable))

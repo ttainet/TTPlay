@@ -23,6 +23,10 @@ const (
 	DefaultAssrtAPIBase               = "https://api.assrt.net/v1"
 	DefaultSubDLAPIBase               = "https://api.subdl.com/api/v1"
 	DefaultOpenSubtitlesAPIBase       = "https://api.opensubtitles.com/api/v1"
+	DefaultDanmuTimeoutSec            = 30
+	DefaultDanmuSearchCacheHours      = 6
+	DefaultDanmuCommentCacheHours     = 168
+	DefaultDanmuMaxComments           = 0
 	DefaultScraperLang                = "zh-CN"
 	DefaultWatchedThreshold           = 0.9
 	DefaultAccentTheme                = "glacier"
@@ -99,6 +103,22 @@ func MaskSecret(raw string) string {
 		return "****"
 	}
 	return "****" + trimmed[len(trimmed)-4:]
+}
+
+func normalizeCSVTokens(raw string) string {
+	parts := strings.Split(raw, ",")
+	out := make([]string, 0, len(parts))
+	seen := make(map[string]bool, len(parts))
+	for _, part := range parts {
+		tok := strings.ToLower(strings.TrimSpace(part))
+		tok = strings.TrimPrefix(tok, "@")
+		if tok == "" || seen[tok] {
+			continue
+		}
+		seen[tok] = true
+		out = append(out, tok)
+	}
+	return strings.Join(out, ",")
 }
 
 func (s *Store) settingsKV() map[string]string {
@@ -241,6 +261,7 @@ func (s *Store) buildServerSettings() ServerSettings {
 	assrtToken := s.getSecretSetting("assrt_token_enc", "")
 	subdlKey := s.getSecretSetting("subdl_api_key_enc", "")
 	openSubtitlesKey := s.getSecretSetting("opensubtitles_api_key_enc", "")
+	danmuToken := s.getSecretSetting("danmu_token_enc", "")
 
 	threshold := DefaultWatchedThreshold
 	if raw := strings.TrimSpace(s.GetSetting("watched_threshold", "")); raw != "" {
@@ -287,6 +308,34 @@ func (s *Store) buildServerSettings() ServerSettings {
 	if raw := strings.TrimSpace(s.GetSetting("min_protocol_version", "")); raw != "" {
 		if v, err := strconv.Atoi(raw); err == nil && v >= 1 {
 			minProto = v
+		}
+	}
+
+	danmuTimeoutSec := DefaultDanmuTimeoutSec
+	if raw := strings.TrimSpace(s.GetSetting("danmu_timeout_sec", "")); raw != "" {
+		if v, err := strconv.Atoi(raw); err == nil && v >= 5 && v <= 120 {
+			danmuTimeoutSec = v
+		}
+	}
+
+	danmuSearchCacheHours := DefaultDanmuSearchCacheHours
+	if raw := strings.TrimSpace(s.GetSetting("danmu_search_cache_hours", "")); raw != "" {
+		if v, err := strconv.Atoi(raw); err == nil && v >= 0 && v <= 168 {
+			danmuSearchCacheHours = v
+		}
+	}
+
+	danmuCommentCacheHours := DefaultDanmuCommentCacheHours
+	if raw := strings.TrimSpace(s.GetSetting("danmu_comment_cache_hours", "")); raw != "" {
+		if v, err := strconv.Atoi(raw); err == nil && v >= 0 && v <= 720 {
+			danmuCommentCacheHours = v
+		}
+	}
+
+	danmuMaxComments := DefaultDanmuMaxComments
+	if raw := strings.TrimSpace(s.GetSetting("danmu_max_comments", "")); raw != "" {
+		if v, err := strconv.Atoi(raw); err == nil && v >= 0 && v <= 200000 {
+			danmuMaxComments = v
 		}
 	}
 
@@ -337,6 +386,16 @@ func (s *Store) buildServerSettings() ServerSettings {
 		OpenSubtitlesAPIKeySet:     openSubtitlesKey != "",
 		OpenSubtitlesAPIKeyMasked:  MaskSecret(openSubtitlesKey),
 		OpenSubtitlesAPIKey:        openSubtitlesKey,
+		DanmuEnabled:               s.GetSettingBool("danmu_enabled", false),
+		DanmuAPIBase:               NormalizeBaseURL(s.GetSetting("danmu_api_base", ""), ""),
+		DanmuTokenSet:              danmuToken != "",
+		DanmuTokenMasked:           MaskSecret(danmuToken),
+		DanmuToken:                 danmuToken,
+		DanmuPreferredPlatforms:    normalizeCSVTokens(s.GetSetting("danmu_preferred_platforms", "")),
+		DanmuTimeoutSec:            danmuTimeoutSec,
+		DanmuSearchCacheHours:      danmuSearchCacheHours,
+		DanmuCommentCacheHours:     danmuCommentCacheHours,
+		DanmuMaxComments:           danmuMaxComments,
 		AllowPublicMetadata:        s.GetSettingBool("allow_public_metadata", true),
 		AllowFallbackMetadata:      s.GetSettingBool("allow_fallback_metadata", true),
 		CustomRecognitionWords:     s.GetSetting("custom_recognition_words", ""),
@@ -497,6 +556,67 @@ func (s *Store) UpdateServerSettings(req ServerSettingsUpdate) (ServerSettings, 
 	if err := s.setSecretSetting("opensubtitles_api_key_enc", "", req.OpenSubtitlesAPIKey, req.ClearOpenSubtitlesAPIKey); err != nil {
 		return ServerSettings{}, err
 	}
+	if req.DanmuEnabled != nil {
+		if err := s.SetSettingBool("danmu_enabled", *req.DanmuEnabled); err != nil {
+			return ServerSettings{}, err
+		}
+	}
+	if req.DanmuAPIBase != nil {
+		raw := strings.TrimSpace(*req.DanmuAPIBase)
+		if raw == "" {
+			if err := s.SetSetting("danmu_api_base", ""); err != nil {
+				return ServerSettings{}, err
+			}
+		} else {
+			normalized := NormalizeBaseURL(raw, "")
+			if normalized == "" {
+				return ServerSettings{}, fmt.Errorf("%w: invalid danmu_api_base", ErrInvalidInput)
+			}
+			if err := s.SetSetting("danmu_api_base", normalized); err != nil {
+				return ServerSettings{}, err
+			}
+		}
+	}
+	if err := s.setSecretSetting("danmu_token_enc", "", req.DanmuToken, req.ClearDanmuToken); err != nil {
+		return ServerSettings{}, err
+	}
+	if req.DanmuPreferredPlatforms != nil {
+		if err := s.SetSetting("danmu_preferred_platforms", normalizeCSVTokens(*req.DanmuPreferredPlatforms)); err != nil {
+			return ServerSettings{}, err
+		}
+	}
+	if req.DanmuTimeoutSec != nil {
+		if *req.DanmuTimeoutSec < 5 || *req.DanmuTimeoutSec > 120 {
+			return ServerSettings{}, fmt.Errorf("%w: danmu_timeout_sec must be between 5 and 120", ErrInvalidInput)
+		}
+		if err := s.SetSetting("danmu_timeout_sec", strconv.Itoa(*req.DanmuTimeoutSec)); err != nil {
+			return ServerSettings{}, err
+		}
+	}
+	if req.DanmuSearchCacheHours != nil {
+		if *req.DanmuSearchCacheHours < 0 || *req.DanmuSearchCacheHours > 168 {
+			return ServerSettings{}, fmt.Errorf("%w: danmu_search_cache_hours must be between 0 and 168", ErrInvalidInput)
+		}
+		if err := s.SetSetting("danmu_search_cache_hours", strconv.Itoa(*req.DanmuSearchCacheHours)); err != nil {
+			return ServerSettings{}, err
+		}
+	}
+	if req.DanmuCommentCacheHours != nil {
+		if *req.DanmuCommentCacheHours < 0 || *req.DanmuCommentCacheHours > 720 {
+			return ServerSettings{}, fmt.Errorf("%w: danmu_comment_cache_hours must be between 0 and 720", ErrInvalidInput)
+		}
+		if err := s.SetSetting("danmu_comment_cache_hours", strconv.Itoa(*req.DanmuCommentCacheHours)); err != nil {
+			return ServerSettings{}, err
+		}
+	}
+	if req.DanmuMaxComments != nil {
+		if *req.DanmuMaxComments < 0 || *req.DanmuMaxComments > 200000 {
+			return ServerSettings{}, fmt.Errorf("%w: danmu_max_comments must be between 0 and 200000", ErrInvalidInput)
+		}
+		if err := s.SetSetting("danmu_max_comments", strconv.Itoa(*req.DanmuMaxComments)); err != nil {
+			return ServerSettings{}, err
+		}
+	}
 	if req.AllowPublicMetadata != nil {
 		if err := s.SetSettingBool("allow_public_metadata", *req.AllowPublicMetadata); err != nil {
 			return ServerSettings{}, err
@@ -633,6 +753,35 @@ func (s *Store) SeedPublicMetadataIfAbsent(allow *bool) error {
 	err := s.db.QueryRow(`SELECT value FROM server_settings WHERE key = 'allow_public_metadata'`).Scan(&existing)
 	if err == sql.ErrNoRows {
 		return s.SetSettingBool("allow_public_metadata", *allow)
+	}
+	return nil
+}
+
+// SeedDanmuSettingsIfAbsent applies initial danmu_api startup flags without
+// overwriting explicitly saved admin settings.
+func (s *Store) SeedDanmuSettingsIfAbsent(apiBase, token string, enabled *bool) error {
+	if strings.TrimSpace(apiBase) != "" && s.GetSetting("danmu_api_base", "") == "" {
+		if normalized := NormalizeBaseURL(apiBase, ""); normalized != "" {
+			if err := s.SetSetting("danmu_api_base", normalized); err != nil {
+				return err
+			}
+		}
+	}
+	if strings.TrimSpace(token) != "" && s.GetSetting("danmu_token_enc", "") == "" {
+		sealed, err := s.vault.Seal(strings.TrimSpace(token))
+		if err != nil {
+			return err
+		}
+		if err := s.SetSetting("danmu_token_enc", sealed); err != nil {
+			return err
+		}
+	}
+	if enabled != nil {
+		var existing string
+		err := s.db.QueryRow(`SELECT value FROM server_settings WHERE key = 'danmu_enabled'`).Scan(&existing)
+		if err == sql.ErrNoRows {
+			return s.SetSettingBool("danmu_enabled", *enabled)
+		}
 	}
 	return nil
 }
