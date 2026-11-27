@@ -384,4 +384,39 @@ void main() {
     expect(routeLogs.single, contains('prefetch=true'));
     expect(routeLogs.single, contains('size=2.0MiB'));
   });
+
+  test('logs /s proxy stats with upstream wait and rate across statsLogInterval', () async {
+    final originalLogger = logging.appLogger;
+    final logOutput = _RecordingLogOutput();
+    logging.appLogger = Logger(printer: SimplePrinter(), output: logOutput);
+    addTearDown(() => logging.appLogger = originalLogger);
+
+    final timedProxy = StreamProxy(statsLogInterval: const Duration(milliseconds: 40));
+    addTearDown(timedProxy.stop);
+
+    const chunkBytes = 512 * 1024;
+    final body = StreamController<List<int>>();
+    final prefetch = _PrefetchDriver([])..playbackBody = body.stream;
+    const entry = StorageEntry(path: '/film.mkv', name: 'film.mkv', isDirectory: false, size: 2 * chunkBytes);
+    final url = await timedProxy.register(mountId: 'm1', driver: prefetch, entry: entry);
+
+    body.add(Uint8List(chunkBytes));
+    unawaited(() async {
+      await Future<void>.delayed(const Duration(milliseconds: 60));
+      body.add(Uint8List(chunkBytes));
+      await body.close();
+    }());
+
+    final res = await fetch(url);
+    expect(res.status, HttpStatus.ok);
+    expect(res.body.length, 2 * chunkBytes);
+
+    final statsLogs = logOutput.lines.where((l) => l.contains('Stream proxy /s stats:')).toList();
+    expect(statsLogs, isNotEmpty);
+    expect(statsLogs.first, contains('rate='));
+    expect(statsLogs.first, contains('upWait='));
+    expect(statsLogs.first, contains('downWait='));
+    expect(statsLogs.first, contains('pauses='));
+    expect(statsLogs.first, contains('reqs=1'));
+  });
 }

@@ -605,6 +605,9 @@ void main() {
     expect(statsLines, hasLength(1));
     expect(statsLines.single, contains('chunks='));
     expect(statsLines.single, contains('perConn='));
+    expect(statsLines.single, contains('ttfb='));
+    expect(statsLines.single, contains('redir=0'));
+    expect(statsLines.single, contains('host=127.0.0.1'));
 
     origin.statusByStart[6000] = HttpStatus.tooManyRequests;
     final third = await collect(

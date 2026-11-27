@@ -4,6 +4,7 @@ import 'dart:io';
 import 'dart:math';
 import 'dart:typed_data';
 
+import '../utils/app_logger.dart';
 import 'storage_driver.dart';
 
 /// How a bulk transfer (the downloader) reads one file: over [connections]
@@ -128,10 +129,23 @@ class HttpRangeReader {
   }
 
   Stream<List<int>> _readSingle(StorageLinkResolver resolve, int start, int? end) async* {
-    var response = await _get(await resolve(forceRefresh: false), start, end);
+    final sw = Stopwatch()..start();
+    var link = await resolve(forceRefresh: false);
+    var response = await _get(link, start, end);
     if (_staleLinkStatuses.contains(response.statusCode)) {
       await _discard(response);
-      response = await _get(await resolve(forceRefresh: true), start, end);
+      link = await resolve(forceRefresh: true);
+      response = await _get(link, start, end);
+    }
+    sw.stop();
+    if (end == null || end - start + 1 >= 256 * 1024) {
+      final finalHost = response.redirects.isNotEmpty
+          ? response.redirects.fold<Uri>(link.url, (current, r) => current.resolveUri(r.location)).host
+          : link.url.host;
+      appLogger.i(
+        'Single-stream open: status=${response.statusCode} ttfb=${sw.elapsedMilliseconds}ms '
+        'redirects=${response.redirects.length} host=$finalHost range=$start-${end ?? ''}',
+      );
     }
 
     switch (response.statusCode) {

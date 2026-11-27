@@ -138,6 +138,7 @@ import 'video_player/live_tv_session_args.dart';
 import 'video_player/live_tv_session_state.dart';
 import 'video_player/tv_background_suspend_policy.dart';
 import 'video_player/tv_background_suspend_state.dart';
+import 'video_player/playback_diagnostics_logger.dart';
 import 'video_player/visual_effects_controller.dart';
 import 'video_player/widgets/player_prompt_overlays.dart';
 import '../widgets/overlay_sheet.dart';
@@ -1302,6 +1303,7 @@ class VideoPlayerScreenState extends State<VideoPlayerScreen>
 
   final ValueNotifier<bool> _isBuffering = ValueNotifier<bool>(false);
   final FirstFrameGate _firstFrame = FirstFrameGate();
+  PlaybackDiagnosticsLogger? _diagnosticsLogger;
   bool _hasFatalPlaybackError = false;
 
   final ValueNotifier<bool> _isExiting = ValueNotifier<bool>(false);
@@ -2509,6 +2511,8 @@ class VideoPlayerScreenState extends State<VideoPlayerScreen>
     // after disposal, including offline writes and watched-state settlement.
     _shutdownOperation ??= _sendStoppedProgressOnce();
 
+    _diagnosticsLogger?.dispose();
+    _diagnosticsLogger = null;
     _isBuffering.dispose();
     _firstFrame.dispose();
     _isExiting.dispose();

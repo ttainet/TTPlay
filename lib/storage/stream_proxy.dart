@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
 
+import 'package:clock/clock.dart';
 import 'package:flutter/foundation.dart' show visibleForTesting;
 
 import '../utils/app_logger.dart';
@@ -23,14 +24,18 @@ import 'stream_variant.dart';
 /// other devices cannot reach it and other local processes cannot enumerate it.
 class StreamProxy {
   static const resumeRequestHeader = 'x-plezy-resume';
+  static const Duration defaultStatsLogInterval = Duration(seconds: 15);
+
   StreamProxy({
     Random? random,
     BulkReadOptions Function()? bulkOptions,
     this._hlsPrefetcher,
+    this.statsLogInterval = defaultStatsLogInterval,
   }) : _random = random ?? Random.secure(),
        _bulkOptions = bulkOptions ?? (() => BulkReadOptions.defaults);
 
   final Random _random;
+  final Duration statsLogInterval;
 
   /// Read per bulk request, so a changed setting applies to the next one.
   final BulkReadOptions Function() _bulkOptions;
@@ -288,7 +293,12 @@ class StreamProxy {
           // From here a driver failure can only be signalled by dropping the
           // connection, which players answer by reconnecting with a new Range.
           await response.addStream(
-            (bulkOptions == null && !usePlaybackPrefetch) ? _remaining(chunks) : _remainingBulk(chunks),
+            _pipePlayback(
+              chunks,
+              immediateCancel: bulkOptions != null || usePlaybackPrefetch,
+              stats: (!bulk && wantsBody && size >= 1024 * 1024) ? source.proxyStats : null,
+              label: 'Stream proxy /s stats',
+            ),
           );
         }
         await response.close();
@@ -451,7 +461,14 @@ class StreamProxy {
         }
         if (chunks != null && hasFirst) {
           response.bufferOutput = false;
-          await response.addStream(_remainingBulk(chunks));
+          await response.addStream(
+            _pipePlayback(
+              chunks,
+              immediateCancel: true,
+              stats: source.proxyStats,
+              label: 'Stream proxy /v stats',
+            ),
+          );
         }
         await response.close();
       } finally {
@@ -666,6 +683,100 @@ class StreamProxy {
     return controller.stream;
   }
 
+  /// Pipes [chunks] to the HTTP response while tracking upstream read waits
+  /// versus downstream socket backpressure pauses in [stats].
+  Stream<List<int>> _pipePlayback(
+    StreamIterator<List<int>> chunks, {
+    required bool immediateCancel,
+    _ProxyStreamStats? stats,
+    required String label,
+  }) {
+    if (stats == null) {
+      return immediateCancel ? _remainingBulk(chunks) : _remaining(chunks);
+    }
+    stats.recordRequestStart(clock.now());
+    late StreamSubscription<List<int>> subscription;
+    final downWatch = Stopwatch();
+    final controller = StreamController<List<int>>(sync: true);
+
+    void flushDownstream() {
+      if (!downWatch.isRunning) return;
+      downWatch.stop();
+      stats.recordDownstreamWait(downWatch.elapsedMicroseconds);
+      downWatch.reset();
+    }
+
+    Stream<List<int>> timedChunks() async* {
+      final upWatch = Stopwatch();
+      var first = true;
+      while (true) {
+        if (!first) {
+          upWatch.start();
+          final hasNext = await chunks.moveNext();
+          upWatch.stop();
+          stats.recordUpstreamWait(upWatch.elapsedMicroseconds);
+          upWatch.reset();
+          if (!hasNext) break;
+        }
+        first = false;
+        final chunk = chunks.current;
+        stats.recordBytes(chunk.length);
+        _maybeLogProxyStats(stats, label);
+        yield chunk;
+      }
+      _maybeLogProxyStats(stats, label);
+    }
+
+    controller.onListen = () {
+      subscription = timedChunks().listen(
+        controller.add,
+        onError: controller.addError,
+        onDone: () {
+          flushDownstream();
+          controller.close();
+        },
+      );
+    };
+    controller.onPause = () {
+      stats.recordDownstreamPause();
+      downWatch.start();
+      subscription.pause();
+    };
+    controller.onResume = () {
+      flushDownstream();
+      subscription.resume();
+    };
+    controller.onCancel = () async {
+      flushDownstream();
+      if (immediateCancel) {
+        final stopped = chunks.cancel();
+        await subscription.cancel();
+        await stopped;
+      } else {
+        await subscription.cancel();
+      }
+    };
+    return controller.stream;
+  }
+
+  void _maybeLogProxyStats(_ProxyStreamStats stats, String label) {
+    final start = stats.windowStart;
+    if (start == null) return;
+    final now = clock.now();
+    final elapsedUs = now.difference(start).inMicroseconds;
+    if (elapsedUs < statsLogInterval.inMicroseconds || elapsedUs <= 0) return;
+    final elapsedSec = elapsedUs / 1000000.0;
+    final rateMBs = (stats.windowBytes / (1024 * 1024)) / elapsedSec;
+    final upPct = ((stats.windowUpstreamWaitUs / elapsedUs) * 100).clamp(0.0, 100.0);
+    final downPct = ((stats.windowDownstreamWaitUs / elapsedUs) * 100).clamp(0.0, 100.0);
+    appLogger.i(
+      '$label: rate=${rateMBs.toStringAsFixed(2)}MB/s '
+      'upWait=${upPct.toStringAsFixed(0)}% downWait=${downPct.toStringAsFixed(0)}% '
+      'pauses=${stats.windowDownstreamPauses} reqs=${stats.windowRequests}',
+    );
+    stats.resetWindow(now);
+  }
+
   static Future<void> _finish(HttpResponse response, int status) async {
     response.statusCode = status;
     response.contentLength = 0;
@@ -783,6 +894,7 @@ class _VariantSource {
   String? mediaContentType;
   bool loggedRoute = false;
   bool loggedHeadFallback = false;
+  final _ProxyStreamStats proxyStats = _ProxyStreamStats();
   final Map<int, ({int? size, String? contentType})> resourceMeta = {};
   final Map<int, ({String playlistKey, List<Uri> segments, int position})> segmentOrderByResourceIndex = {};
 
@@ -809,4 +921,34 @@ class _Source {
   final StorageDriver driver;
   StorageEntry entry;
   bool loggedPlayback = false;
+  final _ProxyStreamStats proxyStats = _ProxyStreamStats();
+}
+
+/// Rolling per-source metrics used to distinguish upstream delays from player backpressure.
+class _ProxyStreamStats {
+  DateTime? windowStart;
+  int windowBytes = 0;
+  int windowUpstreamWaitUs = 0;
+  int windowDownstreamWaitUs = 0;
+  int windowDownstreamPauses = 0;
+  int windowRequests = 0;
+
+  void recordRequestStart(DateTime now) {
+    windowStart ??= now;
+    windowRequests++;
+  }
+
+  void recordBytes(int bytes) => windowBytes += bytes;
+  void recordUpstreamWait(int microseconds) => windowUpstreamWaitUs += microseconds;
+  void recordDownstreamWait(int microseconds) => windowDownstreamWaitUs += microseconds;
+  void recordDownstreamPause() => windowDownstreamPauses++;
+
+  void resetWindow(DateTime now) {
+    windowStart = now;
+    windowBytes = 0;
+    windowUpstreamWaitUs = 0;
+    windowDownstreamWaitUs = 0;
+    windowDownstreamPauses = 0;
+    windowRequests = 0;
+  }
 }

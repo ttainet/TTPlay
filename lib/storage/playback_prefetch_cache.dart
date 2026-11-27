@@ -477,12 +477,15 @@ class PlaybackPrefetchCache {
     final effectiveMax = file.effectiveMaxConnections(now, rateLimitCooldown);
     final cacheMiB = (cachedBytes / (1024 * 1024)).toStringAsFixed(1);
     final maxMiB = (maxCacheBytes / (1024 * 1024)).toStringAsFixed(1);
+    final avgTtfb = file.windowTtfbCount > 0 ? (file.windowTtfbMsSum / file.windowTtfbCount).round() : 0;
     appLogger.i(
       'Prefetch stats${sessionEnded ? '(end)' : ''}: up=${upMBs.toStringAsFixed(2)}MB/s '
       'down=${downMBs.toStringAsFixed(2)}MB/s perConn=${perConnMBs.toStringAsFixed(2)}MB/s '
       'conn=$active/$effectiveMax(peak=${file.windowPeakActiveConns},cfg=${file.configuredMaxConnections}) '
       'chunks=${file.windowChunksCompleted} hits=${file.windowCacheHits} '
       'hedges=${file.windowHedges} retries=${file.windowRetries} '
+      'ttfb=${avgTtfb}ms(max=${file.windowTtfbMaxMs}ms) redir=${file.windowRedirects} '
+      'host=${file.lastFinalHost ?? '-'} '
       'cache=$cacheMiB/${maxMiB}MiB chunk=${chunkSize ~/ 1024}KiB',
     );
     file.resetStatsWindow(now);
@@ -868,13 +871,15 @@ class PlaybackPrefetchCache {
     var link = await cancelSignal.untilCancelled(file.refresher.current(clock.now()));
     while (true) {
       cancelSignal.checkCancelled();
-      final response = await _followRedirects(
+      final opened = await _followRedirects(
         link: link,
         from: from,
         to: to,
         cancelSignal: cancelSignal,
       );
+      final response = opened.response;
       final status = response.statusCode;
+      file.recordRequestLatency(ttfbMs: opened.ttfbMs, redirects: opened.redirects, host: opened.finalHost);
       try {
         cancelSignal.checkCancelled();
         if (status == HttpStatus.partialContent) {
@@ -910,18 +915,22 @@ class PlaybackPrefetchCache {
     }
   }
 
-  Future<HttpClientResponse> _followRedirects({
+  Future<({HttpClientResponse response, int redirects, String finalHost, int ttfbMs})> _followRedirects({
     required StorageLink link,
     required int from,
     required int to,
     required _CancelableOp cancelSignal,
   }) async {
+    final sw = Stopwatch()..start();
     var uri = link.url;
     var headers = link.headers;
     for (var redirects = 0; ; redirects++) {
       final response = await _sendRangeGet(uri: uri, headers: headers, from: from, to: to, cancelSignal: cancelSignal);
       final location = response.isRedirect ? response.headers.value(HttpHeaders.locationHeader) : null;
-      if (location == null) return response;
+      if (location == null) {
+        sw.stop();
+        return (response: response, redirects: redirects, finalHost: uri.host, ttfbMs: sw.elapsedMilliseconds);
+      }
       await response.listen(null).cancel().catchError((Object _) {});
       final target = uri.resolve(location);
       if (redirects >= 5 || !(target.isScheme('http') || target.isScheme('https'))) {
@@ -1182,6 +1191,11 @@ class _FileState {
   int windowHedges = 0;
   int windowRetries = 0;
   int windowPeakActiveConns = 0;
+  int windowTtfbMsSum = 0;
+  int windowTtfbCount = 0;
+  int windowTtfbMaxMs = 0;
+  int windowRedirects = 0;
+  String? lastFinalHost;
   bool loggedRangeUnsupported = false;
   bool loggedSingleDirectBypass = false;
 
@@ -1189,6 +1203,14 @@ class _FileState {
     if (active > windowPeakActiveConns) {
       windowPeakActiveConns = active;
     }
+  }
+
+  void recordRequestLatency({required int ttfbMs, required int redirects, required String host}) {
+    windowTtfbMsSum += ttfbMs;
+    windowTtfbCount++;
+    if (ttfbMs > windowTtfbMaxMs) windowTtfbMaxMs = ttfbMs;
+    windowRedirects += redirects;
+    lastFinalHost = host;
   }
 
   void resetStatsWindow(DateTime now) {
@@ -1202,6 +1224,10 @@ class _FileState {
     windowHedges = 0;
     windowRetries = 0;
     windowPeakActiveConns = 0;
+    windowTtfbMsSum = 0;
+    windowTtfbCount = 0;
+    windowTtfbMaxMs = 0;
+    windowRedirects = 0;
   }
 
   void updateConfig(StorageLinkResolver resolve, int maxConnections) {

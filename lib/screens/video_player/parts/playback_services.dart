@@ -209,9 +209,13 @@ extension _VideoPlayerPlaybackServiceMethods on VideoPlayerScreenState {
       _playerStreamSubscriptions.add(currentPlayer.streams.backendSwitched.listen((_) => _onBackendSwitched()));
     }
 
+    _diagnosticsLogger?.dispose();
+    _diagnosticsLogger = PlaybackDiagnosticsLogger(player: currentPlayer)..start();
+
     _playerStreamSubscriptions.add(
       currentPlayer.streams.buffering.listen((isBuffering) {
         _isBuffering.value = isBuffering;
+        _diagnosticsLogger?.onBufferingChanged(isBuffering);
         _pushRemotePlayerSnapshot();
       }),
     );
@@ -413,6 +417,8 @@ extension _VideoPlayerPlaybackServiceMethods on VideoPlayerScreenState {
     if (!mounted || _shuttingDown) return;
     await _wakelockController.setEnabled(false);
 
+    _diagnosticsLogger?.dispose();
+    _diagnosticsLogger = null;
     if (mounted) {
       _isBuffering.value = false;
       _firstFrame.reset();

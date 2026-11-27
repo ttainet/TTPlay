@@ -2,8 +2,17 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:logger/logger.dart';
 import 'package:ttplay/storage/http_range_reader.dart';
 import 'package:ttplay/storage/storage_driver.dart';
+import 'package:ttplay/utils/app_logger.dart' as logging;
+
+class _RecordingLogOutput extends LogOutput {
+  final List<String> lines = [];
+
+  @override
+  void output(OutputEvent event) => lines.addAll(event.lines);
+}
 
 /// A local origin serving [content] with Range support, and knobs for the
 /// misbehaviour cloud CDNs show.
@@ -312,5 +321,37 @@ void main() {
     final bytes = await collect(reader.read(resolverFor(['a'], []), start: 9000, connections: 4));
     expect(bytes, content.sublist(9000));
     expect(origin.ranges, ['bytes=9000-']);
+  });
+
+  test('logs Single-stream open TTFB, redirects and host without leaking query tokens', () async {
+    final originalLogger = logging.appLogger;
+    final logOutput = _RecordingLogOutput();
+    logging.appLogger = Logger(printer: SimplePrinter(), output: logOutput);
+    addTearDown(() => logging.appLogger = originalLogger);
+
+    final redirect = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+    addTearDown(() => redirect.close(force: true));
+    redirect.listen((request) {
+      final target = origin.link('secret-video').replace(queryParameters: {'token': 'topsecret999'});
+      unawaited(request.response.redirect(target));
+    });
+
+    final reader = HttpRangeReader(client, chunkSize: 1000);
+    final redirectUri = Uri.parse('http://127.0.0.1:${redirect.port}/entry?auth=secretauth');
+    final bytes = await collect(
+      reader.read(({required forceRefresh}) async => StorageLink(redirectUri), start: 100, connections: 1),
+    );
+    expect(bytes, content.sublist(100));
+
+    final openLogs = logOutput.lines.where((l) => l.contains('Single-stream open:')).toList();
+    expect(openLogs, hasLength(1));
+    expect(openLogs.single, contains('status=206'));
+    expect(openLogs.single, contains('ttfb='));
+    expect(openLogs.single, contains('redirects=1'));
+    expect(openLogs.single, contains('host=127.0.0.1'));
+    expect(openLogs.single, contains('range=100-'));
+    expect(logOutput.lines.join('\n'), isNot(contains('topsecret999')));
+    expect(logOutput.lines.join('\n'), isNot(contains('secretauth')));
+    expect(logOutput.lines.join('\n'), isNot(contains('secret-video')));
   });
 }
