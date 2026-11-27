@@ -7,6 +7,7 @@ import 'dart:typed_data';
 import 'package:clock/clock.dart';
 import 'package:flutter/foundation.dart' show visibleForTesting;
 
+import '../utils/app_logger.dart';
 import 'storage_driver.dart';
 
 /// Opened upstream HLS segment ready to stream to the local proxy response.
@@ -39,11 +40,14 @@ class HlsSegmentPrefetcher {
     int? maxSingleSegmentCacheBytes,
     this.stallTimeout = const Duration(seconds: 20),
     this.rateLimitCooldown = const Duration(seconds: 60),
+    this.statsLogInterval = defaultStatsLogInterval,
   }) : assert((maxCacheBytes ?? defaultMaxCacheBytesForPlatform) > 0),
        maxCacheBytes = maxCacheBytes ?? defaultMaxCacheBytesForPlatform,
        defaultMaxConnections = defaultMaxConnections ?? defaultMaxConnectionsForPlatform,
        maxSingleSegmentCacheBytes =
            maxSingleSegmentCacheBytes ?? max(1, (maxCacheBytes ?? defaultMaxCacheBytesForPlatform) ~/ 2);
+
+  static const Duration defaultStatsLogInterval = Duration(seconds: 15);
 
   static int get defaultMaxCacheBytesForPlatform =>
       (Platform.isAndroid || Platform.isIOS) ? 16 * 1024 * 1024 : 32 * 1024 * 1024;
@@ -72,6 +76,7 @@ class HlsSegmentPrefetcher {
   final int maxSingleSegmentCacheBytes;
   final Duration stallTimeout;
   final Duration rateLimitCooldown;
+  final Duration statsLogInterval;
 
   final LinkedHashMap<_SegmentKey, _SegmentSlot> _lru = LinkedHashMap<_SegmentKey, _SegmentSlot>();
   final Map<String, _PlaylistState> _playlists = {};
@@ -115,6 +120,8 @@ class HlsSegmentPrefetcher {
     }
     if (existing != null && existing.completed && !existing.uncacheable && existing.error == null) {
       _touchLru(key, existing);
+      playlist.windowCacheHits++;
+      _maybeLogStats(playlist, clock.now());
       _schedulePrefetch(playlist, segmentUrls, effectiveMax);
       return HlsSegmentResponse(
         statusCode: existing.statusCode,
@@ -293,9 +300,53 @@ class HlsSegmentPrefetcher {
     }
   }
 
+  void _markUncacheable(_PlaylistState playlist, _SegmentSlot slot, int observedBytes) {
+    slot.uncacheable = true;
+    _removeSlotIfExact(slot);
+    if (!playlist.loggedUncacheable) {
+      playlist.loggedUncacheable = true;
+      appLogger.w(
+        'HLS prefetch segment uncacheable: pos=${slot.key.position} '
+        'bytes=$observedBytes limit=$maxSingleSegmentCacheBytes',
+      );
+    }
+  }
+
+  void _maybeLogStats(_PlaylistState playlist, DateTime now) {
+    if (statsLogInterval <= Duration.zero) return;
+    final windowStart = playlist.statsWindowStart;
+    if (windowStart == null) {
+      playlist.statsWindowStart = now;
+      return;
+    }
+    final elapsedMs = now.difference(windowStart).inMilliseconds;
+    if (elapsedMs < statsLogInterval.inMilliseconds || playlist.windowUpstreamBytes <= 0) {
+      return;
+    }
+    final elapsedSec = elapsedMs / 1000.0;
+    final upMBs = (playlist.windowUpstreamBytes / (1024 * 1024)) / elapsedSec;
+    final perConnMBs = playlist.windowCompletedMs > 0
+        ? (playlist.windowCompletedBytes / (1024 * 1024)) / (playlist.windowCompletedMs / 1000.0)
+        : 0.0;
+    final active = _activeFetchCount(playlist.playlistKey);
+    final effectiveMax = playlist.effectiveMaxConnections(now, rateLimitCooldown);
+    final cacheMiB = (_reservedBytes / (1024 * 1024)).toStringAsFixed(1);
+    final maxMiB = (maxCacheBytes / (1024 * 1024)).toStringAsFixed(1);
+    appLogger.i(
+      'HLS prefetch stats: up=${upMBs.toStringAsFixed(2)}MB/s '
+      'perConn=${perConnMBs.toStringAsFixed(2)}MB/s '
+      'conn=$active/$effectiveMax(peak=${playlist.windowPeakActiveConns},cfg=${playlist.configuredMaxConnections}) '
+      'segs=${playlist.windowSegmentsCompleted} hits=${playlist.windowCacheHits} '
+      'cache=$cacheMiB/${maxMiB}MiB',
+    );
+    playlist.resetStatsWindow(now);
+  }
+
   void _startFetch(_SegmentSlot slot, _PlaylistState playlist, List<Uri> segmentUrls, int effectiveMax) {
     if (slot.fetching || slot.completed || slot.cancelled) return;
     slot.fetching = true;
+    slot.fetchStartedAt = clock.now();
+    playlist.recordActiveConns(_activeFetchCount(playlist.playlistKey));
     unawaited(_runFetch(slot, playlist, segmentUrls, effectiveMax));
   }
 
@@ -317,7 +368,14 @@ class HlsSegmentPrefetcher {
       final status = response.statusCode;
       if (status == HttpStatus.tooManyRequests) {
         await response.listen(null).cancel().catchError((Object _) {});
-        playlist.recordRateLimit(clock.now());
+        final now = clock.now();
+        final prevMax = playlist.effectiveMaxConnections(now, rateLimitCooldown);
+        playlist.recordRateLimit(now);
+        final nextMax = playlist.effectiveMaxConnections(now, rateLimitCooldown);
+        appLogger.w(
+          'HLS prefetch rate-limited (HTTP 429): maxConn $prevMax->$nextMax '
+          'cooldown=${rateLimitCooldown.inSeconds}s host=${slot.url.host}',
+        );
         _cancelBackgroundPrefetches(playlist.playlistKey);
         _failSlot(slot, const StorageException(StorageErrorKind.rateLimited, 'Origin answered HTTP 429'));
         return;
@@ -334,8 +392,7 @@ class HlsSegmentPrefetcher {
       slot.contentLength = contentLength;
 
       if (contentLength != null && contentLength > maxSingleSegmentCacheBytes) {
-        slot.uncacheable = true;
-        _removeSlotIfExact(slot);
+        _markUncacheable(playlist, slot, contentLength);
         if (slot.activeConsumers == 0) {
           await response.listen(null).cancel().catchError((Object _) {});
           slot.cancel();
@@ -353,12 +410,12 @@ class HlsSegmentPrefetcher {
           final raw = body.current;
           if (raw.isEmpty) continue;
           final copy = Uint8List.fromList(raw);
+          playlist.windowUpstreamBytes += copy.length;
 
           if (!slot.uncacheable) {
             final nextSize = slot.bufferedBytes + copy.length;
             if (nextSize > maxSingleSegmentCacheBytes || !_evictToFit(copy.length)) {
-              slot.uncacheable = true;
-              _removeSlotIfExact(slot);
+              _markUncacheable(playlist, slot, nextSize);
               if (slot.activeConsumers == 0) {
                 slot.cancel();
                 return;
@@ -374,11 +431,18 @@ class HlsSegmentPrefetcher {
           slot.notifyProgress();
         }
         if (slot.cancelled) return;
+        final now = clock.now();
         slot.completed = true;
         slot.fetching = false;
+        playlist.windowSegmentsCompleted++;
+        playlist.windowCompletedBytes += slot.bufferedBytes;
+        if (slot.fetchStartedAt case final started?) {
+          playlist.windowCompletedMs += max(1, now.difference(started).inMilliseconds);
+        }
         slot.notifyProgress();
+        _maybeLogStats(playlist, now);
         if (!slot.uncacheable) {
-          _schedulePrefetch(playlist, segmentUrls, playlist.effectiveMaxConnections(clock.now(), rateLimitCooldown));
+          _schedulePrefetch(playlist, segmentUrls, playlist.effectiveMaxConnections(now, rateLimitCooldown));
         }
       } on _CancelledException {
         return;
@@ -594,6 +658,7 @@ class _SegmentSlot {
   int activeConsumers = 0;
   int bufferedBytes = 0;
   int trackedBytes = 0;
+  DateTime? fetchStartedAt;
   final List<Uint8List?> chunks = [];
 
   HttpClientRequest? activeRequest;
@@ -659,6 +724,30 @@ class _PlaylistState {
   int activeWindowEnd = 0;
   int _dynamicMaxConnections;
   DateTime? _lastRateLimitAt;
+  DateTime? statsWindowStart;
+  int windowUpstreamBytes = 0;
+  int windowSegmentsCompleted = 0;
+  int windowCompletedBytes = 0;
+  int windowCompletedMs = 0;
+  int windowCacheHits = 0;
+  int windowPeakActiveConns = 0;
+  bool loggedUncacheable = false;
+
+  void recordActiveConns(int active) {
+    if (active > windowPeakActiveConns) {
+      windowPeakActiveConns = active;
+    }
+  }
+
+  void resetStatsWindow(DateTime now) {
+    statsWindowStart = now;
+    windowUpstreamBytes = 0;
+    windowSegmentsCompleted = 0;
+    windowCompletedBytes = 0;
+    windowCompletedMs = 0;
+    windowCacheHits = 0;
+    windowPeakActiveConns = 0;
+  }
 
   void updateConfig(HlsHeadersResolver resolveHeaders, int maxConnections) {
     refresher.resolveHeaders = resolveHeaders;

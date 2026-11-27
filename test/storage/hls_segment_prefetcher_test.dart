@@ -3,8 +3,17 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:logger/logger.dart';
 import 'package:ttplay/storage/hls_segment_prefetcher.dart';
 import 'package:ttplay/storage/storage_driver.dart';
+import 'package:ttplay/utils/app_logger.dart' as logging;
+
+class _RecordingLogOutput extends LogOutput {
+  final List<String> lines = [];
+
+  @override
+  void output(OutputEvent event) => lines.addAll(event.lines);
+}
 
 class _FakeHlsOrigin {
   late HttpServer server;
@@ -364,5 +373,66 @@ void main() {
     );
     expect(await readAll(huge), origin.segments['/huge.m4s']);
     expect(prefetcher.cachedBytes, lessThanOrEqualTo(1200));
+  });
+
+  test('logs HLS prefetch stats on interval and warns on HTTP 429 without leaking query tokens', () async {
+    final originalLogger = logging.appLogger;
+    final logOutput = _RecordingLogOutput();
+    logging.appLogger = Logger(printer: SimplePrinter(), output: logOutput);
+    addTearDown(() => logging.appLogger = originalLogger);
+
+    final urls = <Uri>[];
+    for (var i = 0; i < 6; i++) {
+      final path = '/logseg$i.m4s';
+      origin.segments[path] = List<int>.filled(1024, i + 1);
+      urls.add(origin.url(path).replace(queryParameters: {'token': 'topsecret-$i'}));
+    }
+
+    final prefetcher = HlsSegmentPrefetcher(
+      client,
+      maxCacheBytes: 16 * 1024,
+      defaultMaxConnections: 2,
+      statsLogInterval: const Duration(milliseconds: 40),
+    );
+    addTearDown(prefetcher.clear);
+
+    final seg0 = await prefetcher.openSegment(
+      playlistKey: 'stats-pl',
+      segmentUrls: urls,
+      segmentPosition: 0,
+      resolveHeaders: ({required bool forceRefresh}) async => const {},
+    );
+    expect(await readAll(seg0), origin.segments['/logseg0.m4s']);
+
+    await Future<void>.delayed(const Duration(milliseconds: 60));
+
+    // seg5 lies outside seg0's 0..2 window, so it fetches fresh after statsLogInterval elapsed.
+    final seg5 = await prefetcher.openSegment(
+      playlistKey: 'stats-pl',
+      segmentUrls: urls,
+      segmentPosition: 5,
+      resolveHeaders: ({required bool forceRefresh}) async => const {},
+    );
+    expect(await readAll(seg5), origin.segments['/logseg5.m4s']);
+
+    final statsLines = logOutput.lines.where((l) => l.contains('HLS prefetch stats:')).toList();
+    expect(statsLines, hasLength(1));
+    expect(statsLines.single, contains('segs='));
+
+    origin.statusOnceByPath['/logseg4.m4s'] = HttpStatus.tooManyRequests;
+    await expectLater(
+      prefetcher.openSegment(
+        playlistKey: 'stats-pl',
+        segmentUrls: urls,
+        segmentPosition: 4,
+        resolveHeaders: ({required bool forceRefresh}) async => const {},
+      ),
+      throwsA(isA<StorageException>().having((e) => e.kind, 'kind', StorageErrorKind.rateLimited)),
+    );
+
+    final rateLimitLines = logOutput.lines.where((l) => l.contains('HLS prefetch rate-limited (HTTP 429):')).toList();
+    expect(rateLimitLines, hasLength(1));
+    expect(rateLimitLines.single, contains('host=127.0.0.1'));
+    expect(logOutput.lines.join('\n'), isNot(contains('topsecret')));
   });
 }

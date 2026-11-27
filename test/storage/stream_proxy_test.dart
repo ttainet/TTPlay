@@ -3,10 +3,19 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:logger/logger.dart';
 import 'package:ttplay/storage/http_range_reader.dart';
 import 'package:ttplay/storage/storage_driver.dart';
 import 'package:ttplay/storage/storage_mount.dart';
 import 'package:ttplay/storage/stream_proxy.dart';
+import 'package:ttplay/utils/app_logger.dart' as logging;
+
+class _RecordingLogOutput extends LogOutput {
+  final List<String> lines = [];
+
+  @override
+  void output(OutputEvent event) => lines.addAll(event.lines);
+}
 
 class _MemoryDriver implements StorageDriver {
   _MemoryDriver(this.bytes);
@@ -351,5 +360,28 @@ void main() {
     client.close(force: true);
 
     await cancelled.future.timeout(const Duration(seconds: 3));
+  });
+
+  test('logs /s playback route once per large registered file', () async {
+    final originalLogger = logging.appLogger;
+    final logOutput = _RecordingLogOutput();
+    logging.appLogger = Logger(printer: SimplePrinter(), output: logOutput);
+    addTearDown(() => logging.appLogger = originalLogger);
+
+    final largeContent = Uint8List(2 * 1024 * 1024);
+    final prefetch = _PrefetchDriver(largeContent);
+    const entry = StorageEntry(path: '/movie.mkv', name: 'movie.mkv', isDirectory: false, size: 2 * 1024 * 1024);
+    final url = await proxy.register(mountId: 'm1', driver: prefetch, entry: entry);
+
+    final first = await fetch(url, range: 'bytes=0-1023');
+    expect(first.status, HttpStatus.partialContent);
+    final second = await fetch(url, range: 'bytes=1024-2047');
+    expect(second.status, HttpStatus.partialContent);
+
+    final routeLogs = logOutput.lines.where((l) => l.contains('Stream proxy /s:')).toList();
+    expect(routeLogs, hasLength(1));
+    expect(routeLogs.single, contains('driver=local'));
+    expect(routeLogs.single, contains('prefetch=true'));
+    expect(routeLogs.single, contains('size=2.0MiB'));
   });
 }

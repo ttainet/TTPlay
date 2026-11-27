@@ -4,12 +4,21 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:logger/logger.dart';
 import 'package:ttplay/storage/drivers/quark_storage_driver.dart';
 import 'package:ttplay/storage/http_range_reader.dart';
 import 'package:ttplay/storage/playback_prefetch_cache.dart';
 import 'package:ttplay/storage/storage_driver.dart';
 import 'package:ttplay/storage/stream_proxy.dart';
 import 'package:ttplay/storage/stream_variant.dart';
+import 'package:ttplay/utils/app_logger.dart' as logging;
+
+class _RecordingLogOutput extends LogOutput {
+  final List<String> lines = [];
+
+  @override
+  void output(OutputEvent event) => lines.addAll(event.lines);
+}
 
 const _order = ['4k', '2k', 'super', 'high', 'normal', 'low'];
 
@@ -377,6 +386,54 @@ void main() {
       expect(body2, mp4Bytes);
       expect(source.variantPlaybackCalls, hasLength(1));
       expect(mp4Ranges, ['bytes=0-3071']);
+    });
+
+    test('logs /v HEAD fallback warning and direct route once when Content-Length is missing', () async {
+      final originalLogger = logging.appLogger;
+      final logOutput = _RecordingLogOutput();
+      logging.appLogger = Logger(printer: SimplePrinter(), output: logOutput);
+      addTearDown(() => logging.appLogger = originalLogger);
+
+      final mp4Bytes = Uint8List.fromList(List<int>.generate(1024, (i) => i % 251));
+      final mp4Server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+      addTearDown(() => mp4Server.close(force: true));
+      mp4Server.listen((req) async {
+        final resp = req.response;
+        if (req.method == 'HEAD') {
+          resp.statusCode = HttpStatus.ok;
+          await resp.close();
+          return;
+        }
+        resp.statusCode = HttpStatus.ok;
+        resp.contentLength = mp4Bytes.length;
+        resp.add(mp4Bytes);
+        await resp.close();
+      });
+
+      final source = _PrefetchVariantSource(
+        client: client,
+        variantBuilder: () => StreamVariant(
+          id: 'super',
+          url: Uri.parse('http://127.0.0.1:${mp4Server.port}/transcode.mp4?token=secret999'),
+          isHls: false,
+        ),
+      );
+      addTearDown(source.dispose);
+      const entry = StorageEntry(path: '/Show/ep4.mkv', name: 'ep4.mkv', isDirectory: false);
+      final v = (await source.streamVariants(entry)).single;
+      final url = await proxy.registerVariant(mountId: 'quark', source: source, entry: entry, variant: v);
+
+      for (var i = 0; i < 2; i++) {
+        final req = await client.getUrl(url);
+        final resp = await req.close();
+        expect(await resp.expand((c) => c).toList(), mp4Bytes);
+      }
+
+      final headWarnings = logOutput.lines.where((l) => l.contains('Stream proxy /v: HEAD probe failed')).toList();
+      final routeLogs = logOutput.lines.where((l) => l.contains('Stream proxy /v: variant=super route=direct')).toList();
+      expect(headWarnings, hasLength(1));
+      expect(routeLogs, hasLength(1));
+      expect(logOutput.lines.join('\n'), isNot(contains('secret999')));
     });
   });
 

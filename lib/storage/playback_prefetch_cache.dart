@@ -7,6 +7,7 @@ import 'dart:typed_data';
 import 'package:clock/clock.dart';
 import 'package:flutter/foundation.dart' show visibleForTesting;
 
+import '../utils/app_logger.dart';
 import 'http_range_reader.dart';
 import 'storage_driver.dart';
 
@@ -35,6 +36,7 @@ class PlaybackPrefetchCache {
     this.refreshWindow = const Duration(seconds: 30),
     this.maxRefreshesInWindow = 3,
     this.rateLimitCooldown = const Duration(seconds: 60),
+    this.statsLogInterval = defaultStatsLogInterval,
   }) : assert(chunkSize > 0),
        assert(maxRefreshesInWindow >= 1),
        maxCacheBytes = maxCacheBytes ?? defaultMaxCacheBytesForPlatform,
@@ -43,6 +45,7 @@ class PlaybackPrefetchCache {
   static const int defaultChunkSize = 1 * 1024 * 1024;
   static const int defaultRampUpFirstBytes = 128 * 1024;
   static const int defaultRampUpFullBytes = 512 * 1024;
+  static const Duration defaultStatsLogInterval = Duration(seconds: 15);
 
   static int get defaultMaxCacheBytesForPlatform =>
       (Platform.isAndroid || Platform.isIOS) ? 16 * 1024 * 1024 : 32 * 1024 * 1024;
@@ -81,6 +84,7 @@ class PlaybackPrefetchCache {
   final Duration refreshWindow;
   final int maxRefreshesInWindow;
   final Duration rateLimitCooldown;
+  final Duration statsLogInterval;
 
   final LinkedHashMap<_ChunkKey, _ChunkSlot> _lru = LinkedHashMap<_ChunkKey, _ChunkSlot>();
   final Map<String, _FileState> _files = {};
@@ -134,6 +138,13 @@ class PlaybackPrefetchCache {
     final span = clampedEnd - start + 1;
     final effectiveMax = file.effectiveMaxConnections(clock.now(), rateLimitCooldown);
     if (totalSize <= chunkSize || effectiveMax <= 1 || file.rangeUnsupported || span < chunkSize) {
+      if ((effectiveMax <= 1 || file.rangeUnsupported) && span >= chunkSize && !file.loggedSingleDirectBypass) {
+        file.loggedSingleDirectBypass = true;
+        appLogger.w(
+          'Prefetch bypassed to single connection: effectiveMax=$effectiveMax '
+          'rangeUnsupported=${file.rangeUnsupported} span=$span',
+        );
+      }
       return _wrapCancelable((cancelSignal) => _readSingleDirect(file, start, clampedEnd, totalSize, cancelSignal));
     }
 
@@ -231,6 +242,12 @@ class PlaybackPrefetchCache {
       _touchLru(key, slot);
       final localStart = i == firstChunk ? start - slot.from : 0;
       final localEnd = i == lastChunk ? end - slot.from : slot.length - 1;
+      final file = _files[fileKey];
+      if (file != null) {
+        file.windowCacheHits++;
+        file.windowDeliveredBytes += localEnd - localStart + 1;
+        _maybeLogStats(file, clock.now());
+      }
       yield Uint8List.sublistView(slot.bytes!, localStart, localEnd + 1);
     }
   }
@@ -281,7 +298,7 @@ class PlaybackPrefetchCache {
         cancelSignal: op,
       );
       if (opened.status == HttpStatus.ok) {
-        file.rangeUnsupported = true;
+        _markRangeUnsupported(file);
         yield* _sliceAndTrack(opened.response, start, end, op);
         return;
       }
@@ -314,6 +331,9 @@ class PlaybackPrefetchCache {
           final localEnd = index == session.lastChunk ? end - slot.from : slot.length - 1;
           final slice = Uint8List.sublistView(slot.bytes!, localStart, localEnd + 1);
           session.deliveredBytes += slice.length;
+          file.windowCacheHits++;
+          file.windowDeliveredBytes += slice.length;
+          _maybeLogStats(file, clock.now());
           _schedulePrefetch(file, totalSize);
           yield slice;
           continue;
@@ -337,7 +357,7 @@ class PlaybackPrefetchCache {
             if (slot.fullResponseFallback != null) {
               final fallback = slot.fullResponseFallback!;
               slot.fullResponseFallback = null;
-              file.rangeUnsupported = true;
+              _markRangeUnsupported(file);
               _removeSlotIfExact(slot);
               slot.cancel();
               final resumeAt = slot.from + cursor;
@@ -350,6 +370,8 @@ class PlaybackPrefetchCache {
               final piece = Uint8List.sublistView(slot.bytes!, cursor, endOffset);
               cursor = endOffset;
               session.deliveredBytes += piece.length;
+              file.windowDeliveredBytes += piece.length;
+              _maybeLogStats(file, clock.now());
               _schedulePrefetch(file, totalSize);
               yield piece;
               continue;
@@ -416,6 +438,54 @@ class PlaybackPrefetchCache {
     }
     if (!file.sessions.remove(session)) return;
     _cancelOrphanedFetches(file);
+    if (file.sessions.isEmpty) {
+      _maybeLogStats(file, clock.now(), sessionEnded: true);
+    }
+  }
+
+  void _markRangeUnsupported(_FileState file) {
+    file.rangeUnsupported = true;
+    if (!file.loggedRangeUnsupported) {
+      file.loggedRangeUnsupported = true;
+      appLogger.w('Prefetch fallback: origin returned HTTP 200 (Range unsupported), switched to single connection');
+    }
+  }
+
+  void _maybeLogStats(_FileState file, DateTime now, {bool sessionEnded = false}) {
+    if (statsLogInterval <= Duration.zero) return;
+    final windowStart = file.statsWindowStart;
+    if (windowStart == null) {
+      file.statsWindowStart = now;
+      return;
+    }
+    final elapsedMs = now.difference(windowStart).inMilliseconds;
+    if (sessionEnded) {
+      if (elapsedMs < 3000 || (file.windowUpstreamBytes < chunkSize && file.windowDeliveredBytes < chunkSize)) {
+        return;
+      }
+    } else if (elapsedMs < statsLogInterval.inMilliseconds ||
+        (file.windowUpstreamBytes <= 0 && file.windowDeliveredBytes <= 0)) {
+      return;
+    }
+    final elapsedSec = elapsedMs / 1000.0;
+    final upMBs = (file.windowUpstreamBytes / (1024 * 1024)) / elapsedSec;
+    final downMBs = (file.windowDeliveredBytes / (1024 * 1024)) / elapsedSec;
+    final perConnMBs = file.windowCompletedChunkMs > 0
+        ? (file.windowCompletedChunkBytes / (1024 * 1024)) / (file.windowCompletedChunkMs / 1000.0)
+        : 0.0;
+    final active = _activeFetchCount(file);
+    final effectiveMax = file.effectiveMaxConnections(now, rateLimitCooldown);
+    final cacheMiB = (cachedBytes / (1024 * 1024)).toStringAsFixed(1);
+    final maxMiB = (maxCacheBytes / (1024 * 1024)).toStringAsFixed(1);
+    appLogger.i(
+      'Prefetch stats${sessionEnded ? '(end)' : ''}: up=${upMBs.toStringAsFixed(2)}MB/s '
+      'down=${downMBs.toStringAsFixed(2)}MB/s perConn=${perConnMBs.toStringAsFixed(2)}MB/s '
+      'conn=$active/$effectiveMax(peak=${file.windowPeakActiveConns},cfg=${file.configuredMaxConnections}) '
+      'chunks=${file.windowChunksCompleted} hits=${file.windowCacheHits} '
+      'hedges=${file.windowHedges} retries=${file.windowRetries} '
+      'cache=$cacheMiB/${maxMiB}MiB chunk=${chunkSize ~/ 1024}KiB',
+    );
+    file.resetStatsWindow(now);
   }
 
   void _cancelOrphanedFetches(_FileState file) {
@@ -558,9 +628,12 @@ class PlaybackPrefetchCache {
 
   void _startSlotFetch(_ChunkSlot slot, _FileState file, {required bool forceBypassBudget}) {
     if (slot.fetching || slot.completed || slot.cancelled) return;
+    final now = clock.now();
     slot.fetching = true;
     slot.primaryActive = true;
-    slot.lastProgressAt = clock.now();
+    slot.lastProgressAt = now;
+    slot.fetchStartedAt ??= now;
+    file.recordActiveConns(_activeFetchCount(file));
     unawaited(_runPrimaryFetch(slot, file, allowFullOk: forceBypassBudget));
   }
 
@@ -613,6 +686,7 @@ class PlaybackPrefetchCache {
           slot.inFlight.remove(fetch);
           fetch.abort();
         }
+        file.windowRetries++;
         await slot.untilCancelled(Future<void>.delayed(_retryBaseDelay * attempt));
       }
     } on _CancelledException {
@@ -630,6 +704,8 @@ class PlaybackPrefetchCache {
     final snapshotWritten = slot.written;
     if (snapshotWritten >= slot.length) return;
     slot.hedged = true;
+    file.windowHedges++;
+    file.recordActiveConns(_activeFetchCount(file));
     unawaited(_runHedgeFetch(slot, file, snapshotWritten));
   }
 
@@ -726,6 +802,7 @@ class PlaybackPrefetchCache {
         slot.bytes!.setRange(currentWritten, currentWritten + writeLen, block, skip);
         slot.written = currentWritten + writeLen;
         slot.lastProgressAt = clock.now();
+        file.windowUpstreamBytes += writeLen;
         localOffset = blockEnd;
 
         // Abort any competing peer once we advance the shared write cursor.
@@ -759,9 +836,16 @@ class PlaybackPrefetchCache {
 
   void _markSlotCompleted(_ChunkSlot slot, _FileState file) {
     if (slot.completed || slot.cancelled) return;
+    final now = clock.now();
     slot.completed = true;
     slot.fetching = false;
+    file.windowChunksCompleted++;
+    file.windowCompletedChunkBytes += slot.length;
+    if (slot.fetchStartedAt case final started?) {
+      file.windowCompletedChunkMs += max(1, now.difference(started).inMilliseconds);
+    }
     slot.notifyWaiters();
+    _maybeLogStats(file, now);
     _schedulePrefetch(file, slot.totalSize);
   }
 
@@ -804,7 +888,14 @@ class PlaybackPrefetchCache {
           return (response: response, status: status);
         }
         if (status == HttpStatus.tooManyRequests) {
-          file.recordRateLimit(clock.now());
+          final now = clock.now();
+          final prevMax = file.effectiveMaxConnections(now, rateLimitCooldown);
+          file.recordRateLimit(now);
+          final nextMax = file.effectiveMaxConnections(now, rateLimitCooldown);
+          appLogger.w(
+            'Prefetch rate-limited (HTTP 429): maxConn $prevMax->$nextMax '
+            'cooldown=${rateLimitCooldown.inSeconds}s host=${link.url.host}',
+          );
           throw const StorageException(StorageErrorKind.rateLimited, 'Origin answered HTTP 429');
         }
         if (!_staleLinkStatuses.contains(status)) {
@@ -1028,6 +1119,7 @@ class _ChunkSlot {
   bool hedged = false;
   int activeConsumers = 0;
   DateTime? lastProgressAt;
+  DateTime? fetchStartedAt;
   HttpClientResponse? fullResponseFallback;
 
   final Set<_InFlightFetch> inFlight = {};
@@ -1080,6 +1172,37 @@ class _FileState {
 
   int _dynamicMaxConnections;
   DateTime? _lastRateLimitAt;
+  DateTime? statsWindowStart;
+  int windowUpstreamBytes = 0;
+  int windowDeliveredBytes = 0;
+  int windowChunksCompleted = 0;
+  int windowCompletedChunkBytes = 0;
+  int windowCompletedChunkMs = 0;
+  int windowCacheHits = 0;
+  int windowHedges = 0;
+  int windowRetries = 0;
+  int windowPeakActiveConns = 0;
+  bool loggedRangeUnsupported = false;
+  bool loggedSingleDirectBypass = false;
+
+  void recordActiveConns(int active) {
+    if (active > windowPeakActiveConns) {
+      windowPeakActiveConns = active;
+    }
+  }
+
+  void resetStatsWindow(DateTime now) {
+    statsWindowStart = now;
+    windowUpstreamBytes = 0;
+    windowDeliveredBytes = 0;
+    windowChunksCompleted = 0;
+    windowCompletedChunkBytes = 0;
+    windowCompletedChunkMs = 0;
+    windowCacheHits = 0;
+    windowHedges = 0;
+    windowRetries = 0;
+    windowPeakActiveConns = 0;
+  }
 
   void updateConfig(StorageLinkResolver resolve, int maxConnections) {
     refresher.resolve = resolve;

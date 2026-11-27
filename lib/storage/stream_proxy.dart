@@ -267,6 +267,13 @@ class StreamProxy {
             );
       try {
         final hasFirst = chunks != null && await chunks.moveNext();
+        if (!bulk && wantsBody && size >= 1024 * 1024 && !source.loggedPlayback) {
+          source.loggedPlayback = true;
+          appLogger.i(
+            'Stream proxy /s: driver=${driver.kind.name} prefetch=$usePlaybackPrefetch '
+            'size=${_formatMiB(size)} range=$start-$end',
+          );
+        }
 
         response.headers
           ..set(HttpHeaders.acceptRangesHeader, 'bytes')
@@ -310,6 +317,8 @@ class StreamProxy {
 
   /// Largest playlist the proxy reads into memory to rewrite.
   static const int _maxPlaylistBytes = 8 * 1024 * 1024;
+
+  static String _formatMiB(int bytes) => '${(bytes / (1024 * 1024)).toStringAsFixed(1)}MiB';
 
   /// Serves `/v/<token>/<name>` (the rendition itself) and
   /// `/v/<token>/r/<n>/<name>` (the n-th URL a playlist of it referred to).
@@ -375,6 +384,13 @@ class StreamProxy {
       final rawContentType = head.headers.value(HttpHeaders.contentTypeHeader);
       await head.drain<void>().catchError((Object _) {});
       if (status >= 400 || isPlaylist || length == null) {
+        if (!isPlaylist && (status >= 400 || length == null) && !source.loggedHeadFallback) {
+          source.loggedHeadFallback = true;
+          appLogger.w(
+            'Stream proxy /v: HEAD probe failed, falling back to direct '
+            '(variant=${source.variantId} status=$status contentLength=${head.contentLength} host=${finalUrl.host})',
+          );
+        }
         return null;
       }
       if (resourceIndex == null) {
@@ -415,6 +431,13 @@ class StreamProxy {
           : null;
       try {
         final hasFirst = chunks != null && await chunks.moveNext();
+        if (request.method == 'GET' && length > 0 && hasFirst && !source.loggedRoute) {
+          source.loggedRoute = true;
+          appLogger.i(
+            'Stream proxy /v: variant=${source.variantId} route=range-prefetch '
+            'size=${_formatMiB(size)} range=$start-$end',
+          );
+        }
         response.headers
           ..set(HttpHeaders.acceptRangesHeader, 'bytes')
           ..set(
@@ -463,6 +486,13 @@ class StreamProxy {
         }
       } else if (source.segmentOrderByResourceIndex[resourceIndex] case final segMeta?) {
         await source.variant(forceRefresh: false);
+        if (!source.loggedRoute) {
+          source.loggedRoute = true;
+          appLogger.i(
+            'Stream proxy /v: variant=${source.variantId} route=hls-prefetch '
+            'segments=${segMeta.segments.length} host=${resource.host}',
+          );
+        }
         final seg = await _hls.openSegment(
           playlistKey: segMeta.playlistKey,
           segmentUrls: segMeta.segments,
@@ -562,6 +592,13 @@ class StreamProxy {
       if (value != null) response.headers.set(name, value);
     }
     if (upstream.contentLength >= 0) response.headers.contentLength = upstream.contentLength;
+    if (request.method == 'GET' && !source.loggedRoute) {
+      source.loggedRoute = true;
+      appLogger.i(
+        'Stream proxy /v: variant=${source.variantId} route=direct prefetch=$usePrefetch '
+        'status=$status length=${upstream.contentLength} host=${finalUrl.host}',
+      );
+    }
     if (request.method == 'GET') {
       await response.addStream(upstream);
     } else {
@@ -744,6 +781,8 @@ class _VariantSource {
   final Map<Uri, int> _indexes = {};
   int? mediaSize;
   String? mediaContentType;
+  bool loggedRoute = false;
+  bool loggedHeadFallback = false;
   final Map<int, ({int? size, String? contentType})> resourceMeta = {};
   final Map<int, ({String playlistKey, List<Uri> segments, int position})> segmentOrderByResourceIndex = {};
 
@@ -769,4 +808,5 @@ class _Source {
 
   final StorageDriver driver;
   StorageEntry entry;
+  bool loggedPlayback = false;
 }

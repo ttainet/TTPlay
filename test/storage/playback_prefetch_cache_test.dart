@@ -3,9 +3,18 @@ import 'dart:io';
 
 import 'package:clock/clock.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:logger/logger.dart';
 import 'package:ttplay/storage/http_range_reader.dart';
 import 'package:ttplay/storage/playback_prefetch_cache.dart';
 import 'package:ttplay/storage/storage_driver.dart';
+import 'package:ttplay/utils/app_logger.dart' as logging;
+
+class _RecordingLogOutput extends LogOutput {
+  final List<String> lines = [];
+
+  @override
+  void output(OutputEvent event) => lines.addAll(event.lines);
+}
 
 class _TestOrigin {
   _TestOrigin(this.content);
@@ -557,5 +566,56 @@ void main() {
       ),
       throwsA(isA<StorageException>().having((e) => e.message, 'message', contains('Invalid Content-Range'))),
     );
+  });
+
+  test('logs prefetch stats at configured interval and warns on HTTP 429 without leaking query tokens', () async {
+    final originalLogger = logging.appLogger;
+    final logOutput = _RecordingLogOutput();
+    logging.appLogger = Logger(printer: SimplePrinter(), output: logOutput);
+    addTearDown(() => logging.appLogger = originalLogger);
+
+    origin.responseDelay = Duration.zero;
+    final cache = PlaybackPrefetchCache(
+      client,
+      chunkSize: 1000,
+      maxCacheBytes: 12000,
+      defaultMaxConnections: 2,
+      rampUpFirstBytes: 100,
+      rampUpFullBytes: 200,
+      statsLogInterval: const Duration(milliseconds: 40),
+    );
+    addTearDown(cache.clear);
+
+    Future<StorageLink> resolveSecret({required bool forceRefresh}) async =>
+        StorageLink(origin.link('secret-video').replace(queryParameters: {'token': 'supersecret123'}));
+
+    final first = await collect(
+      cache.read(fileKey: 'stats', resolve: resolveSecret, start: 0, end: 1999, totalSize: content.length),
+    );
+    expect(first, content.sublist(0, 2000));
+
+    await Future<void>.delayed(const Duration(milliseconds: 60));
+
+    final second = await collect(
+      cache.read(fileKey: 'stats', resolve: resolveSecret, start: 4000, end: 5999, totalSize: content.length),
+    );
+    expect(second, content.sublist(4000, 6000));
+
+    final statsLines = logOutput.lines.where((l) => l.contains('Prefetch stats')).toList();
+    expect(statsLines, hasLength(1));
+    expect(statsLines.single, contains('chunks='));
+    expect(statsLines.single, contains('perConn='));
+
+    origin.statusByStart[6000] = HttpStatus.tooManyRequests;
+    final third = await collect(
+      cache.read(fileKey: 'stats', resolve: resolveSecret, start: 6000, end: 7999, totalSize: content.length),
+    );
+    expect(third, content.sublist(6000, 8000));
+
+    final rateLimitLines = logOutput.lines.where((l) => l.contains('Prefetch rate-limited (HTTP 429):')).toList();
+    expect(rateLimitLines, hasLength(1));
+    expect(rateLimitLines.single, contains('host=127.0.0.1'));
+    expect(logOutput.lines.join('\n'), isNot(contains('supersecret123')));
+    expect(logOutput.lines.join('\n'), isNot(contains('secret-video')));
   });
 }

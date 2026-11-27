@@ -4,6 +4,7 @@ import 'dart:io';
 
 import 'package:clock/clock.dart';
 
+import '../../utils/app_logger.dart';
 import '../http_range_reader.dart';
 import '../playback_prefetch_cache.dart';
 import '../request_throttle.dart';
@@ -86,6 +87,7 @@ class QuarkStorageDriver implements StorageDriver, StreamVariantSource, Parallel
     this._playbackAcceleration = true,
     PlaybackPrefetchCache? playbackCache,
   }) : supportsIncremental = mode.supportsIncremental,
+       _mode = mode,
        _apiBase = apiBase ?? Uri.parse('https://drive-pc.quark.cn/1/clouddrive'),
        _client = httpClient ?? HttpClient(),
        _throttle = RequestThrottle(requestInterval) {
@@ -148,6 +150,7 @@ class QuarkStorageDriver implements StorageDriver, StreamVariantSource, Parallel
   static const Duration _linkLifetime = Duration(minutes: 30);
 
   final bool supportsIncremental;
+  final QuarkMode _mode;
   String get rootFolderId => _folderIds[StoragePath.root]!;
 
   late final QuarkTransport _transport;
@@ -157,6 +160,7 @@ class QuarkStorageDriver implements StorageDriver, StreamVariantSource, Parallel
   int? _downloadConnections;
   int? _downloadChunkMiB;
   bool _playbackAcceleration;
+  String? _lastMemberType;
   late final HttpRangeReader _reader;
   late final PlaybackPrefetchCache _playbackCache;
 
@@ -195,11 +199,13 @@ class QuarkStorageDriver implements StorageDriver, StreamVariantSource, Parallel
       }
 
       final member = data['member_type'];
+      final memberType = member is String && member.trim().isNotEmpty ? member.trim() : null;
+      _lastMemberType = memberType;
       final used = data['use_capacity'];
       final total = data['total_capacity'];
       _accountInfoExpiresAt = clock.now().add(const Duration(minutes: 2));
       return QuarkAccountInfo(
-        memberType: member is String && member.trim().isNotEmpty ? member.trim() : null,
+        memberType: memberType,
         usedBytes: used is int && used >= 0 ? used : null,
         totalBytes: total is int && total > 0 ? total : null,
       );
@@ -278,6 +284,12 @@ class QuarkStorageDriver implements StorageDriver, StreamVariantSource, Parallel
     } else {
       _rawLinks.remove(fid);
     }
+    final summary = [for (final v in variants) '${v.id}:${v.isHls ? 'hls' : 'mp4'}'].join(',');
+    appLogger.i(
+      'Quark variants: mode=${_mode.name} accel=$_playbackAcceleration '
+      'dlConn=${_downloadConnections ?? 'default'} member=${_lastMemberType ?? 'unknown'} '
+      'count=${variants.length} [$summary]',
+    );
     return variants;
   }
 
@@ -549,6 +561,10 @@ class QuarkStorageDriver implements StorageDriver, StreamVariantSource, Parallel
       final (uri, headers) = await _transport.downloadLink(fid, _api);
       final link = StorageLink(uri, headers: headers, expiresAt: clock.now().add(_linkLifetime));
       _links[fid] = link;
+      appLogger.i(
+        'Quark link: mode=${_mode.name} source=download accel=$_playbackAcceleration '
+        'dlConn=${_downloadConnections ?? 'default'} member=${_lastMemberType ?? 'unknown'} host=${uri.host}',
+      );
       return link;
     } on StorageException catch (e) {
       if (!_transport.prefersRawPlayInfo ||
@@ -558,7 +574,13 @@ class QuarkStorageDriver implements StorageDriver, StreamVariantSource, Parallel
       }
       await _loadVariants(fid, forceRefresh: true);
       final raw = _rawLinks[fid];
-      if (raw != null) return raw;
+      if (raw != null) {
+        appLogger.i(
+          'Quark link: mode=${_mode.name} source=raw_play accel=$_playbackAcceleration '
+          'dlConn=${_downloadConnections ?? 'default'} member=${_lastMemberType ?? 'unknown'} host=${raw.url.host}',
+        );
+        return raw;
+      }
       rethrow;
     }
   }
