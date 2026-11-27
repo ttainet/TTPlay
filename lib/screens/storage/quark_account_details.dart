@@ -89,7 +89,7 @@ class QuarkAccountDetails extends StatelessWidget {
     final tier = switch (memberType) {
       'NORMAL' => t.storage.quarkMemberNormal,
       'VIP' => t.storage.quarkMemberVip,
-      'SUPER_VIP' || 'SVIP' => t.storage.quarkMemberSuperVip,
+      'SUPER_VIP' || 'SVIP' || 'Z_VIP' => t.storage.quarkMemberSuperVip,
       final other => other,
     };
     final isVip = switch (memberType) {

@@ -19,7 +19,7 @@ import 'storage_mount.dart';
 import 'stream_proxy.dart';
 import 'stream_variant.dart';
 
-enum MountOnlineStatus { unknown, probing, onlinePrimary, onlineFallback, offline }
+enum MountOnlineStatus { unknown, probing, onlinePrimary, onlineFallback, authExpired, offline }
 
 typedef MountDriverFactory = StorageDriver Function(StorageMount mount, {bool useFallback});
 
@@ -39,7 +39,19 @@ class MountManager {
 
   final Map<String, StorageDriver> _drivers = {};
   final Map<String, DateTime> _lastQuarkOnlineAt = {};
+  final Map<String, DriveAccountSnapshot> _accountSnapshots = {};
+  final Map<String, Future<MountOnlineStatus>> _inFlightProbes = {};
+  final Map<String, int> _mountGenerations = {};
   final ValueNotifier<Map<String, MountOnlineStatus>> onlineStatuses = ValueNotifier(const {});
+
+  DriveAccountSnapshot? accountSnapshotOf(String mountId) => _accountSnapshots[mountId];
+
+  int _generationOf(String mountId) => _mountGenerations[mountId] ?? 0;
+
+  void _bumpMountGeneration(String mountId) {
+    _mountGenerations[mountId] = _generationOf(mountId) + 1;
+    _inFlightProbes.remove(mountId);
+  }
 
   bool _showOfflineMounts = true;
   bool _monitoring = false;
@@ -77,9 +89,7 @@ class MountManager {
 
   void setStatus(String mountId, MountOnlineStatus status, {StorageKind? kind}) {
     if (_disposed) return;
-    if (status == MountOnlineStatus.onlinePrimary && kind == StorageKind.quark) {
-      _lastQuarkOnlineAt[mountId] = clock.now();
-    } else if (status == MountOnlineStatus.offline) {
+    if (status == MountOnlineStatus.offline || status == MountOnlineStatus.authExpired) {
       _lastQuarkOnlineAt.remove(mountId);
     }
     if (statusOf(mountId) == status) return;
@@ -98,14 +108,13 @@ class MountManager {
     if (_disposed) return;
     final prev = statusOf(mountId);
     final switchedToOrFromFallback =
-        (prev != status) &&
-        (status == MountOnlineStatus.onlineFallback || prev == MountOnlineStatus.onlineFallback);
+        (prev != status) && (status == MountOnlineStatus.onlineFallback || prev == MountOnlineStatus.onlineFallback);
     if (switchedToOrFromFallback || (status == MountOnlineStatus.onlineFallback && _drivers.containsKey(mountId))) {
       await _dropDriver(mountId);
     }
     if (status == MountOnlineStatus.onlinePrimary && kind == StorageKind.quark) {
       _lastQuarkOnlineAt[mountId] = clock.now();
-    } else if (status == MountOnlineStatus.offline) {
+    } else if (status == MountOnlineStatus.offline || status == MountOnlineStatus.authExpired) {
       _lastQuarkOnlineAt.remove(mountId);
     }
     final prevHidden = Set<String>.from(hiddenOfflineMountIds);
@@ -122,19 +131,28 @@ class MountManager {
   /// mount the user is still editing. The caller closes it.
   StorageDriver createDriver(StorageMount mount, {bool? useFallback}) {
     final effectiveFallback = useFallback ?? (statusOf(mount.id) == MountOnlineStatus.onlineFallback);
+    final StorageDriver driver;
     if (_driverFactory != null) {
-      return _driverFactory(mount, useFallback: effectiveFallback);
+      driver = _driverFactory(mount, useFallback: effectiveFallback);
+    } else {
+      driver = switch (mount.kind) {
+        StorageKind.local => LocalStorageDriver.fromMount(mount),
+        StorageKind.webdav => WebDavStorageDriver.fromMount(mount, useFallback: effectiveFallback),
+        StorageKind.quark => QuarkStorageDriver.fromMount(
+          mount,
+          fallbackDevice: _pcFallbackDevice(mount),
+          onCookieChanged: (cookie) => unawaited(_persistSecret(mount.id, MountKeys.secretCookie, cookie)),
+        ),
+        StorageKind.smb => SmbStorageDriver.fromMount(mount, useFallback: effectiveFallback),
+      };
     }
-    return switch (mount.kind) {
-      StorageKind.local => LocalStorageDriver.fromMount(mount),
-      StorageKind.webdav => WebDavStorageDriver.fromMount(mount, useFallback: effectiveFallback),
-      StorageKind.quark => QuarkStorageDriver.fromMount(
-        mount,
-        fallbackDevice: _pcFallbackDevice(mount),
-        onCookieChanged: (cookie) => unawaited(_persistSecret(mount.id, MountKeys.secretCookie, cookie)),
-      ),
-      StorageKind.smb => SmbStorageDriver.fromMount(mount, useFallback: effectiveFallback),
-    };
+    final snapshot = _accountSnapshots[mount.id];
+    if (snapshot != null) {
+      if (driver case final AccountProbeSource probeSource) {
+        probeSource.seedAccountSnapshot(snapshot);
+      }
+    }
+    return driver;
   }
 
   QuarkPcDevice? _pcFallbackDevice(StorageMount mount) {
@@ -190,6 +208,9 @@ class MountManager {
   /// Saves [mount] and discards its current driver so the next use picks up
   /// the new settings.
   Future<void> save(StorageMount mount) async {
+    _bumpMountGeneration(mount.id);
+    _accountSnapshots.remove(mount.id);
+    _lastQuarkOnlineAt.remove(mount.id);
     await registry.upsert(mount);
     await _dropDriver(mount.id);
   }
@@ -220,9 +241,11 @@ class MountManager {
   }
 
   Future<void> remove(String mountId) async {
+    _bumpMountGeneration(mountId);
+    _lastQuarkOnlineAt.remove(mountId);
+    _accountSnapshots.remove(mountId);
     await registry.remove(mountId);
     await _dropDriver(mountId);
-    _lastQuarkOnlineAt.remove(mountId);
     if (!_disposed && onlineStatuses.value.containsKey(mountId)) {
       final updated = Map<String, MountOnlineStatus>.from(onlineStatuses.value)..remove(mountId);
       onlineStatuses.value = updated;
@@ -230,10 +253,27 @@ class MountManager {
   }
 
   /// Probes whether [mount] (and any configured fallback URL/host) is reachable
-  /// at the storage protocol level within [timeout].
-  Future<MountOnlineStatus> probeMount(
+  /// at the storage protocol level within [timeout]. Concurrent calls for the
+  /// same mount share the in-flight probe unless its configuration generation
+  /// changes mid-flight.
+  Future<MountOnlineStatus> probeMount(StorageMount mount, {Duration timeout = const Duration(milliseconds: 2000)}) {
+    final existing = _inFlightProbes[mount.id];
+    if (existing != null) return existing;
+    final generation = _generationOf(mount.id);
+    late final Future<MountOnlineStatus> job;
+    job = _probeMountOnce(mount, timeout: timeout, generation: generation).whenComplete(() {
+      if (identical(_inFlightProbes[mount.id], job)) {
+        _inFlightProbes.remove(mount.id);
+      }
+    });
+    _inFlightProbes[mount.id] = job;
+    return job;
+  }
+
+  Future<MountOnlineStatus> _probeMountOnce(
     StorageMount mount, {
-    Duration timeout = const Duration(milliseconds: 2000),
+    required Duration timeout,
+    required int generation,
   }) async {
     switch (mount.kind) {
       case StorageKind.local:
@@ -251,13 +291,39 @@ class MountManager {
         StorageDriver? driver;
         try {
           driver = createDriver(mount, useFallback: false);
-          await driver.check().timeout(timeout);
+          bool isCurrent() => !_disposed && _generationOf(mount.id) == generation;
+          if (driver case final AccountProbeSource accountProbe) {
+            final snapshot = await accountProbe.probeAccount().timeout(timeout);
+            if (isCurrent()) {
+              _accountSnapshots[mount.id] = snapshot;
+              _lastQuarkOnlineAt[mount.id] = clock.now();
+              if (_drivers[mount.id] case final AccountProbeSource liveProbe) {
+                liveProbe.seedAccountSnapshot(snapshot);
+              }
+              appLogger.d(
+                'Account probe ok: mount=${mount.id} kind=${mount.kind.name} tier=${snapshot.memberTier ?? 'unknown'}',
+              );
+            }
+          } else {
+            await driver.check().timeout(timeout);
+            if (isCurrent()) {
+              _lastQuarkOnlineAt[mount.id] = clock.now();
+            }
+          }
           return MountOnlineStatus.onlinePrimary;
         } on TimeoutException {
           return MountOnlineStatus.offline;
         } on SocketException {
           return MountOnlineStatus.offline;
         } on StorageException catch (e) {
+          if (e.kind == StorageErrorKind.unauthorized) {
+            if (!_disposed && _generationOf(mount.id) == generation) {
+              _accountSnapshots.remove(mount.id);
+              _lastQuarkOnlineAt.remove(mount.id);
+            }
+            appLogger.w('Mount credentials expired: mount=${mount.id} kind=${mount.kind.name}');
+            return MountOnlineStatus.authExpired;
+          }
           return e.kind == StorageErrorKind.network ? MountOnlineStatus.offline : MountOnlineStatus.onlinePrimary;
         } catch (_) {
           return MountOnlineStatus.onlinePrimary;
@@ -277,8 +343,8 @@ class MountManager {
         if (fallback != null && fallback.reachable && !fallback.authFailed) {
           return MountOnlineStatus.onlineFallback;
         }
-        if (primary.authFailed) return MountOnlineStatus.onlinePrimary;
-        if (fallback != null && fallback.authFailed) return MountOnlineStatus.onlineFallback;
+        if (primary.authFailed) return MountOnlineStatus.authExpired;
+        if (fallback != null && fallback.authFailed) return MountOnlineStatus.authExpired;
         return MountOnlineStatus.offline;
     }
   }
@@ -321,11 +387,7 @@ class MountManager {
     return _startProbeAll(timeout: timeout, force: force);
   }
 
-  Future<void> _startProbeAll({
-    required Duration timeout,
-    required bool force,
-    Completer<void>? ownCompleter,
-  }) {
+  Future<void> _startProbeAll({required Duration timeout, required bool force, Completer<void>? ownCompleter}) {
     late final Future<void> job;
     job = _runProbeAll(timeout: timeout, force: force).whenComplete(() {
       if (identical(_activeProbeAll, job)) _activeProbeAll = null;
@@ -369,6 +431,8 @@ class MountManager {
     };
     onlineStatuses.value = initial;
 
+    final startGenerations = {for (final mount in mounts) mount.id: _generationOf(mount.id)};
+
     final results = await Future.wait([
       for (final mount in mounts)
         () async {
@@ -388,13 +452,20 @@ class MountManager {
 
     var routeChanged = false;
     final nextStatuses = <String, MountOnlineStatus>{};
+    final currentStatuses = onlineStatuses.value;
     for (final (mount, status, didProbe) in results) {
       final id = mount.id;
+      if (_generationOf(id) != startGenerations[id]) {
+        if (currentStatuses[id] case final curStatus?) {
+          nextStatuses[id] = curStatus;
+        }
+        continue;
+      }
       nextStatuses[id] = status;
       if (mount.kind == StorageKind.quark) {
         if (didProbe && status == MountOnlineStatus.onlinePrimary) {
           _lastQuarkOnlineAt[id] = clock.now();
-        } else if (status == MountOnlineStatus.offline) {
+        } else if (status == MountOnlineStatus.offline || status == MountOnlineStatus.authExpired) {
           _lastQuarkOnlineAt.remove(id);
         }
       }
@@ -412,6 +483,8 @@ class MountManager {
     // Remove deleted mounts that disappeared while probing.
     nextStatuses.removeWhere((id, _) => !activeIds.contains(id));
     _lastQuarkOnlineAt.removeWhere((id, _) => !activeIds.contains(id));
+    _accountSnapshots.removeWhere((id, _) => !activeIds.contains(id));
+    _mountGenerations.removeWhere((id, _) => !activeIds.contains(id));
     onlineStatuses.value = nextStatuses;
 
     final nextHidden = hiddenOfflineMountIds;
@@ -437,13 +510,12 @@ class MountManager {
     MountOnlineStatus? nextStatus,
     StorageKind? kind,
   }) async {
-    await _dropDriver(mountId);
+    _bumpMountGeneration(mountId);
     _lastQuarkOnlineAt.remove(mountId);
+    _accountSnapshots.remove(mountId);
+    await _dropDriver(mountId);
     if (_disposed) return;
     if (nextStatus != null) {
-      if (nextStatus == MountOnlineStatus.onlinePrimary && kind == StorageKind.quark) {
-        _lastQuarkOnlineAt[mountId] = clock.now();
-      }
       onlineStatuses.value = {...onlineStatuses.value, mountId: nextStatus};
     } else if (resetStatus && onlineStatuses.value.containsKey(mountId)) {
       final updated = Map<String, MountOnlineStatus>.from(onlineStatuses.value)..remove(mountId);
@@ -469,6 +541,9 @@ class MountManager {
     _disposed = true;
     await _connectivitySub?.cancel();
     _connectivitySub = null;
+    _inFlightProbes.clear();
+    _accountSnapshots.clear();
+    _mountGenerations.clear();
     onlineStatuses.dispose();
     await proxy.stop();
     final drivers = _drivers.values.toList();

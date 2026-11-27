@@ -285,6 +285,13 @@ extension _VideoPlayerBuildMethods on VideoPlayerScreenState {
                         player: player!,
                         volumeController: _volumeController!,
                         metadata: _currentMetadata,
+                        streamConnectionsProvider: () {
+                          final status = _tryReadMountManager()?.proxy.peekNativeStreamStatus(
+                            _currentMediaInfo?.videoUrl,
+                          );
+                          if (status == null) return null;
+                          return (active: status.activeConns, target: status.targetConns, max: status.maxConns);
+                        },
                         onNext: onNext,
                         onPrevious: onPrevious,
                         availableVersions: _availableVersions,

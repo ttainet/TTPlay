@@ -22,6 +22,7 @@ class _MemoryDriver implements StorageDriver {
 
   final List<int> bytes;
   StorageException? failWith;
+  Stream<List<int>>? customBody;
   final List<({int start, int? end})> reads = [];
 
   @override
@@ -42,6 +43,10 @@ class _MemoryDriver implements StorageDriver {
     reads.add((start: start, end: end));
     final failure = failWith;
     if (failure != null) throw failure;
+    if (customBody case final body?) {
+      yield* body;
+      return;
+    }
     yield bytes.sublist(start, end == null ? bytes.length : end + 1);
   }
 
@@ -70,40 +75,6 @@ class _ParallelDriver extends _MemoryDriver implements ParallelReadSource {
     }
     yield bytes.sublist(start, end + 1);
   }
-}
-
-class _PrefetchDriver extends _MemoryDriver implements PrefetchReadSource {
-  _PrefetchDriver(super.bytes);
-
-  @override
-  bool playbackPrefetchEnabled = true;
-
-  final List<({int start, int end, int totalSize})> playbackReads = [];
-  Stream<List<int>>? playbackBody;
-
-  @override
-  Stream<List<int>> openReadPlayback(
-    StorageEntry entry, {
-    required int start,
-    required int end,
-    required int totalSize,
-  }) async* {
-    playbackReads.add((start: start, end: end, totalSize: totalSize));
-    if (playbackBody case final body?) {
-      yield* body;
-      return;
-    }
-    yield bytes.sublist(start, end + 1);
-  }
-
-  @override
-  Stream<List<int>> openReadVariantPlayback({
-    required String cacheKey,
-    required Future<({Uri url, Map<String, String> headers})> Function({required bool forceRefresh}) resolve,
-    required int start,
-    required int end,
-    required int totalSize,
-  }) => throw UnimplementedError();
 }
 
 void main() {
@@ -317,51 +288,6 @@ void main() {
     expect(driver.reads, [(start: 0, end: null)]);
   });
 
-  test('a plain URL uses openReadPlayback when PrefetchReadSource is enabled, and openRead when disabled', () async {
-    final prefetch = _PrefetchDriver(content);
-    const entry = StorageEntry(path: '/film.mkv', name: 'film.mkv', isDirectory: false, size: 1000);
-    final url = await proxy.register(mountId: 'm1', driver: prefetch, entry: entry);
-
-    final head = await fetch(url, method: 'HEAD');
-    expect(head.status, HttpStatus.ok);
-    expect(prefetch.playbackReads, isEmpty);
-    expect(prefetch.reads, isEmpty);
-
-    final enabledResp = await fetch(url, range: 'bytes=100-499');
-    expect(enabledResp.status, HttpStatus.partialContent);
-    expect(enabledResp.body, content.sublist(100, 500));
-    expect(prefetch.playbackReads, [(start: 100, end: 499, totalSize: 1000)]);
-    expect(prefetch.reads, isEmpty);
-
-    prefetch.playbackPrefetchEnabled = false;
-    final disabledResp = await fetch(url, range: 'bytes=200-399');
-    expect(disabledResp.status, HttpStatus.partialContent);
-    expect(disabledResp.body, content.sublist(200, 400));
-    expect(prefetch.playbackReads, hasLength(1));
-    expect(prefetch.reads, [(start: 200, end: 399)]);
-  });
-
-  test('a disconnected playback prefetch client cancels the upstream stream', () async {
-    final cancelled = Completer<void>();
-    final body = StreamController<List<int>>(onCancel: cancelled.complete);
-    addTearDown(body.close);
-    final prefetch = _PrefetchDriver([])..playbackBody = body.stream;
-    const piece = 1024 * 1024;
-    final url = await proxy.register(
-      mountId: 'm1',
-      driver: prefetch,
-      entry: const StorageEntry(path: '/film.mkv', name: 'film.mkv', isDirectory: false, size: 2 * piece),
-    );
-    body.add(Uint8List(piece));
-
-    final request = await client.getUrl(url);
-    final response = await request.close();
-    expect(response.statusCode, HttpStatus.ok);
-    client.close(force: true);
-
-    await cancelled.future.timeout(const Duration(seconds: 3));
-  });
-
   test('logs /s playback route once per large registered file', () async {
     final originalLogger = logging.appLogger;
     final logOutput = _RecordingLogOutput();
@@ -369,9 +295,9 @@ void main() {
     addTearDown(() => logging.appLogger = originalLogger);
 
     final largeContent = Uint8List(2 * 1024 * 1024);
-    final prefetch = _PrefetchDriver(largeContent);
+    final memDriver = _MemoryDriver(largeContent);
     const entry = StorageEntry(path: '/movie.mkv', name: 'movie.mkv', isDirectory: false, size: 2 * 1024 * 1024);
-    final url = await proxy.register(mountId: 'm1', driver: prefetch, entry: entry);
+    final url = await proxy.register(mountId: 'm1', driver: memDriver, entry: entry);
 
     final first = await fetch(url, range: 'bytes=0-1023');
     expect(first.status, HttpStatus.partialContent);
@@ -381,7 +307,6 @@ void main() {
     final routeLogs = logOutput.lines.where((l) => l.contains('Stream proxy /s:')).toList();
     expect(routeLogs, hasLength(1));
     expect(routeLogs.single, contains('driver=local'));
-    expect(routeLogs.single, contains('prefetch=true'));
     expect(routeLogs.single, contains('size=2.0MiB'));
   });
 
@@ -396,9 +321,9 @@ void main() {
 
     const chunkBytes = 512 * 1024;
     final body = StreamController<List<int>>();
-    final prefetch = _PrefetchDriver([])..playbackBody = body.stream;
+    final memDriver = _MemoryDriver([])..customBody = body.stream;
     const entry = StorageEntry(path: '/film.mkv', name: 'film.mkv', isDirectory: false, size: 2 * chunkBytes);
-    final url = await timedProxy.register(mountId: 'm1', driver: prefetch, entry: entry);
+    final url = await timedProxy.register(mountId: 'm1', driver: memDriver, entry: entry);
 
     body.add(Uint8List(chunkBytes));
     unawaited(() async {

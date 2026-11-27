@@ -109,17 +109,11 @@ abstract interface class ParallelReadSource {
   });
 }
 
-/// A driver that can accelerate sequential playback reads by prefetching
-/// fixed-size byte chunks over multiple concurrent connections.
+/// A driver that can accelerate `/v/` variant playback (HLS segments and
+/// variant streams) when enabled. Direct `/s/` playback uses [DirectUrlReadSource]
+/// through the native streaming engine.
 abstract interface class PrefetchReadSource {
   bool get playbackPrefetchEnabled;
-
-  Stream<List<int>> openReadPlayback(
-    StorageEntry entry, {
-    required int start,
-    required int end,
-    required int totalSize,
-  });
 
   Stream<List<int>> openReadVariantPlayback({
     required String cacheKey,
@@ -128,4 +122,23 @@ abstract interface class PrefetchReadSource {
     required int end,
     required int totalSize,
   });
+}
+
+/// Account/membership capability snapshot returned alongside a drive health probe
+/// (e.g. Quark `/member`, future Aliyun/115/123 `user/info`).
+class DriveAccountSnapshot {
+  const DriveAccountSnapshot({this.memberTier, this.usedBytes, this.totalBytes});
+
+  final String? memberTier;
+  final int? usedBytes;
+  final int? totalBytes;
+}
+
+/// Optional capability for cloud-drive drivers whose account endpoint verifies
+/// reachability, validates credentials (throwing `StorageErrorKind.unauthorized`),
+/// and refreshes tier/quota metadata in a single request.
+abstract interface class AccountProbeSource {
+  Future<DriveAccountSnapshot> probeAccount();
+
+  void seedAccountSnapshot(DriveAccountSnapshot snapshot);
 }

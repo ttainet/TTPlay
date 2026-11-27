@@ -92,6 +92,7 @@ import 'widgets/skip_marker_button.dart';
 import 'widgets/screen_lock_overlay.dart';
 import 'widgets/track_chapter_controls.dart';
 import 'widgets/performance_overlay/performance_overlay.dart';
+import 'widgets/performance_overlay/performance_stats_service.dart' show StreamConnectionsProvider;
 import '../rasterized_gradient.dart';
 import 'mobile_video_controls.dart';
 import 'desktop_video_controls.dart';
@@ -706,6 +707,9 @@ class PlexVideoControls extends StatefulWidget {
 
   final DanmakuController? danmakuController;
 
+  /// Optional provider returning live native stream connection counts for the performance overlay.
+  final StreamConnectionsProvider? streamConnectionsProvider;
+
   /// Toast controller for VLC-style in-player notifications (rate changes, backend switch).
   final PlayerToastController toastController;
 
@@ -792,6 +796,7 @@ class PlexVideoControls extends StatefulWidget {
     this.isAmbientLightingEnabled = false,
     this.onToggleAmbientLighting,
     this.danmakuController,
+    this.streamConnectionsProvider,
   });
 
   @override
@@ -1571,6 +1576,7 @@ class PlexVideoControlsState extends State<PlexVideoControls>
                               player: widget.player,
                               active: performanceOverlayVisible,
                               isTranscoding: widget.isLive || widget.isOfflinePlayback ? null : widget.isTranscoding,
+                              streamConnectionsProvider: widget.streamConnectionsProvider,
                             ),
                           ),
                         ),

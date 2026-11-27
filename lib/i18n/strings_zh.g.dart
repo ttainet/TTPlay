@@ -2213,6 +2213,7 @@ class Translations$performanceOverlay$zh extends Translations$performanceOverlay
 	@override String get cacheUsed => '已用缓存';
 	@override String get cacheLimit => '缓存限制';
 	@override String get speed => '速度';
+	@override String get connections => '拉流连接';
 	@override String get player => '播放器';
 	@override String get memory => '内存';
 	@override String get uiFps => 'UI FPS';
@@ -2611,6 +2612,7 @@ class Translations$storage$zh extends Translations$storage$en {
 	@override String quarkDownloadConnectionsDescription({required Object effective, required Object min, required Object max}) => '单个文件最多 ${effective} 路 · 账号可选 ${min}–${max} 路';
 	@override String get quarkPlaybackAcceleration => '多连接缓冲加速';
 	@override String get quarkPlaybackAccelerationDescription => '使用多连接并发预读视频流（适用于全部清晰度），缓解网盘单连接限速导致的卡顿';
+	@override String get quarkPlaybackAccelerationVipOnly => '仅夸克 SVIP 会员支持多线程播放加速，普通账号默认使用单线播放';
 	@override String get quarkSignedIn => '已登录';
 	@override String get quarkSignedOut => '尚未登录';
 	@override String get quarkScan => '扫码登录';
@@ -2733,6 +2735,7 @@ class Translations$storage$zh extends Translations$storage$en {
 	@override String get statusOnline => '在线';
 	@override String get statusFallback => '备用线路在线';
 	@override String get statusOffline => '离线';
+	@override String get statusAuthExpired => '登录已过期';
 	@override String offlineMountsHidden({required Object count}) => '已隐藏 ${count} 个离线挂载源';
 	@override String offlineMountsShown({required Object count}) => '已显示 ${count} 个离线挂载源';
 	@override String get showOffline => '显示全部';
@@ -6244,6 +6247,7 @@ extension on TranslationsZh {
 			'performanceOverlay.cacheUsed' => '已用缓存',
 			'performanceOverlay.cacheLimit' => '缓存限制',
 			'performanceOverlay.speed' => '速度',
+			'performanceOverlay.connections' => '拉流连接',
 			'performanceOverlay.player' => '播放器',
 			'performanceOverlay.memory' => '内存',
 			'performanceOverlay.uiFps' => 'UI FPS',
@@ -6587,6 +6591,7 @@ extension on TranslationsZh {
 			'storage.quarkDownloadConnectionsDescription' => ({required Object effective, required Object min, required Object max}) => '单个文件最多 ${effective} 路 · 账号可选 ${min}–${max} 路',
 			'storage.quarkPlaybackAcceleration' => '多连接缓冲加速',
 			'storage.quarkPlaybackAccelerationDescription' => '使用多连接并发预读视频流（适用于全部清晰度），缓解网盘单连接限速导致的卡顿',
+			'storage.quarkPlaybackAccelerationVipOnly' => '仅夸克 SVIP 会员支持多线程播放加速，普通账号默认使用单线播放',
 			'storage.quarkSignedIn' => '已登录',
 			'storage.quarkSignedOut' => '尚未登录',
 			'storage.quarkScan' => '扫码登录',
@@ -6689,10 +6694,10 @@ extension on TranslationsZh {
 			'storage.tmdbImageBase' => 'TMDB 图片地址',
 			'storage.manualMatch' => '手动匹配',
 			'storage.noMatchResults' => '没有结果',
-			'storage.mediaSources' => '本地挂载',
-			'storage.scraperSettingsDescription' => '官方元数据服务与刮削语言偏好',
 			_ => null,
 		} ?? switch (path) {
+			'storage.mediaSources' => '本地挂载',
+			'storage.scraperSettingsDescription' => '官方元数据服务与刮削语言偏好',
 			'storage.metadataServiceTitle' => '官方元数据服务',
 			'storage.metadataServiceOfficial' => '当前使用 TTPlay 官方通用元数据服务',
 			'storage.metadataServiceSelfHosted' => '当前使用自建服务器元数据服务',
@@ -6711,6 +6716,7 @@ extension on TranslationsZh {
 			'storage.statusOnline' => '在线',
 			'storage.statusFallback' => '备用线路在线',
 			'storage.statusOffline' => '离线',
+			'storage.statusAuthExpired' => '登录已过期',
 			'storage.offlineMountsHidden' => ({required Object count}) => '已隐藏 ${count} 个离线挂载源',
 			'storage.offlineMountsShown' => ({required Object count}) => '已显示 ${count} 个离线挂载源',
 			'storage.showOffline' => '显示全部',

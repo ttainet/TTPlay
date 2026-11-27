@@ -1,6 +1,15 @@
 part of '../../video_player_screen.dart';
 
 extension _VideoPlayerPlaybackServiceMethods on VideoPlayerScreenState {
+  MountManager? _tryReadMountManager() {
+    if (!mounted) return null;
+    try {
+      return context.read<MountManager>();
+    } catch (_) {
+      return null;
+    }
+  }
+
   /// Loads the scrub preview once the open has a frame on screen. A Plex or
   /// Emby preview is a BIF file of several to tens of MB, and receiving it
   /// mid-open drove back-to-back old-generation GCs on the UI thread that
@@ -103,6 +112,12 @@ extension _VideoPlayerPlaybackServiceMethods on VideoPlayerScreenState {
     if (stale()) return;
 
     _firstFrame.markReady();
+    _diagnosticsLogger?.onFirstFrameRendered();
+    final firstFrameMs = _playbackAttempt?.elapsed.elapsedMilliseconds;
+    appLogger.i(
+      'First frame ready: elapsed=${firstFrameMs != null ? '${firstFrameMs}ms' : '-'} '
+      'native=${_tryReadMountManager()?.proxy.isNativeStreamUrl(_currentMediaInfo?.videoUrl) ?? false}',
+    );
     if (_currentMetadata.serverId == LocalLibraryClient.localServerId && !_isOfflinePlayback) {
       unawaited(LocalPlaybackHistory.recordPlayback(_currentMetadata));
     }
@@ -210,7 +225,37 @@ extension _VideoPlayerPlaybackServiceMethods on VideoPlayerScreenState {
     }
 
     _diagnosticsLogger?.dispose();
-    _diagnosticsLogger = PlaybackDiagnosticsLogger(player: currentPlayer)..start();
+    _diagnosticsLogger = PlaybackDiagnosticsLogger(
+      player: currentPlayer,
+      isFirstFrameRendered: () => _firstFrame.rendered,
+      hasDemandTarget: () => _tryReadMountManager()?.proxy.isNativeStreamUrl(_currentMediaInfo?.videoUrl) ?? false,
+      fallbackBitrateBps: () {
+        final idx = _effectiveSelectedMediaIndex;
+        if (idx >= 0 && idx < _availableVersions.length) {
+          final kbps = _availableVersions[idx].bitrate;
+          if (kbps != null && kbps > 0) return kbps * 1000;
+        }
+        return null;
+      },
+      onDemandSample:
+          ({
+            required playbackStarted,
+            required bitrateBps,
+            required bufferedSecs,
+            required isBuffering,
+            required durationMs,
+          }) {
+            final effectiveDur = durationMs > 0 ? durationMs : (_currentMetadata.durationMs ?? 0);
+            _tryReadMountManager()?.proxy.updateNativePlaybackDemand(
+              url: _currentMediaInfo?.videoUrl,
+              playbackStarted: playbackStarted,
+              bitrateBps: bitrateBps,
+              bufferedSecs: bufferedSecs,
+              isBuffering: isBuffering,
+              durationMs: effectiveDur,
+            );
+          },
+    )..start();
 
     _playerStreamSubscriptions.add(
       currentPlayer.streams.buffering.listen((isBuffering) {

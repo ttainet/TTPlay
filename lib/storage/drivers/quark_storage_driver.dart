@@ -5,6 +5,7 @@ import 'dart:io';
 import 'package:clock/clock.dart';
 
 import '../../utils/app_logger.dart';
+import '../direct_url_source.dart';
 import '../http_range_reader.dart';
 import '../playback_prefetch_cache.dart';
 import '../request_throttle.dart';
@@ -38,6 +39,13 @@ class QuarkAccountInfo {
   final String? memberType;
   final int? usedBytes;
   final int? totalBytes;
+
+  bool get supportsMultiConnectionPlayback => isMultiConnectionMemberType(memberType);
+
+  static bool isMultiConnectionMemberType(String? memberType) => switch (memberType?.trim().toUpperCase()) {
+    'SUPER_VIP' || 'SVIP' || 'Z_VIP' => true,
+    _ => false,
+  };
 }
 
 enum QuarkDownloadTier {
@@ -49,10 +57,8 @@ enum QuarkDownloadTier {
   final int minConnections;
   final int maxConnections;
 
-  static QuarkDownloadTier forAccount(QuarkAccountInfo? account) => switch (account?.memberType) {
-    'SUPER_VIP' || 'SVIP' => superVip,
-    _ => standard,
-  };
+  static QuarkDownloadTier forAccount(QuarkAccountInfo? account) =>
+      QuarkAccountInfo.isMultiConnectionMemberType(account?.memberType) ? superVip : standard;
 
   BulkReadOptions options({required int connections, required int chunkMiB}) => BulkReadOptions(
     connections: connections.clamp(minConnections, maxConnections),
@@ -71,7 +77,14 @@ enum QuarkDownloadTier {
 ///
 /// Besides the original file, Quark serves the renditions it transcoded
 /// itself; see [streamVariants].
-class QuarkStorageDriver implements StorageDriver, StreamVariantSource, ParallelReadSource, PrefetchReadSource {
+class QuarkStorageDriver
+    implements
+        StorageDriver,
+        StreamVariantSource,
+        ParallelReadSource,
+        PrefetchReadSource,
+        DirectUrlReadSource,
+        AccountProbeSource {
   QuarkStorageDriver({
     required String cookie,
     QuarkMode mode = QuarkMode.web,
@@ -85,12 +98,14 @@ class QuarkStorageDriver implements StorageDriver, StreamVariantSource, Parallel
     this._downloadConnections,
     this._downloadChunkMiB,
     this._playbackAcceleration = true,
+    String? initialMemberType,
     PlaybackPrefetchCache? playbackCache,
   }) : supportsIncremental = mode.supportsIncremental,
        _mode = mode,
        _apiBase = apiBase ?? Uri.parse('https://drive-pc.quark.cn/1/clouddrive'),
        _client = httpClient ?? HttpClient(),
-       _throttle = RequestThrottle(requestInterval) {
+       _throttle = RequestThrottle(requestInterval),
+       _lastMemberType = initialMemberType?.trim().isNotEmpty == true ? initialMemberType!.trim() : null {
     _transport = mode == QuarkMode.pc
         ? QuarkPcTransport(
             session: QuarkPcSession.parse(cookie.trim(), fallbackDevice: fallbackDevice),
@@ -116,6 +131,7 @@ class QuarkStorageDriver implements StorageDriver, StreamVariantSource, Parallel
     StorageMount mount, {
     void Function(String cookie)? onCookieChanged,
     QuarkPcDevice? fallbackDevice,
+    String? initialMemberType,
   }) {
     final mode = QuarkMode.parse(mount.configString(MountKeys.quarkMode));
     if (!QuarkMode.supported.contains(mode)) {
@@ -138,6 +154,7 @@ class QuarkStorageDriver implements StorageDriver, StreamVariantSource, Parallel
       downloadConnections: mount.configInt(MountKeys.quarkDownloadConnections),
       downloadChunkMiB: mount.configInt(MountKeys.quarkDownloadChunkMiB),
       playbackAcceleration: mount.configBool(MountKeys.quarkPlaybackAcceleration, fallback: true),
+      initialMemberType: initialMemberType,
     );
   }
 
@@ -161,6 +178,15 @@ class QuarkStorageDriver implements StorageDriver, StreamVariantSource, Parallel
   int? _downloadChunkMiB;
   bool _playbackAcceleration;
   String? _lastMemberType;
+  String? get lastMemberType => _lastMemberType;
+
+  void seedMemberType(String? memberType) {
+    final trimmed = memberType?.trim();
+    if (trimmed != null && trimmed.isNotEmpty) {
+      _lastMemberType = trimmed;
+    }
+  }
+
   late final HttpRangeReader _reader;
   late final PlaybackPrefetchCache _playbackCache;
 
@@ -297,6 +323,15 @@ class QuarkStorageDriver implements StorageDriver, StreamVariantSource, Parallel
   Future<void> check() => _transport.check(_api, _folderIds[StoragePath.root]!);
 
   @override
+  Future<DriveAccountSnapshot> probeAccount() async {
+    final info = await accountInfo();
+    return DriveAccountSnapshot(memberTier: info.memberType, usedBytes: info.usedBytes, totalBytes: info.totalBytes);
+  }
+
+  @override
+  void seedAccountSnapshot(DriveAccountSnapshot snapshot) => seedMemberType(snapshot.memberTier);
+
+  @override
   Future<List<StorageEntry>> list(String path, {StorageEntry? parent}) async {
     final normalized = StoragePath.normalize(path);
     final folderId = parent?.id ?? await _resolveFolderId(normalized);
@@ -379,18 +414,45 @@ class QuarkStorageDriver implements StorageDriver, StreamVariantSource, Parallel
   bool get playbackPrefetchEnabled => _playbackAcceleration;
 
   @override
-  Stream<List<int>> openReadPlayback(
-    StorageEntry entry, {
-    required int start,
-    required int end,
-    required int totalSize,
-  }) {
-    return _playbackCache.read(
-      fileKey: entry.id ?? entry.path,
-      resolve: ({required bool forceRefresh}) => _linkFor(entry, forceRefresh: forceRefresh),
-      start: start,
-      end: end,
+  bool get nativeStreamEnabled => true;
+
+  @override
+  Future<DirectPlaybackSource> resolveDirectPlayback(StorageEntry entry, {bool forceRefresh = false}) async {
+    final totalSize = entry.size ?? (await stat(entry.path)).size ?? 0;
+    final link = await _linkFor(entry, forceRefresh: forceRefresh);
+    final svipMax = Platform.isAndroid ? 4 : 5;
+    final int maxConnections;
+    final bool allowRuntimeMaxUpgrade;
+    final Future<int?> Function()? resolveDeferredMaxConnections;
+    if (!_playbackAcceleration) {
+      maxConnections = 1;
+      allowRuntimeMaxUpgrade = false;
+      resolveDeferredMaxConnections = null;
+    } else if (_lastMemberType != null) {
+      maxConnections = QuarkAccountInfo.isMultiConnectionMemberType(_lastMemberType) ? svipMax : 1;
+      allowRuntimeMaxUpgrade = false;
+      resolveDeferredMaxConnections = null;
+    } else {
+      maxConnections = 1;
+      allowRuntimeMaxUpgrade = true;
+      resolveDeferredMaxConnections = () async {
+        final info = await accountInfo();
+        return info.supportsMultiConnectionPlayback ? svipMax : 1;
+      };
+    }
+    return DirectPlaybackSource(
+      link: link,
       totalSize: totalSize,
+      profile: DriveTransferProfile(
+        minConnections: 1,
+        maxConnections: maxConnections,
+        windowBytes: Platform.isAndroid ? 16 * 1024 * 1024 : 24 * 1024 * 1024,
+        minSegmentBytes: 2 * 1024 * 1024,
+        maxSegmentBytes: 16 * 1024 * 1024,
+        allowRuntimeMaxUpgrade: allowRuntimeMaxUpgrade,
+        userAgent: _transport.userAgent,
+      ),
+      resolveDeferredMaxConnections: resolveDeferredMaxConnections,
     );
   }
 

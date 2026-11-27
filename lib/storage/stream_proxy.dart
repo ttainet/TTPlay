@@ -7,8 +7,10 @@ import 'package:clock/clock.dart';
 import 'package:flutter/foundation.dart' show visibleForTesting;
 
 import '../utils/app_logger.dart';
+import 'direct_url_source.dart';
 import 'hls_segment_prefetcher.dart';
 import 'http_range_reader.dart';
+import 'native_stream_engine.dart';
 import 'storage_driver.dart';
 import 'storage_path.dart';
 import 'stream_variant.dart';
@@ -31,6 +33,7 @@ class StreamProxy {
     BulkReadOptions Function()? bulkOptions,
     this._hlsPrefetcher,
     this.statsLogInterval = defaultStatsLogInterval,
+    this._nativeEngine,
   }) : _random = random ?? Random.secure(),
        _bulkOptions = bulkOptions ?? (() => BulkReadOptions.defaults);
 
@@ -42,9 +45,16 @@ class StreamProxy {
   final Map<String, _Source> _sources = {};
   final Map<String, _VariantSource> _variants = {};
   final Map<String, String> _tokensByKey = {};
+  final Map<String, int> _nativeStreamSizes = {};
   HttpServer? _server;
   HttpClient? _upstream;
   HlsSegmentPrefetcher? _hlsPrefetcher;
+  NativeStreamEngine? _nativeEngine;
+  bool _stopped = false;
+
+  NativeStreamEngine _requireNativeEngine() {
+    return _nativeEngine ??= NativeStreamEngine.create(statsLogInterval: statsLogInterval);
+  }
 
   HttpClient get _upstreamClient => _upstream ??= HttpClient()..connectionTimeout = const Duration(seconds: 15);
   HlsSegmentPrefetcher get _hls => _hlsPrefetcher ??= HlsSegmentPrefetcher(_upstreamClient);
@@ -114,9 +124,49 @@ class StreamProxy {
     if (entry.isDirectory) {
       throw const StorageException(StorageErrorKind.unsupported, 'Cannot stream a directory');
     }
-    final server = await _ensureServer();
     final key = '$mountId\u0000${entry.path}${downloadETag == null ? '' : '\u0000$downloadETag'}';
     final token = _tokensByKey.putIfAbsent(key, _newToken);
+
+    if (!bulk) {
+      if (driver case final DirectUrlReadSource directSource) {
+        if (directSource.nativeStreamEnabled && (entry.size ?? 0) >= 1024 * 1024) {
+          final resolved = await directSource.resolveDirectPlayback(entry);
+          if (resolved.totalSize <= 0) {
+            throw const StorageException(StorageErrorKind.other, 'Direct playback source returned invalid totalSize');
+          }
+          final nativeEngine = _requireNativeEngine();
+          _nativeStreamSizes[token] = resolved.totalSize;
+          final pendingTag = resolved.profile.allowRuntimeMaxUpgrade ? '(pending-tier)' : '';
+          appLogger.i(
+            'Stream proxy /s: driver=${driver.kind.name} route=native-rust '
+            'size=${_formatMiB(resolved.totalSize)} maxConn=${resolved.profile.maxConnections}$pendingTag',
+          );
+          final registeredUrl = nativeEngine.registerStream(
+            token: token,
+            source: resolved,
+            fileName: entry.name,
+            onRefresh: ({required forceRefresh}) =>
+                directSource.resolveDirectPlayback(entry, forceRefresh: forceRefresh),
+          );
+          final defer = resolved.resolveDeferredMaxConnections;
+          if (resolved.profile.allowRuntimeMaxUpgrade && defer != null) {
+            unawaited(() async {
+              try {
+                final nextMax = await defer();
+                if (_stopped || nextMax == null || nextMax <= resolved.profile.maxConnections) return;
+                nativeEngine.updateDemand(token: token, maxConnections: nextMax);
+                appLogger.i('Stream proxy /s: driver=${driver.kind.name} deferred tier resolved maxConn=$nextMax');
+              } catch (_) {
+                // Tier lookup failed or timed out; keep single-connection safely.
+              }
+            }());
+          }
+          return registeredUrl;
+        }
+      }
+    }
+
+    final server = await _ensureServer();
     _sources[token] = _Source(driver, entry, downloadETag: downloadETag);
     return Uri(
       scheme: 'http',
@@ -187,9 +237,52 @@ class StreamProxy {
     final keys = _tokensByKey.keys.where((k) => k.startsWith(prefix)).toList();
     for (final key in keys) {
       final token = _tokensByKey.remove(key);
-      _sources.remove(token);
-      _variants.remove(token);
+      if (token != null) {
+        _sources.remove(token);
+        _variants.remove(token);
+        _nativeStreamSizes.remove(token);
+        _nativeEngine?.unregisterStream(token);
+      }
     }
+  }
+
+  /// Whether [url] is currently registered and served by [NativeStreamEngine].
+  bool isNativeStreamUrl(String? url) => _nativeEngine?.tokenForUrl(url) != null;
+
+  /// Non-destructively reads active connection metrics for [url] if served natively.
+  NativeStreamStatus? peekNativeStreamStatus(String? url) {
+    final engine = _nativeEngine;
+    final token = engine?.tokenForUrl(url);
+    if (engine == null || token == null) return null;
+    return engine.peekStatus(token);
+  }
+
+  /// Pushes player bitrate, buffer, and startup state into [NativeStreamEngine].
+  void updateNativePlaybackDemand({
+    required String? url,
+    required bool playbackStarted,
+    int? bitrateBps,
+    double? bufferedSecs,
+    bool? isBuffering,
+    int durationMs = 0,
+  }) {
+    final engine = _nativeEngine;
+    final token = engine?.tokenForUrl(url);
+    if (engine == null || token == null) return;
+    var effectiveBitrate = bitrateBps ?? 0;
+    if (effectiveBitrate <= 0 && durationMs > 0) {
+      final totalSize = _nativeStreamSizes[token];
+      if (totalSize != null && totalSize > 0) {
+        effectiveBitrate = ((totalSize * 8 * 1000) / durationMs).round();
+      }
+    }
+    engine.updateDemand(
+      token: token,
+      playbackStarted: playbackStarted,
+      bitrateBps: effectiveBitrate > 0 ? effectiveBitrate : null,
+      bufferedSecs: bufferedSecs,
+      isBuffering: isBuffering,
+    );
   }
 
   String _newToken() {
@@ -248,8 +341,6 @@ class StreamProxy {
       // player as an HTTP error instead of a truncated 200.
       final driver = source.driver;
       final bulkOptions = bulk ? _bulkOptions() : null;
-      final usePlaybackPrefetch =
-          bulkOptions == null && driver is PrefetchReadSource && (driver as PrefetchReadSource).playbackPrefetchEnabled;
       final chunks = !wantsBody
           ? null
           : StreamIterator(
@@ -261,13 +352,6 @@ class StreamProxy {
                       connections: bulkOptions.connections,
                       chunkSize: bulkOptions.chunkSize,
                     )
-                  : usePlaybackPrefetch
-                  ? (driver as PrefetchReadSource).openReadPlayback(
-                      entry,
-                      start: start,
-                      end: end,
-                      totalSize: size,
-                    )
                   : driver.openRead(entry, start: start, end: range == null ? null : end),
             );
       try {
@@ -275,7 +359,7 @@ class StreamProxy {
         if (!bulk && wantsBody && size >= 1024 * 1024 && !source.loggedPlayback) {
           source.loggedPlayback = true;
           appLogger.i(
-            'Stream proxy /s: driver=${driver.kind.name} prefetch=$usePlaybackPrefetch '
+            'Stream proxy /s: driver=${driver.kind.name} '
             'size=${_formatMiB(size)} range=$start-$end',
           );
         }
@@ -295,7 +379,7 @@ class StreamProxy {
           await response.addStream(
             _pipePlayback(
               chunks,
-              immediateCancel: bulkOptions != null || usePlaybackPrefetch,
+              immediateCancel: bulkOptions != null,
               stats: (!bulk && wantsBody && size >= 1024 * 1024) ? source.proxyStats : null,
               label: 'Stream proxy /s stats',
             ),
@@ -412,11 +496,7 @@ class StreamProxy {
       return (size: length, contentType: rawContentType, isPlaylist: false);
     }
 
-    Future<void> serveRangePrefetch({
-      required String cacheKey,
-      required int size,
-      String? contentType,
-    }) async {
+    Future<void> serveRangePrefetch({required String cacheKey, required int size, String? contentType}) async {
       final range = _parseRange(request.headers.value(HttpHeaders.rangeHeader), size);
       if (range == _unsatisfiable) {
         response.headers.set(HttpHeaders.contentRangeHeader, 'bytes */$size');
@@ -462,12 +542,7 @@ class StreamProxy {
         if (chunks != null && hasFirst) {
           response.bufferOutput = false;
           await response.addStream(
-            _pipePlayback(
-              chunks,
-              immediateCancel: true,
-              stats: source.proxyStats,
-              label: 'Stream proxy /v stats',
-            ),
+            _pipePlayback(chunks, immediateCancel: true, stats: source.proxyStats, label: 'Stream proxy /v stats'),
           );
         }
         await response.close();
@@ -482,11 +557,7 @@ class StreamProxy {
       if (!known.isHls) {
         final meta = await ensureSizeMeta();
         if (meta != null && meta.size != null) {
-          return serveRangePrefetch(
-            cacheKey: source.cacheKey,
-            size: meta.size!,
-            contentType: meta.contentType,
-          );
+          return serveRangePrefetch(cacheKey: source.cacheKey, size: meta.size!, contentType: meta.contentType);
         }
       }
     }
@@ -868,8 +939,12 @@ class StreamProxy {
     _sources.clear();
     _variants.clear();
     _tokensByKey.clear();
+    _nativeStreamSizes.clear();
     _hlsPrefetcher?.clear();
     _hlsPrefetcher = null;
+    _stopped = true;
+    _nativeEngine?.stop();
+    _nativeEngine = null;
     _upstream?.close(force: true);
     _upstream = null;
     await server?.close(force: true);

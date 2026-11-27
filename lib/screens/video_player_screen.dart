@@ -372,6 +372,7 @@ class _PlaybackAttempt {
   /// derives from one signal and a failed open collapses all of them.
   final PlaybackOpenOutcome outcome;
   final Future<void> trackMutationDrain;
+  final Stopwatch elapsed = Stopwatch()..start();
 
   bool get isCurrent => _owner._isCurrentPlaybackGeneration(generation, player);
 }

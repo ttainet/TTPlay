@@ -125,7 +125,8 @@ class MountsScreen extends StatelessWidget {
     if (isSelfHosted) {
       final theme = Theme.of(context);
       final scheme = theme.colorScheme;
-      final canManageCloud = !PlatformDetector.isTV() && (maybeWatchTtplayBinder(context)?.cloudSourceRepository != null);
+      final canManageCloud =
+          !PlatformDetector.isTV() && (maybeWatchTtplayBinder(context)?.cloudSourceRepository != null);
       return Scaffold(
         appBar: AppBar(title: Text(t.storage.title)),
         body: Center(
@@ -147,9 +148,9 @@ class MountsScreen extends StatelessWidget {
                     const SizedBox(height: 20),
                     FilledButton.icon(
                       onPressed: () {
-                        Navigator.of(context).pushReplacement(
-                          MaterialPageRoute<void>(builder: (_) => const CloudSourcesScreen()),
-                        );
+                        Navigator.of(
+                          context,
+                        ).pushReplacement(MaterialPageRoute<void>(builder: (_) => const CloudSourcesScreen()));
                       },
                       icon: const AppIcon(Symbols.open_in_new_rounded, size: 18),
                       label: const Text('前往云端媒体源'),
@@ -194,9 +195,7 @@ class MountsScreen extends StatelessWidget {
           final allMounts = snapshot.data;
           if (allMounts == null) return const Center(child: CircularProgressIndicator());
           // Exclude cloud-mirrored (`cloud:*`) mounts; those are managed in CloudSourcesScreen.
-          final mounts = allMounts
-              .where((m) => !CloudMountMirror.isCloudMountId(m.id))
-              .toList(growable: false);
+          final mounts = allMounts.where((m) => !CloudMountMirror.isCloudMountId(m.id)).toList(growable: false);
           if (mounts.isEmpty) return _EmptyState(onAdd: () => _edit(context));
           return Align(
             alignment: Alignment.topCenter,
@@ -402,13 +401,22 @@ class _MountReachabilityBadge extends StatelessWidget {
       builder: (context, statuses, _) {
         final status = statuses[mountId] ?? MountOnlineStatus.unknown;
         final (String? label, Color? bg, Color? fg) = switch (status) {
-          MountOnlineStatus.onlinePrimary => (t.storage.statusOnline, scheme.primaryContainer, scheme.onPrimaryContainer),
+          MountOnlineStatus.onlinePrimary => (
+            t.storage.statusOnline,
+            scheme.primaryContainer,
+            scheme.onPrimaryContainer,
+          ),
           MountOnlineStatus.onlineFallback => (
             t.storage.statusFallback,
             scheme.secondaryContainer,
             scheme.onSecondaryContainer,
           ),
           MountOnlineStatus.offline => (t.storage.statusOffline, scheme.errorContainer, scheme.onErrorContainer),
+          MountOnlineStatus.authExpired => (
+            t.storage.statusAuthExpired,
+            scheme.errorContainer,
+            scheme.onErrorContainer,
+          ),
           MountOnlineStatus.unknown || MountOnlineStatus.probing => (null, null, null),
         };
         if (label == null || bg == null || fg == null) return const SizedBox.shrink();

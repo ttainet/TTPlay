@@ -5542,6 +5542,9 @@ class Translations$performanceOverlay$en {
 	/// en: 'Speed'
 	String get speed => 'Speed';
 
+	/// en: 'Connections'
+	String get connections => 'Connections';
+
 	/// en: 'Player'
 	String get player => 'Player';
 
@@ -6544,6 +6547,9 @@ class Translations$storage$en {
 	/// en: 'Prefetch video over multiple connections across all qualities to reduce buffering under single-connection speed limits'
 	String get quarkPlaybackAccelerationDescription => 'Prefetch video over multiple connections across all qualities to reduce buffering under single-connection speed limits';
 
+	/// en: 'Multi-connection playback requires Quark SVIP. Standard accounts use a single connection.'
+	String get quarkPlaybackAccelerationVipOnly => 'Multi-connection playback requires Quark SVIP. Standard accounts use a single connection.';
+
 	/// en: 'Signed in'
 	String get quarkSignedIn => 'Signed in';
 
@@ -6909,6 +6915,9 @@ class Translations$storage$en {
 
 	/// en: 'Offline'
 	String get statusOffline => 'Offline';
+
+	/// en: 'Sign-in expired'
+	String get statusAuthExpired => 'Sign-in expired';
 
 	/// en: 'Hidden ${count} offline mount(s)'
 	String offlineMountsHidden({required Object count}) => 'Hidden ${count} offline mount(s)';
@@ -12176,6 +12185,7 @@ extension on Translations {
 			'performanceOverlay.cacheUsed' => 'Cache Used',
 			'performanceOverlay.cacheLimit' => 'Cache Limit',
 			'performanceOverlay.speed' => 'Speed',
+			'performanceOverlay.connections' => 'Connections',
 			'performanceOverlay.player' => 'Player',
 			'performanceOverlay.playMethod' => 'Play Method',
 			'performanceOverlay.memory' => 'Memory',
@@ -12520,6 +12530,7 @@ extension on Translations {
 			'storage.quarkDownloadConnectionsDescription' => ({required Object effective, required Object min, required Object max}) => 'Up to ${effective} per file · Account range ${min}–${max}',
 			'storage.quarkPlaybackAcceleration' => 'Multi-connection playback buffering',
 			'storage.quarkPlaybackAccelerationDescription' => 'Prefetch video over multiple connections across all qualities to reduce buffering under single-connection speed limits',
+			'storage.quarkPlaybackAccelerationVipOnly' => 'Multi-connection playback requires Quark SVIP. Standard accounts use a single connection.',
 			'storage.quarkSignedIn' => 'Signed in',
 			'storage.quarkSignedOut' => 'Not signed in',
 			'storage.quarkScan' => 'Sign in with QR code',
@@ -12614,10 +12625,10 @@ extension on Translations {
 			'storage.tmdbKey' => 'TMDB API key',
 			'storage.tmdbKeyHelp' => 'A v3 API key or v4 read access token from themoviedb.org. Needed for movies and TV shows.',
 			'storage.metadataLanguage' => 'Metadata language',
-			'storage.bangumiForAnime' => 'Use Bangumi for anime',
-			'storage.bangumiForAnimeHelp' => 'Anime is looked up on Bangumi first, then TMDB',
 			_ => null,
 		} ?? switch (path) {
+			'storage.bangumiForAnime' => 'Use Bangumi for anime',
+			'storage.bangumiForAnimeHelp' => 'Anime is looked up on Bangumi first, then TMDB',
 			'storage.metadataProxy' => 'HTTP proxy',
 			'storage.metadataProxyHelp' => 'host:port, used for metadata requests only. Leave empty to connect directly.',
 			'storage.tmdbApiBase' => 'TMDB API address',
@@ -12644,6 +12655,7 @@ extension on Translations {
 			'storage.statusOnline' => 'Online',
 			'storage.statusFallback' => 'Fallback online',
 			'storage.statusOffline' => 'Offline',
+			'storage.statusAuthExpired' => 'Sign-in expired',
 			'storage.offlineMountsHidden' => ({required Object count}) => 'Hidden ${count} offline mount(s)',
 			'storage.offlineMountsShown' => ({required Object count}) => 'Showing ${count} offline mount(s)',
 			'storage.showOffline' => 'Show all',

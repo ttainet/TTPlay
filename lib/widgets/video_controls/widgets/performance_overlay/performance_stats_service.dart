@@ -9,6 +9,8 @@ import '../../../../utils/app_logger.dart';
 import '../../../../utils/codec_utils.dart';
 import 'performance_stats.dart';
 
+typedef StreamConnectionsProvider = ({int active, int target, int max})? Function();
+
 /// Service that polls player properties and provides performance stats via a stream.
 ///
 /// Supports both MPV (desktop/iOS) and ExoPlayer (Android) backends.
@@ -24,6 +26,7 @@ import 'performance_stats.dart';
 /// ```
 class PerformanceStatsService {
   final Player player;
+  final StreamConnectionsProvider? streamConnectionsProvider;
   Timer? _pollingTimer;
   final _statsController = StreamController<PerformanceStats>.broadcast();
 
@@ -44,7 +47,7 @@ class PerformanceStatsService {
   bool _fetchInProgress = false;
   bool _disposed = false;
 
-  PerformanceStatsService(this.player);
+  PerformanceStatsService(this.player, {this.streamConnectionsProvider});
 
   Stream<PerformanceStats> get statsStream => _statsController.stream;
 
@@ -143,6 +146,7 @@ class PerformanceStatsService {
     try {
       appMemory = ProcessInfo.currentRss;
     } catch (_) {}
+    final streamConns = streamConnectionsProvider?.call();
 
     if (playerType == 'mpv') {
       // Parse MPV stats format (returned when in fallback mode)
@@ -195,6 +199,9 @@ class PerformanceStatsService {
         // Dolby Vision: the bitstream's profile and what decodes it
         dvSourceProfile: (statsMap['dvSourceProfile'] as num?)?.toInt(),
         dvRoute: DvRoute.fromId(statsMap['dvRoute'] as String?),
+        streamActiveConns: streamConns?.active,
+        streamTargetConns: streamConns?.target,
+        streamMaxConns: streamConns?.max,
         appMemoryBytes: appMemory,
         uiFps: _currentUiFps,
       );
@@ -234,6 +241,9 @@ class PerformanceStatsService {
         dvAvgSampleProcessingUs: (statsMap['dvAvgSampleProcessingUs'] as num?)?.toInt(),
         dvSourceProfile: (statsMap['dvSourceProfile'] as num?)?.toInt(),
         dvPlaybackPath: statsMap['dvPlaybackPath'] as String?,
+        streamActiveConns: streamConns?.active,
+        streamTargetConns: streamConns?.target,
+        streamMaxConns: streamConns?.max,
         // App metrics
         appMemoryBytes: appMemory,
         uiFps: _currentUiFps,
@@ -345,6 +355,9 @@ class PerformanceStatsService {
       maxFall: _parseDouble(videoResults?[9]),
       aspectName: videoResults?[10],
       rotate: _parseInt(videoResults?[11]),
+      streamActiveConns: streamConnectionsProvider?.call()?.active,
+      streamTargetConns: streamConnectionsProvider?.call()?.target,
+      streamMaxConns: streamConnectionsProvider?.call()?.max,
       appMemoryBytes: appMemory,
       uiFps: _currentUiFps,
     );

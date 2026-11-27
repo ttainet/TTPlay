@@ -37,11 +37,7 @@ import '../storage/storage_folder_picker.dart';
 /// Reuses the exact same QR sign-in, account info card, connectivity check,
 /// and visual folder picker components as the offline mount editor.
 class CloudSourceEditScreen extends StatefulWidget {
-  const CloudSourceEditScreen({
-    super.key,
-    required this.repo,
-    this.existingSource,
-  });
+  const CloudSourceEditScreen({super.key, required this.repo, this.existingSource});
 
   final CloudSourceRepository repo;
   final CloudSource? existingSource;
@@ -55,42 +51,12 @@ class _CloudSourceEditScreenState extends State<CloudSourceEditScreen> {
   static const double _fieldGap = 14;
 
   static const List<({String kind, String title, String desc, IconData icon})> _kinds = [
-    (
-      kind: 'quark',
-      title: '夸克网盘',
-      desc: '扫码登录夸克，端到端加密同步，多端免重扫直连原画/转码播放',
-      icon: Symbols.cloud_rounded,
-    ),
-    (
-      kind: 'webdav',
-      title: 'WebDAV',
-      desc: '连接 NAS / Alist / OpenList 等 WebDAV 服务并可视化选目录',
-      icon: Symbols.dns_rounded,
-    ),
-    (
-      kind: 'smb',
-      title: 'SMB 局域网共享',
-      desc: '连接局域网 NAS 或 Windows 共享目录并跨端同步配置',
-      icon: Symbols.lan_rounded,
-    ),
-    (
-      kind: 'emby',
-      title: 'Emby',
-      desc: '端到端加密同步 Emby 凭据，各设备直连播放（不经服务端中转）',
-      icon: Symbols.video_library_rounded,
-    ),
-    (
-      kind: 'jellyfin',
-      title: 'Jellyfin',
-      desc: '端到端加密同步 Jellyfin 凭据，各设备直连播放（不经服务端中转）',
-      icon: Symbols.movie_rounded,
-    ),
-    (
-      kind: 'iptv',
-      title: 'IPTV 直播源',
-      desc: '端到端加密同步 M3U/TXT 订阅与 EPG 地址，各设备直连播放直播频道',
-      icon: Symbols.live_tv_rounded,
-    ),
+    (kind: 'quark', title: '夸克网盘', desc: '扫码登录夸克，端到端加密同步，多端免重扫直连原画/转码播放', icon: Symbols.cloud_rounded),
+    (kind: 'webdav', title: 'WebDAV', desc: '连接 NAS / Alist / OpenList 等 WebDAV 服务并可视化选目录', icon: Symbols.dns_rounded),
+    (kind: 'smb', title: 'SMB 局域网共享', desc: '连接局域网 NAS 或 Windows 共享目录并跨端同步配置', icon: Symbols.lan_rounded),
+    (kind: 'emby', title: 'Emby', desc: '端到端加密同步 Emby 凭据，各设备直连播放（不经服务端中转）', icon: Symbols.video_library_rounded),
+    (kind: 'jellyfin', title: 'Jellyfin', desc: '端到端加密同步 Jellyfin 凭据，各设备直连播放（不经服务端中转）', icon: Symbols.movie_rounded),
+    (kind: 'iptv', title: 'IPTV 直播源', desc: '端到端加密同步 M3U/TXT 订阅与 EPG 地址，各设备直连播放直播频道', icon: Symbols.live_tv_rounded),
   ];
 
   final _formKey = GlobalKey<FormState>();
@@ -257,9 +223,7 @@ class _CloudSourceEditScreenState extends State<CloudSourceEditScreen> {
                 int.tryParse(_requestIntervalCtrl.text.trim()) ??
                 QuarkStorageDriver.defaultRequestInterval.inMilliseconds,
           },
-          secrets: {
-            if (_cookieCtrl.text.trim().isNotEmpty) MountKeys.secretCookie: _cookieCtrl.text.trim(),
-          },
+          secrets: {if (_cookieCtrl.text.trim().isNotEmpty) MountKeys.secretCookie: _cookieCtrl.text.trim()},
         );
       case 'webdav':
         return StorageMount(
@@ -273,9 +237,7 @@ class _CloudSourceEditScreenState extends State<CloudSourceEditScreen> {
             MountKeys.rootPath: StoragePath.root,
             MountKeys.allowInsecureTls: _allowInsecureTls,
           },
-          secrets: {
-            if (_passwordCtrl.text.isNotEmpty) MountKeys.secretPassword: _passwordCtrl.text,
-          },
+          secrets: {if (_passwordCtrl.text.isNotEmpty) MountKeys.secretPassword: _passwordCtrl.text},
         );
       case 'smb':
       default:
@@ -291,9 +253,7 @@ class _CloudSourceEditScreenState extends State<CloudSourceEditScreen> {
             if (_domainCtrl.text.trim().isNotEmpty) MountKeys.domain: _domainCtrl.text.trim(),
             MountKeys.rootPath: StoragePath.root,
           },
-          secrets: {
-            if (_passwordCtrl.text.isNotEmpty) MountKeys.secretPassword: _passwordCtrl.text,
-          },
+          secrets: {if (_passwordCtrl.text.isNotEmpty) MountKeys.secretPassword: _passwordCtrl.text},
         );
     }
   }
@@ -713,9 +673,7 @@ class _CloudSourceEditScreenState extends State<CloudSourceEditScreen> {
     final res = await _validateAndBuildIptvPayload();
     final m3uUrl = _baseUrlCtrl.text.trim();
     final host = Uri.tryParse(m3uUrl)?.host ?? '';
-    final name = _nameCtrl.text.trim().isNotEmpty
-        ? _nameCtrl.text.trim()
-        : (host.isNotEmpty ? host : 'IPTV 直播源');
+    final name = _nameCtrl.text.trim().isNotEmpty ? _nameCtrl.text.trim() : (host.isNotEmpty ? host : 'IPTV 直播源');
     return widget.repo.createSource(
       kind: 'iptv',
       name: name,
@@ -792,9 +750,7 @@ class _CloudSourceEditScreenState extends State<CloudSourceEditScreen> {
               ),
               child: SizedBox.square(
                 dimension: 44,
-                child: Center(
-                  child: AppIcon(item.icon, size: 24, color: theme.colorScheme.onSecondaryContainer),
-                ),
+                child: Center(child: AppIcon(item.icon, size: 24, color: theme.colorScheme.onSecondaryContainer)),
               ),
             ),
             title: Text(item.title),
@@ -868,11 +824,10 @@ class _CloudSourceEditScreenState extends State<CloudSourceEditScreen> {
                           border: OutlineInputBorder(),
                         ),
                         items: [
-                          for (final minutes
-                              in (<int>{
-                                ...MountKeys.autoIncrementalIntervalPresets,
-                                _autoIncrementalIntervalMinutes,
-                              }.toList()..sort()))
+                          for (final minutes in (<int>{
+                            ...MountKeys.autoIncrementalIntervalPresets,
+                            _autoIncrementalIntervalMinutes,
+                          }.toList()..sort()))
                             DropdownMenuItem<int>(
                               value: minutes,
                               child: Text(MountKeys.formatAutoIncrementalInterval(minutes)),
@@ -912,6 +867,7 @@ class _CloudSourceEditScreenState extends State<CloudSourceEditScreen> {
     Widget loginContent([AsyncSnapshot<QuarkAccountInfo?>? snapshot]) {
       final account = snapshot?.connectionState == ConnectionState.done ? snapshot?.data : null;
       final tier = account != null ? QuarkDownloadTier.forAccount(account) : null;
+      final knownNonVip = account != null && !account.supportsMultiConnectionPlayback;
       return Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -926,18 +882,12 @@ class _CloudSourceEditScreenState extends State<CloudSourceEditScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(
-                          cookie.isEmpty ? '扫码登录夸克账号' : '已获取夸克登录会话',
-                          style: Theme.of(context).textTheme.titleSmall,
-                        ),
+                        Text(cookie.isEmpty ? '扫码登录夸克账号' : '已获取夸克登录会话', style: Theme.of(context).textTheme.titleSmall),
                         const SizedBox(height: 2),
                         if (snapshot != null)
                           QuarkAccountDetails(snapshot: snapshot)
                         else
-                          Text(
-                            '使用手机夸克 App 扫码授权，凭据仅在本地加密后上传服务器',
-                            style: Theme.of(context).textTheme.bodySmall,
-                          ),
+                          Text('使用手机夸克 App 扫码授权，凭据仅在本地加密后上传服务器', style: Theme.of(context).textTheme.bodySmall),
                       ],
                     ),
                   ),
@@ -958,15 +908,16 @@ class _CloudSourceEditScreenState extends State<CloudSourceEditScreen> {
             child: FocusableSwitchListTile(
               dense: false,
               title: Text(t.storage.quarkPlaybackAcceleration),
-              subtitle: Text(t.storage.quarkPlaybackAccelerationDescription),
-              value: _playbackAcceleration,
-              onChanged: _saving ? null : (v) => setState(() => _playbackAcceleration = v),
+              subtitle: Text(
+                knownNonVip
+                    ? t.storage.quarkPlaybackAccelerationVipOnly
+                    : t.storage.quarkPlaybackAccelerationDescription,
+              ),
+              value: knownNonVip ? false : _playbackAcceleration,
+              onChanged: (_saving || knownNonVip) ? null : (v) => setState(() => _playbackAcceleration = v),
             ),
           ),
-          if (tier != null) ...[
-            const SizedBox(height: _fieldGap),
-            _buildQuarkDownloadPicker(tier),
-          ],
+          if (tier != null) ...[const SizedBox(height: _fieldGap), _buildQuarkDownloadPicker(tier)],
         ],
       );
     }
@@ -976,10 +927,7 @@ class _CloudSourceEditScreenState extends State<CloudSourceEditScreen> {
         SegmentedButton<QuarkMode>(
           segments: [
             for (final mode in supportedModes)
-              ButtonSegment<QuarkMode>(
-                value: mode,
-                label: Text(mode == QuarkMode.pc ? 'PC 客户端模式（推荐）' : '网页模式'),
-              ),
+              ButtonSegment<QuarkMode>(value: mode, label: Text(mode == QuarkMode.pc ? 'PC 客户端模式（推荐）' : '网页模式')),
           ],
           selected: {_quarkMode},
           onSelectionChanged: _saving
@@ -1071,10 +1019,7 @@ class _CloudSourceEditScreenState extends State<CloudSourceEditScreen> {
       controller: _fallbackUrlCtrl,
       enabled: !_saving,
       keyboardType: TextInputType.url,
-      decoration: const InputDecoration(
-        labelText: '备用地址（可选，如外网域名）',
-        border: OutlineInputBorder(),
-      ),
+      decoration: const InputDecoration(labelText: '备用地址（可选，如外网域名）', border: OutlineInputBorder()),
     ),
     const SizedBox(height: _fieldGap),
     TextFormField(
@@ -1115,11 +1060,7 @@ class _CloudSourceEditScreenState extends State<CloudSourceEditScreen> {
     TextFormField(
       controller: _shareCtrl,
       enabled: !_saving,
-      decoration: const InputDecoration(
-        labelText: '共享名称（Share）',
-        hintText: 'Media',
-        border: OutlineInputBorder(),
-      ),
+      decoration: const InputDecoration(labelText: '共享名称（Share）', hintText: 'Media', border: OutlineInputBorder()),
       validator: (v) => (v == null || v.trim().isEmpty) ? '请输入共享名称' : null,
     ),
     const SizedBox(height: _fieldGap),
@@ -1208,19 +1149,13 @@ class _CloudSourceEditScreenState extends State<CloudSourceEditScreen> {
     TextFormField(
       controller: _userAgentCtrl,
       enabled: !_saving,
-      decoration: const InputDecoration(
-        labelText: '默认 User-Agent（可选）',
-        border: OutlineInputBorder(),
-      ),
+      decoration: const InputDecoration(labelText: '默认 User-Agent（可选）', border: OutlineInputBorder()),
     ),
     const SizedBox(height: _fieldGap),
     TextFormField(
       controller: _refererCtrl,
       enabled: !_saving,
-      decoration: const InputDecoration(
-        labelText: '默认 Referer（可选）',
-        border: OutlineInputBorder(),
-      ),
+      decoration: const InputDecoration(labelText: '默认 Referer（可选）', border: OutlineInputBorder()),
     ),
   ];
 

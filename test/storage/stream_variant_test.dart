@@ -88,10 +88,8 @@ class _FakeSource implements StreamVariantSource {
 }
 
 class _PrefetchVariantSource implements StreamVariantSource, PrefetchReadSource {
-  _PrefetchVariantSource({
-    required this.variantBuilder,
-    required HttpClient client,
-  }) : _cache = PlaybackPrefetchCache(client, chunkSize: 1024, maxCacheBytes: 8192, defaultMaxConnections: 3);
+  _PrefetchVariantSource({required this.variantBuilder, required HttpClient client})
+    : _cache = PlaybackPrefetchCache(client, chunkSize: 1024, maxCacheBytes: 8192, defaultMaxConnections: 3);
 
   final StreamVariant Function() variantBuilder;
   final PlaybackPrefetchCache _cache;
@@ -108,14 +106,6 @@ class _PrefetchVariantSource implements StreamVariantSource, PrefetchReadSource 
   Future<List<StreamVariant>> streamVariants(StorageEntry entry, {bool forceRefresh = false}) async => [
     variantBuilder(),
   ];
-
-  @override
-  Stream<List<int>> openReadPlayback(
-    StorageEntry entry, {
-    required int start,
-    required int end,
-    required int totalSize,
-  }) => throw UnimplementedError();
 
   @override
   Stream<List<int>> openReadVariantPlayback({
@@ -182,18 +172,15 @@ void main() {
       base,
       (url) => 'P(${url.toString()})',
     );
-    expect(
-      const LineSplitter().convert(rewritten),
-      [
-        '#EXTM3U',
-        '#EXT-X-KEY:METHOD=AES-128,URI="P(https://cdn.example/a/b/key.bin)"',
-        '#EXTINF:4,',
-        'P(https://cdn.example/a/b/seg%200.ts)',
-        '#EXT-X-KEY:METHOD=SAMPLE-AES,URI="skd://id"',
-        '',
-        'P(https://other.example/seg1.ts)',
-      ],
-    );
+    expect(const LineSplitter().convert(rewritten), [
+      '#EXTM3U',
+      '#EXT-X-KEY:METHOD=AES-128,URI="P(https://cdn.example/a/b/key.bin)"',
+      '#EXTINF:4,',
+      'P(https://cdn.example/a/b/seg%200.ts)',
+      '#EXT-X-KEY:METHOD=SAMPLE-AES,URI="skd://id"',
+      '',
+      'P(https://other.example/seg1.ts)',
+    ]);
   });
 
   group('proxy serves a rendition', () {
@@ -218,11 +205,7 @@ void main() {
     Future<(int, String, String?)> get(Uri url) async {
       final request = await client.getUrl(url);
       final response = await request.close();
-      return (
-        response.statusCode,
-        await utf8.decodeStream(response),
-        response.headers.contentType?.mimeType,
-      );
+      return (response.statusCode, await utf8.decodeStream(response), response.headers.contentType?.mimeType);
     }
 
     Future<Uri> register(_FakeSource source) async {
@@ -280,113 +263,119 @@ void main() {
       expect(status, HttpStatus.notFound);
     });
 
-    test('HLS variant prefetches upcoming segments when PrefetchReadSource is enabled and stops when disabled', () async {
-      final source = _PrefetchVariantSource(
-        client: client,
-        variantBuilder: () => StreamVariant(
-          id: 'high',
-          url: cdn.url('/hls/master.m3u8'),
-          headers: {HttpHeaders.cookieHeader: 'Video-Auth=${cdn.acceptedAuth}'},
-          isHls: true,
-        ),
-      );
-      addTearDown(source.dispose);
-      const entry = StorageEntry(path: '/Show/ep2.mkv', name: 'ep2.mkv', isDirectory: false);
-      final v = (await source.streamVariants(entry)).single;
-      final url = await proxy.registerVariant(mountId: 'quark', source: source, entry: entry, variant: v);
+    test(
+      'HLS variant prefetches upcoming segments when PrefetchReadSource is enabled and stops when disabled',
+      () async {
+        final source = _PrefetchVariantSource(
+          client: client,
+          variantBuilder: () => StreamVariant(
+            id: 'high',
+            url: cdn.url('/hls/master.m3u8'),
+            headers: {HttpHeaders.cookieHeader: 'Video-Auth=${cdn.acceptedAuth}'},
+            isHls: true,
+          ),
+        );
+        addTearDown(source.dispose);
+        const entry = StorageEntry(path: '/Show/ep2.mkv', name: 'ep2.mkv', isDirectory: false);
+        final v = (await source.streamVariants(entry)).single;
+        final url = await proxy.registerVariant(mountId: 'quark', source: source, entry: entry, variant: v);
 
-      final (_, master, _) = await get(url);
-      final mediaUrl = const LineSplitter().convert(master).last;
-      final (_, media, _) = await get(Uri.parse(mediaUrl));
-      final lines = const LineSplitter().convert(media);
-      final segments = lines.where((l) => l.isNotEmpty && !l.startsWith('#')).toList();
-      expect(segments, hasLength(2));
+        final (_, master, _) = await get(url);
+        final mediaUrl = const LineSplitter().convert(master).last;
+        final (_, media, _) = await get(Uri.parse(mediaUrl));
+        final lines = const LineSplitter().convert(media);
+        final segments = lines.where((l) => l.isNotEmpty && !l.startsWith('#')).toList();
+        expect(segments, hasLength(2));
 
-      cdn.requests.clear();
-      expect((await get(Uri.parse(segments[0]))).$2, 'bytes of /hls/media/seg0.m4s');
+        cdn.requests.clear();
+        expect((await get(Uri.parse(segments[0]))).$2, 'bytes of /hls/media/seg0.m4s');
 
-      // Fetching seg0 must have triggered background prefetch of seg1.
-      final deadline = DateTime.now().add(const Duration(seconds: 2));
-      while (!cdn.requests.contains('/abs/seg1.m4s') && DateTime.now().isBefore(deadline)) {
-        await Future<void>.delayed(const Duration(milliseconds: 10));
-      }
-      expect(cdn.requests, contains('/abs/seg1.m4s'));
+        // Fetching seg0 must have triggered background prefetch of seg1.
+        final deadline = DateTime.now().add(const Duration(seconds: 2));
+        while (!cdn.requests.contains('/abs/seg1.m4s') && DateTime.now().isBefore(deadline)) {
+          await Future<void>.delayed(const Duration(milliseconds: 10));
+        }
+        expect(cdn.requests, contains('/abs/seg1.m4s'));
 
-      // Fetching seg1 now serves from prefetcher cache without another CDN request.
-      final countBeforeSeg1 = cdn.requests.length;
-      expect((await get(Uri.parse(segments[1]))).$2, 'bytes of /abs/seg1.m4s');
-      expect(cdn.requests.length, countBeforeSeg1);
+        // Fetching seg1 now serves from prefetcher cache without another CDN request.
+        final countBeforeSeg1 = cdn.requests.length;
+        expect((await get(Uri.parse(segments[1]))).$2, 'bytes of /abs/seg1.m4s');
+        expect(cdn.requests.length, countBeforeSeg1);
 
-      // Disabling acceleration stops prefetching and evicts cached segments.
-      source.playbackPrefetchEnabled = false;
-      cdn.requests.clear();
-      expect((await get(Uri.parse(segments[0]))).$2, 'bytes of /hls/media/seg0.m4s');
-      await Future<void>.delayed(const Duration(milliseconds: 80));
-      expect(cdn.requests, ['/hls/media/seg0.m4s']);
-    });
+        // Disabling acceleration stops prefetching and evicts cached segments.
+        source.playbackPrefetchEnabled = false;
+        cdn.requests.clear();
+        expect((await get(Uri.parse(segments[0]))).$2, 'bytes of /hls/media/seg0.m4s');
+        await Future<void>.delayed(const Duration(milliseconds: 80));
+        expect(cdn.requests, ['/hls/media/seg0.m4s']);
+      },
+    );
 
-    test('non-HLS variant uses multi-chunk openReadVariantPlayback when enabled and falls back when disabled', () async {
-      final mp4Bytes = Uint8List.fromList(List<int>.generate(3072, (i) => i % 251));
-      final mp4Server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
-      addTearDown(() => mp4Server.close(force: true));
-      final mp4Ranges = <String?>[];
-      mp4Server.listen((req) async {
-        final resp = req.response;
-        final range = req.headers.value(HttpHeaders.rangeHeader);
-        if (req.method == 'HEAD') {
-          resp.contentLength = mp4Bytes.length;
-          resp.headers.set(HttpHeaders.acceptRangesHeader, 'bytes');
+    test(
+      'non-HLS variant uses multi-chunk openReadVariantPlayback when enabled and falls back when disabled',
+      () async {
+        final mp4Bytes = Uint8List.fromList(List<int>.generate(3072, (i) => i % 251));
+        final mp4Server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+        addTearDown(() => mp4Server.close(force: true));
+        final mp4Ranges = <String?>[];
+        mp4Server.listen((req) async {
+          final resp = req.response;
+          final range = req.headers.value(HttpHeaders.rangeHeader);
+          if (req.method == 'HEAD') {
+            resp.contentLength = mp4Bytes.length;
+            resp.headers.set(HttpHeaders.acceptRangesHeader, 'bytes');
+            await resp.close();
+            return;
+          }
+          mp4Ranges.add(range);
+          final match = range == null ? null : RegExp(r'bytes=(\d+)-(\d*)').firstMatch(range);
+          if (match == null) {
+            resp.contentLength = mp4Bytes.length;
+            resp.add(mp4Bytes);
+          } else {
+            final start = int.parse(match[1]!);
+            final end = match[2]!.isEmpty ? mp4Bytes.length - 1 : int.parse(match[2]!);
+            resp.statusCode = HttpStatus.partialContent;
+            resp.headers.set(HttpHeaders.contentRangeHeader, 'bytes $start-$end/${mp4Bytes.length}');
+            resp.contentLength = end - start + 1;
+            resp.add(mp4Bytes.sublist(start, end + 1));
+          }
           await resp.close();
-          return;
-        }
-        mp4Ranges.add(range);
-        final match = range == null ? null : RegExp(r'bytes=(\d+)-(\d*)').firstMatch(range);
-        if (match == null) {
-          resp.contentLength = mp4Bytes.length;
-          resp.add(mp4Bytes);
-        } else {
-          final start = int.parse(match[1]!);
-          final end = match[2]!.isEmpty ? mp4Bytes.length - 1 : int.parse(match[2]!);
-          resp.statusCode = HttpStatus.partialContent;
-          resp.headers.set(HttpHeaders.contentRangeHeader, 'bytes $start-$end/${mp4Bytes.length}');
-          resp.contentLength = end - start + 1;
-          resp.add(mp4Bytes.sublist(start, end + 1));
-        }
-        await resp.close();
-      });
+        });
 
-      final source = _PrefetchVariantSource(
-        client: client,
-        variantBuilder: () => StreamVariant(
-          id: 'super',
-          url: Uri.parse('http://127.0.0.1:${mp4Server.port}/transcode.mp4'),
-          isHls: false,
-        ),
-      );
-      addTearDown(source.dispose);
-      const entry = StorageEntry(path: '/Show/ep3.mkv', name: 'ep3.mkv', isDirectory: false);
-      final v = (await source.streamVariants(entry)).single;
-      final url = await proxy.registerVariant(mountId: 'quark', source: source, entry: entry, variant: v);
-      expect(url.path, endsWith('/ep3.mp4'));
+        final source = _PrefetchVariantSource(
+          client: client,
+          variantBuilder: () => StreamVariant(
+            id: 'super',
+            url: Uri.parse('http://127.0.0.1:${mp4Server.port}/transcode.mp4'),
+            isHls: false,
+          ),
+        );
+        addTearDown(source.dispose);
+        const entry = StorageEntry(path: '/Show/ep3.mkv', name: 'ep3.mkv', isDirectory: false);
+        final v = (await source.streamVariants(entry)).single;
+        final url = await proxy.registerVariant(mountId: 'quark', source: source, entry: entry, variant: v);
+        expect(url.path, endsWith('/ep3.mp4'));
 
-      final req1 = await client.getUrl(url);
-      final resp1 = await req1.close();
-      final body1 = await resp1.expand((c) => c).toList();
-      expect(body1, mp4Bytes);
-      expect(source.variantPlaybackCalls, hasLength(1));
-      expect(mp4Ranges, containsAll(['bytes=0-1023', 'bytes=1024-2047', 'bytes=2048-3071']));
+        final req1 = await client.getUrl(url);
+        final resp1 = await req1.close();
+        final body1 = await resp1.expand((c) => c).toList();
+        expect(body1, mp4Bytes);
+        expect(source.variantPlaybackCalls, hasLength(1));
+        expect(mp4Ranges, containsAll(['bytes=0-1023', 'bytes=1024-2047', 'bytes=2048-3071']));
 
-      // Disable acceleration -> falls back to direct single-request passthrough.
-      source.playbackPrefetchEnabled = false;
-      mp4Ranges.clear();
-      final req2 = await client.getUrl(url);
-      req2.headers.set(HttpHeaders.rangeHeader, 'bytes=0-3071');
-      final resp2 = await req2.close();
-      final body2 = await resp2.expand((c) => c).toList();
-      expect(body2, mp4Bytes);
-      expect(source.variantPlaybackCalls, hasLength(1));
-      expect(mp4Ranges, ['bytes=0-3071']);
-    });
+        // Disable acceleration -> falls back to direct single-request passthrough.
+        source.playbackPrefetchEnabled = false;
+        mp4Ranges.clear();
+        final req2 = await client.getUrl(url);
+        req2.headers.set(HttpHeaders.rangeHeader, 'bytes=0-3071');
+        final resp2 = await req2.close();
+        final body2 = await resp2.expand((c) => c).toList();
+        expect(body2, mp4Bytes);
+        expect(source.variantPlaybackCalls, hasLength(1));
+        expect(mp4Ranges, ['bytes=0-3071']);
+      },
+    );
 
     test('logs /v HEAD fallback warning and direct route once when Content-Length is missing', () async {
       final originalLogger = logging.appLogger;
@@ -430,7 +419,9 @@ void main() {
       }
 
       final headWarnings = logOutput.lines.where((l) => l.contains('Stream proxy /v: HEAD probe failed')).toList();
-      final routeLogs = logOutput.lines.where((l) => l.contains('Stream proxy /v: variant=super route=direct')).toList();
+      final routeLogs = logOutput.lines
+          .where((l) => l.contains('Stream proxy /v: variant=super route=direct'))
+          .toList();
       expect(headWarnings, hasLength(1));
       expect(routeLogs, hasLength(1));
       expect(logOutput.lines.join('\n'), isNot(contains('secret999')));

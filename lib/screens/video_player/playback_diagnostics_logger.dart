@@ -7,6 +7,15 @@ import 'package:clock/clock.dart';
 import '../../mpv/mpv.dart';
 import '../../utils/app_logger.dart';
 
+typedef PlaybackDemandSink =
+    void Function({
+      required bool playbackStarted,
+      required int bitrateBps,
+      required double bufferedSecs,
+      required bool isBuffering,
+      required int durationMs,
+    });
+
 /// Periodically samples player cache, decoder, and Dart isolate lag metrics
 /// into [appLogger] so playback stalls can be attributed to network/CDN
 /// throttling, soft-decode bottlenecks, or UI isolate stalls.
@@ -18,6 +27,11 @@ class PlaybackDiagnosticsLogger {
     this.stallMinGap = const Duration(seconds: 5),
     this.heartbeatInterval = const Duration(seconds: 1),
     this.lagSpikeThresholdMs = 200,
+    this.demandInterval = const Duration(seconds: 2),
+    this.isFirstFrameRendered,
+    this.hasDemandTarget,
+    this.fallbackBitrateBps,
+    this.onDemandSample,
   });
 
   final Player player;
@@ -26,19 +40,29 @@ class PlaybackDiagnosticsLogger {
   final Duration stallMinGap;
   final Duration heartbeatInterval;
   final int lagSpikeThresholdMs;
+  final Duration demandInterval;
+  final bool Function()? isFirstFrameRendered;
+  final bool Function()? hasDemandTarget;
+  final int? Function()? fallbackBitrateBps;
+  final PlaybackDemandSink? onDemandSample;
 
   Timer? _heartbeatTimer;
   Timer? _stallTimer;
   bool _started = false;
   bool _disposed = false;
   bool _sampling = false;
+  bool _samplingDemand = false;
   bool _isBuffering = false;
 
   late DateTime _lastTickAt;
   late DateTime _lastSampleAt;
   DateTime? _lastStallLogAt;
+  DateTime? _lastDemandAt;
   int _windowMaxLoopLagMs = 0;
   int _windowLagSpikes = 0;
+  int _lastObservedBitrateBps = 0;
+  double _lastObservedBufferedSecs = -1;
+  bool _lastReportedStarted = false;
 
   /// Begins the 1s event-loop-lag heartbeat and periodic playback sampling.
   void start() {
@@ -50,11 +74,23 @@ class PlaybackDiagnosticsLogger {
     _heartbeatTimer = Timer.periodic(heartbeatInterval, (_) => _onHeartbeat());
   }
 
+  /// Pushes an immediate startup unlock and samples bitrate/buffer state when
+  /// the player's first frame is rendered.
+  void onFirstFrameRendered() {
+    if (_disposed || player.disposed || onDemandSample == null) return;
+    if (!(hasDemandTarget?.call() ?? false)) return;
+    _emitDemand(playbackStarted: true);
+    unawaited(_sampleDemand());
+  }
+
   /// Notifies the logger when player buffering state changes so sustained stalls
   /// exceeding [stallThreshold] emit an immediate diagnostic snapshot.
   void onBufferingChanged(bool isBuffering) {
     if (_disposed || player.disposed || _isBuffering == isBuffering) return;
     _isBuffering = isBuffering;
+    if (onDemandSample != null && (hasDemandTarget?.call() ?? false)) {
+      _emitDemand(playbackStarted: isFirstFrameRendered?.call() ?? false);
+    }
     _stallTimer?.cancel();
     _stallTimer = null;
     if (!isBuffering) return;
@@ -90,9 +126,80 @@ class PlaybackDiagnosticsLogger {
     if (lagMs > _windowMaxLoopLagMs) _windowMaxLoopLagMs = lagMs;
     if (lagMs >= lagSpikeThresholdMs) _windowLagSpikes++;
 
+    if (onDemandSample != null && (hasDemandTarget?.call() ?? false)) {
+      final started = isFirstFrameRendered?.call() ?? false;
+      final due = _lastDemandAt == null || now.difference(_lastDemandAt!) >= demandInterval;
+      if (started != _lastReportedStarted || due) {
+        if (!started) {
+          _lastObservedBitrateBps = 0;
+          _lastObservedBufferedSecs = -1;
+          _emitDemand(playbackStarted: false);
+        } else if (!_samplingDemand) {
+          unawaited(_sampleDemand());
+        }
+      }
+    }
+
     final active = player.state.playing || _isBuffering;
     if (active && !_sampling && now.difference(_lastSampleAt) >= sampleInterval) {
       unawaited(_sample('periodic'));
+    }
+  }
+
+  int _effectiveBitrateBps() {
+    if (_lastObservedBitrateBps > 0) return _lastObservedBitrateBps;
+    return fallbackBitrateBps?.call() ?? 0;
+  }
+
+  void _emitDemand({required bool playbackStarted}) {
+    final sink = onDemandSample;
+    if (sink == null || _disposed || player.disposed) return;
+    _lastReportedStarted = playbackStarted;
+    _lastDemandAt = clock.now();
+    sink(
+      playbackStarted: playbackStarted,
+      bitrateBps: playbackStarted ? _effectiveBitrateBps() : 0,
+      bufferedSecs: playbackStarted ? _lastObservedBufferedSecs : -1,
+      isBuffering: _isBuffering,
+      durationMs: player.state.duration.inMilliseconds,
+    );
+  }
+
+  Future<void> _sampleDemand() async {
+    if (_disposed || player.disposed || _samplingDemand) return;
+    _samplingDemand = true;
+    try {
+      if (player.providesNativeStats) {
+        final stats = await player.getStats();
+        if (_disposed || player.disposed) return;
+        final type = stats['playerType'] as String?;
+        if (type == 'exoplayer') {
+          final br = _parseDouble(stats['videoBitrate']);
+          if (br != null && br > 0) _lastObservedBitrateBps = br.round();
+          final cacheMs = _parseDouble(stats['totalBufferedDurationMs']);
+          if (cacheMs != null && cacheMs >= 0) _lastObservedBufferedSecs = cacheMs / 1000.0;
+        } else {
+          final br = _parseDouble(stats['video-bitrate']);
+          if (br != null && br > 0) _lastObservedBitrateBps = br.round();
+          final cacheSec = _parseDouble(stats['demuxer-cache-duration']);
+          if (cacheSec != null && cacheSec >= 0) _lastObservedBufferedSecs = cacheSec;
+        }
+      } else {
+        final values = await Future.wait([
+          player.getProperty('video-bitrate'),
+          player.getProperty('demuxer-cache-duration'),
+        ]);
+        if (_disposed || player.disposed) return;
+        final br = _parseDouble(values[0]);
+        if (br != null && br > 0) _lastObservedBitrateBps = br.round();
+        final cacheSec = _parseDouble(values[1]);
+        if (cacheSec != null && cacheSec >= 0) _lastObservedBufferedSecs = cacheSec;
+      }
+      _emitDemand(playbackStarted: isFirstFrameRendered?.call() ?? false);
+    } catch (_) {
+      // Ignore transient property read errors mid-open/reload.
+    } finally {
+      _samplingDemand = false;
     }
   }
 
@@ -121,11 +228,7 @@ class PlaybackDiagnosticsLogger {
     }
   }
 
-  Future<String?> _collectNativeStatsLine({
-    required String reason,
-    required int lagMax,
-    required int spikes,
-  }) async {
+  Future<String?> _collectNativeStatsLine({required String reason, required int lagMax, required int spikes}) async {
     final stats = await player.getStats();
     if (_disposed || player.disposed) return null;
     final type = stats['playerType'] as String?;
@@ -154,11 +257,7 @@ class PlaybackDiagnosticsLogger {
     );
   }
 
-  Future<String?> _collectMpvPropertyLine({
-    required String reason,
-    required int lagMax,
-    required int spikes,
-  }) async {
+  Future<String?> _collectMpvPropertyLine({required String reason, required int lagMax, required int spikes}) async {
     final values = await Future.wait([
       player.getProperty('cache-speed'),
       player.getProperty('demuxer-cache-duration'),

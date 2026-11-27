@@ -26,7 +26,15 @@ class PlayerPerformanceOverlay extends StatefulWidget {
   /// has no server play method (live TV, offline playback).
   final bool? isTranscoding;
 
-  const PlayerPerformanceOverlay({super.key, required this.player, required this.active, this.isTranscoding});
+  final StreamConnectionsProvider? streamConnectionsProvider;
+
+  const PlayerPerformanceOverlay({
+    super.key,
+    required this.player,
+    required this.active,
+    this.isTranscoding,
+    this.streamConnectionsProvider,
+  });
 
   @override
   State<PlayerPerformanceOverlay> createState() => _PlayerPerformanceOverlayState();
@@ -39,7 +47,7 @@ class _PlayerPerformanceOverlayState extends State<PlayerPerformanceOverlay> {
   @override
   void initState() {
     super.initState();
-    _statsService = PerformanceStatsService(widget.player);
+    _statsService = PerformanceStatsService(widget.player, streamConnectionsProvider: widget.streamConnectionsProvider);
     _statsService.statsStream.listen((stats) {
       if (mounted) {
         setState(() {
@@ -131,6 +139,7 @@ class _PlayerPerformanceOverlayState extends State<PlayerPerformanceOverlay> {
         if (!isMpv && _stats.hasValidBufferLimits)
           _metric(t.performanceOverlay.cacheLimit, _stats.bufferLimitsFormatted),
         if (isMpv) _metric(t.performanceOverlay.speed, _stats.cacheSpeedFormatted),
+        if (_stats.hasStreamConnections) _metric(t.performanceOverlay.connections, _stats.streamConnectionsFormatted),
       ]),
       _buildSection(Symbols.apps_rounded, t.performanceOverlay.app, [
         _metric(t.performanceOverlay.player, _stats.playerTypeFormatted),

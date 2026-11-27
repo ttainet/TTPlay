@@ -113,8 +113,7 @@ class _MountEditScreenState extends State<MountEditScreen> {
     _password = TextEditingController(text: mount?.secret(MountKeys.secretPassword) ?? '');
     _cookie = TextEditingController(text: mount?.secret(MountKeys.secretCookie) ?? '');
     final initialIncludes = [
-      for (final p in mount?.configStringList(MountKeys.includePaths) ?? const <String>[])
-        StoragePath.normalize(p),
+      for (final p in mount?.configStringList(MountKeys.includePaths) ?? const <String>[]) StoragePath.normalize(p),
     ];
     var migratedQuarkRoot = false;
     if (mount?.kind == StorageKind.quark) {
@@ -220,10 +219,7 @@ class _MountEditScreenState extends State<MountEditScreen> {
     };
     final (Map<String, Object?> config, Map<String, String> secrets) = switch (kind) {
       StorageKind.local => (
-        {
-          MountKeys.rootPath: _rootPath.text.trim(),
-          MountKeys.autoIncrementalScan: _autoIncrementalScan,
-        },
+        {MountKeys.rootPath: _rootPath.text.trim(), MountKeys.autoIncrementalScan: _autoIncrementalScan},
         const <String, String>{},
       ),
       StorageKind.webdav => (
@@ -314,6 +310,11 @@ class _MountEditScreenState extends State<MountEditScreen> {
         await scans.cancelAndAwaitMount(mount.id);
         await manager.save(mount);
         manager.setStatus(mount.id, resolvedStatus);
+        if (mount.kind == StorageKind.quark) {
+          unawaited(
+            manager.probeMount(mount).then((status) => manager.applyProbeStatus(mount.id, status, kind: mount.kind)),
+          );
+        }
         // Do not auto-scan on add/edit; user manually triggers initial scan.
       }
     } on StorageException catch (e) {
@@ -651,6 +652,7 @@ class _MountEditScreenState extends State<MountEditScreen> {
 
     Widget fields([AsyncSnapshot<QuarkAccountInfo?>? snapshot]) {
       final account = snapshot?.connectionState == ConnectionState.done ? snapshot?.data : null;
+      final knownNonVip = account != null && !account.supportsMultiConnectionPlayback;
       return Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -666,9 +668,11 @@ class _MountEditScreenState extends State<MountEditScreen> {
             contentPadding: EdgeInsets.zero,
             dense: false,
             title: Text(t.storage.quarkPlaybackAcceleration),
-            subtitle: Text(t.storage.quarkPlaybackAccelerationDescription),
-            value: _playbackAcceleration,
-            onChanged: _saving ? null : (value) => setState(() => _playbackAcceleration = value),
+            subtitle: Text(
+              knownNonVip ? t.storage.quarkPlaybackAccelerationVipOnly : t.storage.quarkPlaybackAccelerationDescription,
+            ),
+            value: knownNonVip ? false : _playbackAcceleration,
+            onChanged: (_saving || knownNonVip) ? null : (value) => setState(() => _playbackAcceleration = value),
           ),
           if (account != null) ..._quarkDownloadFields(QuarkDownloadTier.forAccount(account)),
         ],
@@ -754,11 +758,7 @@ class _MountEditScreenState extends State<MountEditScreen> {
       FocusableTextFormField(
         tvTextInputAutoOpenBehavior: TvTextInputAutoOpenBehavior.never,
         controller: _includePaths,
-        decoration: _decoration(
-          t.storage.includePaths,
-          hint: '/Movies, /Anime',
-          helper: t.storage.includePathsHelp,
-        ),
+        decoration: _decoration(t.storage.includePaths, hint: '/Movies, /Anime', helper: t.storage.includePathsHelp),
         minLines: 1,
         maxLines: maxLines,
         autocorrect: false,

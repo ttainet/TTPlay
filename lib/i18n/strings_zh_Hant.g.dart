@@ -2168,6 +2168,7 @@ class _Translations$performanceOverlay$zh_Hant extends Translations$performanceO
 	@override String get cacheUsed => '已用快取';
 	@override String get cacheLimit => '快取上限';
 	@override String get speed => '速度';
+	@override String get connections => '串流連線';
 	@override String get player => '播放器';
 	@override String get memory => '記憶體';
 	@override String get uiFps => '介面 FPS';
@@ -2564,6 +2565,7 @@ class _Translations$storage$zh_Hant extends Translations$storage$zh {
 	@override String get quarkMemberSuperVip => '夸克超級會員';
 	@override String get quarkDownloadPerformance => '下載效能';
 	@override String quarkDownloadConnectionsDescription({required Object effective, required Object min, required Object max}) => '單個檔案最多 ${effective} 路 · 帳號可選 ${min}–${max} 路';
+	@override String get quarkPlaybackAccelerationVipOnly => '僅夸克 SVIP 會員支援多執行緒播放加速，普通帳號預設使用單線播放';
 	@override String get quarkSignedIn => '已登入';
 	@override String get quarkSignedOut => '尚未登入';
 	@override String get quarkScan => '掃碼登入';
@@ -5775,6 +5777,7 @@ extension on TranslationsZhHant {
 			'performanceOverlay.cacheUsed' => '已用快取',
 			'performanceOverlay.cacheLimit' => '快取上限',
 			'performanceOverlay.speed' => '速度',
+			'performanceOverlay.connections' => '串流連線',
 			'performanceOverlay.player' => '播放器',
 			'performanceOverlay.memory' => '記憶體',
 			'performanceOverlay.uiFps' => '介面 FPS',
@@ -6116,6 +6119,7 @@ extension on TranslationsZhHant {
 			'storage.quarkMemberSuperVip' => '夸克超級會員',
 			'storage.quarkDownloadPerformance' => '下載效能',
 			'storage.quarkDownloadConnectionsDescription' => ({required Object effective, required Object min, required Object max}) => '單個檔案最多 ${effective} 路 · 帳號可選 ${min}–${max} 路',
+			'storage.quarkPlaybackAccelerationVipOnly' => '僅夸克 SVIP 會員支援多執行緒播放加速，普通帳號預設使用單線播放',
 			'storage.quarkSignedIn' => '已登入',
 			'storage.quarkSignedOut' => '尚未登入',
 			'storage.quarkScan' => '掃碼登入',

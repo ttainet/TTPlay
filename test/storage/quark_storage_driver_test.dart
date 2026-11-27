@@ -5,7 +5,6 @@ import 'dart:typed_data';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:ttplay/storage/drivers/quark_storage_driver.dart';
 import 'package:ttplay/storage/http_range_reader.dart';
-import 'package:ttplay/storage/playback_prefetch_cache.dart';
 import 'package:ttplay/storage/storage_driver.dart';
 import 'package:ttplay/storage/storage_mount.dart';
 import 'package:ttplay/storage/stream_proxy.dart';
@@ -227,7 +226,14 @@ void main() {
     expect(fake.apiCalls.where((call) => call.startsWith('GET /member')), hasLength(1));
 
     fake.ranges.clear();
-    final playback = await proxy.register(mountId: 'quark', driver: tuned, entry: entry);
+    const smallEntry = StorageEntry(
+      path: '/film-small.mkv',
+      name: 'film-small.mkv',
+      isDirectory: false,
+      id: 'fid',
+      size: 512 * 1024,
+    );
+    final playback = await proxy.register(mountId: 'quark', driver: tuned, entry: smallEntry);
     final playRequest = await client.getUrl(playback);
     playRequest.headers.set(HttpHeaders.rangeHeader, 'bytes=100-500');
     expect((await readAll(await playRequest.close())).length, 401);
@@ -387,37 +393,114 @@ void main() {
     expect(disabledDriver.playbackPrefetchEnabled, isFalse);
   });
 
-  test('StreamProxy /s/ uses multi-chunk playback prefetch when enabled and falls back when disabled', () async {
-    const mib = PlaybackPrefetchCache.defaultChunkSize;
-    const size = 3 * mib;
-    fake.bytes = Uint8List.fromList(List<int>.generate(size, (i) => i % 251));
+  test('updateDownloadOptions toggles playbackAcceleration for resolveDirectPlayback', () async {
     final accelDriver = QuarkStorageDriver(
       cookie: '__pus=abc',
       apiBase: fake.apiBase,
       requestInterval: Duration.zero,
+      initialMemberType: 'SUPER_VIP',
     );
     addTearDown(accelDriver.close);
-    final proxy = StreamProxy();
-    addTearDown(proxy.stop);
-    final client = HttpClient();
-    addTearDown(() => client.close(force: true));
-    const entry = StorageEntry(path: '/movie.mkv', name: 'movie.mkv', isDirectory: false, id: 'f-movie', size: size);
+    const entry = StorageEntry(path: '/movie.mkv', name: 'movie.mkv', isDirectory: false, id: 'f-movie', size: 1024);
 
-    final url = await proxy.register(mountId: 'quark', driver: accelDriver, entry: entry);
-    final resp1 = await (await client.getUrl(url)).close();
-    final body1 = await resp1.expand((c) => c).toList();
-    expect(body1, fake.bytes);
-    expect(fake.ranges, containsAll([(0, mib - 1), (mib, 2 * mib - 1), (2 * mib, size - 1)]));
+    expect(accelDriver.playbackPrefetchEnabled, isTrue);
+    final enabledSrc = await accelDriver.resolveDirectPlayback(entry);
+    expect(enabledSrc.profile.maxConnections, greaterThan(1));
 
-    fake.ranges.clear();
     accelDriver.updateDownloadOptions(connections: 4, chunkMiB: 2, playbackAcceleration: false);
     expect(accelDriver.playbackPrefetchEnabled, isFalse);
+    final disabledSrc = await accelDriver.resolveDirectPlayback(entry);
+    expect(disabledSrc.profile.maxConnections, 1);
 
-    final req2 = await client.getUrl(url);
-    req2.headers.set(HttpHeaders.rangeHeader, 'bytes=0-${size - 1}');
-    final resp2 = await req2.close();
-    final body2 = await resp2.expand((c) => c).toList();
-    expect(body2, fake.bytes);
-    expect(fake.ranges, [(0, size - 1)]);
+    accelDriver.updateDownloadOptions(connections: 4, chunkMiB: 2, playbackAcceleration: true);
+    expect(accelDriver.playbackPrefetchEnabled, isTrue);
+    final reenabledSrc = await accelDriver.resolveDirectPlayback(entry);
+    expect(reenabledSrc.profile.maxConnections, greaterThan(1));
+  });
+
+  test('playback tier whitelist restricts multi-connection to SVIP/Z_VIP and defers unknown', () async {
+    expect(const QuarkAccountInfo(memberType: 'SUPER_VIP').supportsMultiConnectionPlayback, isTrue);
+    expect(const QuarkAccountInfo(memberType: 'SVIP').supportsMultiConnectionPlayback, isTrue);
+    expect(const QuarkAccountInfo(memberType: 'Z_VIP').supportsMultiConnectionPlayback, isTrue);
+    expect(const QuarkAccountInfo(memberType: 'VIP').supportsMultiConnectionPlayback, isFalse);
+    expect(const QuarkAccountInfo(memberType: 'NORMAL').supportsMultiConnectionPlayback, isFalse);
+    expect(const QuarkAccountInfo(memberType: 'FREE').supportsMultiConnectionPlayback, isFalse);
+    expect(const QuarkAccountInfo(memberType: null).supportsMultiConnectionPlayback, isFalse);
+
+    expect(QuarkDownloadTier.forAccount(const QuarkAccountInfo(memberType: 'Z_VIP')), QuarkDownloadTier.superVip);
+
+    const entry = StorageEntry(
+      path: '/Movies/Film (2020).mkv',
+      name: 'Film (2020).mkv',
+      isDirectory: false,
+      id: 'f-film',
+      size: 64,
+    );
+
+    final normalDriver = QuarkStorageDriver(
+      cookie: '__pus=abc',
+      apiBase: fake.apiBase,
+      requestInterval: Duration.zero,
+      initialMemberType: 'NORMAL',
+    );
+    addTearDown(normalDriver.close);
+    final normalSrc = await normalDriver.resolveDirectPlayback(entry);
+    expect(normalSrc.profile.maxConnections, 1);
+    expect(normalSrc.profile.allowRuntimeMaxUpgrade, isFalse);
+    expect(normalSrc.resolveDeferredMaxConnections, isNull);
+
+    final svipDriver = QuarkStorageDriver(
+      cookie: '__pus=abc',
+      apiBase: fake.apiBase,
+      requestInterval: Duration.zero,
+      initialMemberType: 'Z_VIP',
+    );
+    addTearDown(svipDriver.close);
+    final svipSrc = await svipDriver.resolveDirectPlayback(entry);
+    expect(svipSrc.profile.maxConnections, greaterThan(1));
+    expect(svipSrc.profile.allowRuntimeMaxUpgrade, isFalse);
+
+    final disabledDriver = QuarkStorageDriver(
+      cookie: '__pus=abc',
+      apiBase: fake.apiBase,
+      requestInterval: Duration.zero,
+      playbackAcceleration: false,
+      initialMemberType: 'SUPER_VIP',
+    );
+    addTearDown(disabledDriver.close);
+    final disabledSrc = await disabledDriver.resolveDirectPlayback(entry);
+    expect(disabledSrc.profile.maxConnections, 1);
+    expect(disabledSrc.profile.allowRuntimeMaxUpgrade, isFalse);
+
+    final unknownDriver = QuarkStorageDriver(
+      cookie: '__pus=abc',
+      apiBase: fake.apiBase,
+      requestInterval: Duration.zero,
+    );
+    addTearDown(unknownDriver.close);
+    final unknownSrc = await unknownDriver.resolveDirectPlayback(entry);
+    expect(unknownSrc.profile.maxConnections, 1);
+    expect(unknownSrc.profile.allowRuntimeMaxUpgrade, isTrue);
+    expect(unknownSrc.resolveDeferredMaxConnections, isNotNull);
+    final resolvedMax = await unknownSrc.resolveDeferredMaxConnections!.call();
+    expect(resolvedMax, greaterThan(1));
+  });
+
+  test('probeAccount verifies reachability, returns snapshot, and surfaces unauthorized', () async {
+    final snapshot = await driver.probeAccount();
+    expect(snapshot.memberTier, 'SUPER_VIP');
+    expect(driver.lastMemberType, 'SUPER_VIP');
+
+    final unauthDriver = QuarkStorageDriver(
+      cookie: '__pus=expired',
+      apiBase: fake.apiBase,
+      requestInterval: Duration.zero,
+    );
+    addTearDown(unauthDriver.close);
+    fake.requireLogin = true;
+    await expectLater(
+      unauthDriver.probeAccount(),
+      throwsA(isA<StorageException>().having((e) => e.kind, 'kind', StorageErrorKind.unauthorized)),
+    );
   });
 }

@@ -82,6 +82,9 @@ class PerformanceStats {
   final double? cacheDuration;
   final int? bufferTargetBytes;
   final int? bufferMaxMs;
+  final int? streamActiveConns;
+  final int? streamTargetConns;
+  final int? streamMaxConns;
 
   final bool dvConversionActive;
   final String dvConversionMode;
@@ -137,6 +140,9 @@ class PerformanceStats {
     this.cacheDuration,
     this.bufferTargetBytes,
     this.bufferMaxMs,
+    this.streamActiveConns,
+    this.streamTargetConns,
+    this.streamMaxConns,
     this.dvConversionActive = false,
     this.dvConversionMode = '',
     this.dvConvertedRpus,
@@ -408,6 +414,19 @@ class PerformanceStats {
   }
 
   bool get hasValidBufferLimits => bufferMaxMs != null && bufferMaxMs! > 0;
+
+  bool get hasStreamConnections => streamMaxConns != null && streamMaxConns! > 0;
+
+  String get streamConnectionsFormatted {
+    final max = streamMaxConns;
+    if (max == null || max <= 0) return t.common.notAvailable;
+    final active = streamActiveConns ?? 0;
+    final target = streamTargetConns;
+    if (target != null && target != active && max > 1) {
+      return '$active / $max (→$target)';
+    }
+    return '$active / $max';
+  }
 
   /// Check if audio bitrate is valid (not null, not negative, not zero).
   bool get hasValidAudioBitrate {

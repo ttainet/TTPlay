@@ -150,3 +150,11 @@ if(NOT CMAKE_BUILD_TYPE MATCHES "Debug")
   install(FILES "${AOT_LIBRARY}" DESTINATION "${INSTALL_BUNDLE_LIB_DIR}"
     COMPONENT Runtime)
 endif()
+
+# Bundle the Rust native streaming engine when built.
+set(TTPLAY_STREAM_SO "${CMAKE_CURRENT_SOURCE_DIR}/../native/ttplay_stream/target/release/libttplay_stream.so")
+if(EXISTS "${TTPLAY_STREAM_SO}")
+  install(FILES "${TTPLAY_STREAM_SO}"
+    DESTINATION "${INSTALL_BUNDLE_LIB_DIR}"
+    COMPONENT Runtime)
+endif()

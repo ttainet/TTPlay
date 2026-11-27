@@ -181,9 +181,9 @@ class _CloudSourcesScreenState extends State<CloudSourcesScreen> {
     final repo = _repo;
     if (repo == null || PlatformDetector.isTV()) return;
 
-    final created = await Navigator.of(context).push<CloudSource>(
-      MaterialPageRoute<CloudSource>(builder: (_) => CloudSourceEditScreen(repo: repo)),
-    );
+    final created = await Navigator.of(
+      context,
+    ).push<CloudSource>(MaterialPageRoute<CloudSource>(builder: (_) => CloudSourceEditScreen(repo: repo)));
     if (!mounted || created == null) return;
 
     // Do NOT auto-scan on add; user manually scans mount or individual folders.
@@ -252,8 +252,7 @@ class _CloudSourcesScreenState extends State<CloudSourcesScreen> {
     setState(() => _togglingAutoIncremental.add(source.id));
     try {
       final cred = await repo.fetchCredential(source.id);
-      final updatedPayload = Map<String, dynamic>.from(cred.payload)
-        ..['auto_incremental_interval_minutes'] = minutes;
+      final updatedPayload = Map<String, dynamic>.from(cred.payload)..['auto_incremental_interval_minutes'] = minutes;
       await repo.updateCredential(
         sourceId: source.id,
         baseVersion: cred.version,
@@ -262,10 +261,7 @@ class _CloudSourcesScreenState extends State<CloudSourcesScreen> {
       );
       if (!mounted) return;
       setState(() => _autoIntervalBySource[source.id] = minutes);
-      showSuccessSnackBar(
-        context,
-        '已将「${source.name}」增量检查间隔设为 ${MountKeys.formatAutoIncrementalInterval(minutes)}',
-      );
+      showSuccessSnackBar(context, '已将「${source.name}」增量检查间隔设为 ${MountKeys.formatAutoIncrementalInterval(minutes)}');
       unawaited(_syncProjection(quiet: true));
       maybeReadTtplayBinder(context)?.rescheduleCloudIncrementalTimer();
     } catch (e) {
@@ -416,9 +412,7 @@ class _CloudSourcesScreenState extends State<CloudSourcesScreen> {
       if (summary.cancelled) {
         showSuccessSnackBar(
           context,
-          summary.filesReported > 0
-              ? '已停止扫描（已上报 ${summary.filesReported} 文件会保留并继续刮削）'
-              : '已停止扫描',
+          summary.filesReported > 0 ? '已停止扫描（已上报 ${summary.filesReported} 文件会保留并继续刮削）' : '已停止扫描',
         );
       } else {
         final label = folder != null ? folder.path : source.name;
@@ -454,9 +448,9 @@ class _CloudSourcesScreenState extends State<CloudSourcesScreen> {
 
   StorageDriver? _buildDriverForSource(CloudSource source, Map<String, dynamic> cred) {
     final useFallback =
-        maybeReadTtplayBinder(context)?.localLibraryClient.mountManager.statusOf(
-          CloudMountMirror.mountIdForSource(source.id),
-        ) ==
+        maybeReadTtplayBinder(
+          context,
+        )?.localLibraryClient.mountManager.statusOf(CloudMountMirror.mountIdForSource(source.id)) ==
         MountOnlineStatus.onlineFallback;
     if (source.kind == 'webdav') {
       final mount = StorageMount(
@@ -544,9 +538,7 @@ class _CloudSourcesScreenState extends State<CloudSourcesScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            live != null
-                ? '正在取消扫描 · 已遍历 ${live.directoriesVisited} 目录 · 已上报 ${live.filesReported} 文件'
-                : '正在取消扫描...',
+            live != null ? '正在取消扫描 · 已遍历 ${live.directoriesVisited} 目录 · 已上报 ${live.filesReported} 文件' : '正在取消扫描...',
             style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.primary),
           ),
           const SizedBox(height: 4),
@@ -561,7 +553,7 @@ class _CloudSourcesScreenState extends State<CloudSourcesScreen> {
           Text(
             live != null
                 ? '扫描中 · 已遍历 ${live.directoriesVisited} 目录 · 发现 ${live.filesFound} / 上报 ${live.filesReported} 文件'
-                    '${live.batchesSent > 0 ? '（第 ${live.batchesSent} 批）' : ''}'
+                      '${live.batchesSent > 0 ? '（第 ${live.batchesSent} 批）' : ''}'
                 : '扫描中...',
             style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.primary),
           ),
@@ -574,10 +566,7 @@ class _CloudSourcesScreenState extends State<CloudSourcesScreen> {
       return Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            '正在连接媒体源并准备扫描...',
-            style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.primary),
-          ),
+          Text('正在连接媒体源并准备扫描...', style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.primary)),
           const SizedBox(height: 4),
           const LinearProgressIndicator(minHeight: 2),
         ],
@@ -616,10 +605,7 @@ class _CloudSourcesScreenState extends State<CloudSourcesScreen> {
         style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
       );
     }
-    return Text(
-      emptyHint,
-      style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
-    );
+    return Text(emptyHint, style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant));
   }
 
   @override
@@ -710,13 +696,8 @@ class _CloudSourcesScreenState extends State<CloudSourcesScreen> {
                   padding: const EdgeInsets.all(16),
                   itemCount: _sources.length,
                   separatorBuilder: (_, _) => const SizedBox(height: 14),
-                  itemBuilder: (context, index) => _buildSourceCard(
-                    context,
-                    _sources[index],
-                    isTv: isTv,
-                    runner: runner,
-                    binder: binder,
-                  ),
+                  itemBuilder: (context, index) =>
+                      _buildSourceCard(context, _sources[index], isTv: isTv, runner: runner, binder: binder),
                 ),
               ),
             ),
@@ -770,6 +751,12 @@ class _CloudSourcesScreenState extends State<CloudSourcesScreen> {
               scheme.errorContainer,
               scheme.onErrorContainer,
             ),
+            MountOnlineStatus.authExpired => _buildReachabilityPill(
+              context,
+              '登录已过期',
+              scheme.errorContainer,
+              scheme.onErrorContainer,
+            ),
             MountOnlineStatus.unknown => const SizedBox.shrink(),
           };
         },
@@ -797,12 +784,7 @@ class _CloudSourcesScreenState extends State<CloudSourcesScreen> {
                 return _buildReachabilityPill(context, '在线', scheme.primaryContainer, scheme.onPrimaryContainer);
               }
               if (probingIds.contains(serverId) || serverManager.isProbingServer(serverId)) {
-                return _buildReachabilityPill(
-                  context,
-                  '检测中',
-                  scheme.surfaceContainerHighest,
-                  scheme.onSurfaceVariant,
-                );
+                return _buildReachabilityPill(context, '检测中', scheme.surfaceContainerHighest, scheme.onSurfaceVariant);
               }
               return _buildReachabilityPill(context, '本机不可达', scheme.errorContainer, scheme.onErrorContainer);
             },
@@ -981,10 +963,7 @@ class _CloudSourcesScreenState extends State<CloudSourcesScreen> {
                       onSelected: (minutes) => unawaited(_updateAutoIncrementalInterval(src, minutes)),
                       itemBuilder: (_) => [
                         for (final m in MountKeys.autoIncrementalIntervalPresets)
-                          PopupMenuItem<int>(
-                            value: m,
-                            child: Text('每 ${MountKeys.formatAutoIncrementalInterval(m)}'),
-                          ),
+                          PopupMenuItem<int>(value: m, child: Text('每 ${MountKeys.formatAutoIncrementalInterval(m)}')),
                       ],
                       child: Padding(
                         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
@@ -1003,10 +982,7 @@ class _CloudSourcesScreenState extends State<CloudSourcesScreen> {
                     ),
                     const SizedBox(width: 4),
                   ],
-                  Switch(
-                    value: autoIncEnabled,
-                    onChanged: togglingAuto ? null : (v) => _toggleAutoIncremental(src, v),
-                  ),
+                  Switch(value: autoIncEnabled, onChanged: togglingAuto ? null : (v) => _toggleAutoIncremental(src, v)),
                 ],
               ),
             ),

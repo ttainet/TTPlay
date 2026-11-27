@@ -275,3 +275,11 @@ install(FILES "${MPV_LIB_DIR}/libmpv-2.dll"
 install(FILES "${VULKAN_RT_DIR}/vulkan-1.dll" "${VULKAN_RT_DIR}/VulkanRT-License.txt"
   DESTINATION "${INSTALL_BUNDLE_LIB_DIR}"
   COMPONENT Runtime)
+
+# Bundle the optional Rust native streaming engine when built locally.
+set(TTPLAY_STREAM_DLL "${CMAKE_CURRENT_SOURCE_DIR}/../native/ttplay_stream/target/release/ttplay_stream.dll")
+if(EXISTS "${TTPLAY_STREAM_DLL}")
+  install(FILES "${TTPLAY_STREAM_DLL}"
+    DESTINATION "${INSTALL_BUNDLE_LIB_DIR}"
+    COMPONENT Runtime)
+endif()
