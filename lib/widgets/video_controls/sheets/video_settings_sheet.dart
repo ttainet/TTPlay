@@ -22,6 +22,7 @@ import '../../../media/work_identity.dart';
 import '../../../mpv/mpv.dart';
 import '../../../mpv/player/player_native.dart';
 import '../../../providers/shader_provider.dart';
+import '../../../services/diagnostic_log_uploader.dart';
 import '../../../services/file_picker_service.dart';
 import '../../../services/scoped_player_prefs.dart';
 import '../../../services/settings_service.dart';
@@ -367,11 +368,16 @@ class VideoSettingsSheet extends StatefulWidget {
   /// auto-hide) is read straight off it.
   final TrackControlsState trackControlsState;
 
+  /// Test hook overriding the diagnostic upload action.
+  @visibleForTesting
+  final Future<String> Function()? onUploadLogs;
+
   const VideoSettingsSheet({
     super.key,
     required this.player,
     this.supportsHdrControl,
     required this.trackControlsState,
+    @visibleForTesting this.onUploadLogs,
   });
 
   @override
@@ -397,6 +403,7 @@ class _VideoSettingsSheetState extends State<VideoSettingsSheet> {
   StreamSubscription<void>? _hdrOutputChanged;
   late HdrToneMapping _hdrToneMapping;
   late AudioChannelLimit _audioChannelLimit;
+  bool _isUploadingLogs = false;
 
   TrackControlsState get _state => widget.trackControlsState;
 
@@ -677,6 +684,31 @@ class _VideoSettingsSheetState extends State<VideoSettingsSheet> {
     // becomes visible again.
     _refreshLinuxHdrSupport();
     OverlaySheetController.maybeOf(context)?.refocus();
+  }
+
+  Future<void> _uploadLogs() async {
+    if (_isUploadingLogs) return;
+    setState(() => _isUploadingLogs = true);
+    try {
+      final uploader = widget.onUploadLogs;
+      final id = uploader != null
+          ? await uploader()
+          : await uploadCurrentDiagnosticLogs(
+              source: 'video_settings',
+              extraHeader:
+                  'Player: ${widget.player.playerType} '
+                  '(playing=${widget.player.state.playing}, buffering=${widget.player.state.buffering})',
+            );
+      if (!mounted) return;
+      setState(() => _isUploadingLogs = false);
+      showSuccessSnackBar(context, '${t.messages.logsUploaded} (${t.messages.logId}: $id)');
+      OverlaySheetController.maybeOf(context)?.close();
+    } catch (error, stackTrace) {
+      appLogger.w('Failed to upload diagnostic logs from video settings', error: error, stackTrace: stackTrace);
+      if (!mounted) return;
+      setState(() => _isUploadingLogs = false);
+      showErrorSnackBar(context, t.messages.logsUploadFailed);
+    }
   }
 
   String _getTitle() {
@@ -1045,6 +1077,15 @@ class _VideoSettingsSheetState extends State<VideoSettingsSheet> {
               ),
             ),
           ),
+
+        FocusableListTile(
+          leading: AppIcon(Symbols.upload_rounded, fill: 1, color: tokens(context).textMuted),
+          title: Text(t.logs.uploadLogs),
+          trailing: _isUploadingLogs
+              ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
+              : null,
+          onTap: _isUploadingLogs ? null : () => unawaited(_uploadLogs()),
+        ),
 
         if (_showDebugDvConversionMode)
           _SettingsMenuItem(

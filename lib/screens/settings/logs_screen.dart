@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:io';
 
 import 'package:device_info_plus/device_info_plus.dart';
 import 'package:flutter/material.dart';
@@ -8,7 +7,6 @@ import 'package:ttplay/utils/media_server_http_client.dart';
 import 'package:material_symbols_icons/symbols.dart';
 import 'package:flutter/services.dart';
 import 'package:logger/logger.dart';
-import 'package:package_info_plus/package_info_plus.dart';
 import '../../focus/focusable_action_bar.dart';
 import '../../widgets/dialog_action_button.dart';
 import '../../widgets/app_icon.dart';
@@ -17,15 +15,11 @@ import '../../navigation/page_refresh_shortcut.dart';
 import '../../i18n/strings.g.dart';
 import '../../mixins/mounted_set_state_mixin.dart';
 import '../../utils/dialogs.dart';
-import '../../main.dart' show gitCommit;
-import '../../services/background_work_diagnostics_service.dart';
-import '../../services/device_performance.dart';
+import '../../services/diagnostic_log_uploader.dart';
 import '../../services/log_upload_service.dart';
 import '../../services/startup_diagnostics.dart';
-import '../../services/video_decode_capabilities.dart';
 import '../../utils/app_logger.dart';
 import '../../utils/formatters.dart';
-import '../../utils/platform_detector.dart';
 import '../../utils/snackbar_helper.dart';
 import '../../widgets/desktop_app_bar.dart';
 import '../../widgets/system_bottom_inset.dart';
@@ -108,13 +102,10 @@ class LogsScreen extends StatefulWidget {
 
 class _LogsScreenState extends State<LogsScreen> with MountedSetStateMixin {
   List<LogEntry> _logs = [];
-  String _deviceInfo = '';
-  String _deviceName = '';
-  String _platformName = '';
-  String _osVersion = '';
-  String _appVersion = '';
-  bool _isTv = false;
+  DiagnosticDeviceSnapshot? _deviceSnapshot;
   final ScrollController _scrollController = ScrollController();
+
+  String get _deviceInfo => _deviceSnapshot?.headerText ?? '';
   // skipTraversal: selection is pointer-driven; the region must not become a
   // D-pad/Tab stop between the action bar and the scrollable body.
   final FocusNode _selectionFocusNode = FocusNode(skipTraversal: true, debugLabel: 'logs-selection');
@@ -130,85 +121,9 @@ class _LogsScreenState extends State<LogsScreen> with MountedSetStateMixin {
   }
 
   Future<void> _loadDeviceInfo() async {
-    final packageInfo = await PackageInfo.fromPlatform();
-    final deviceInfo = widget.deviceInfoPlugin ?? DeviceInfoPlugin();
-    final buffer = StringBuffer();
-    final commitSuffix = gitCommit.isNotEmpty ? ' ${gitCommit.substring(0, 7)}' : '';
-    final appVersion = '${packageInfo.version} (${packageInfo.buildNumber})$commitSuffix';
-    buffer.writeln('${t.app.title} v$appVersion');
-
-    var platformName = Platform.operatingSystem;
-    var osVersion = '';
-    var deviceName = '';
-    var isTv = false;
-
-    if (Platform.isAndroid) {
-      final info = await deviceInfo.androidInfo;
-      platformName = 'android';
-      osVersion = 'Android ${info.version.release} (API ${info.version.sdkInt})';
-      deviceName = '${info.manufacturer} ${info.model}'.trim();
-      buffer.writeln(osVersion);
-      buffer.writeln(deviceName);
-      if (PlatformDetector.isTV()) {
-        isTv = true;
-        final reasons = TvDetectionService.tvDetectionReasonsSync();
-        final suffix = reasons.isEmpty ? '' : ' (${reasons.join(', ')})';
-        buffer.writeln('TV mode: yes$suffix');
-      }
-      // Renderer + effects tier turn "did the reduced tier engage on this
-      // device" into something answerable from any uploaded log (#1349).
-      String renderer;
-      try {
-        renderer = await const MethodChannel('com.ttai.ttplay/theme').invokeMethod<String>('getRenderer') ?? 'unknown';
-      } catch (_) {
-        renderer = 'unknown';
-      }
-      buffer.writeln('Renderer: $renderer');
-      // "Are downloads allowed to run in the background" is the single most
-      // asked support question; answering it from the uploaded log turns a
-      // four-message thread into one reply.
-      final backgroundWork = BackgroundWorkDiagnosticsService.instance;
-      await backgroundWork.refresh();
-      buffer.writeln('Background: ${backgroundWork.describeSync()}');
-    } else if (Platform.isIOS) {
-      final info = await deviceInfo.iosInfo;
-      platformName = 'ios';
-      osVersion = 'iOS ${info.systemVersion}';
-      deviceName = info.utsname.machine;
-      buffer.writeln(osVersion);
-      buffer.writeln(deviceName);
-    } else if (Platform.isMacOS) {
-      final info = await deviceInfo.macOsInfo;
-      platformName = 'macos';
-      osVersion = 'macOS ${info.osRelease}';
-      deviceName = info.model;
-      buffer.writeln(osVersion);
-      buffer.writeln(deviceName);
-    } else if (Platform.isWindows) {
-      platformName = 'windows';
-      osVersion = 'Windows ${Platform.operatingSystemVersion}';
-      deviceName = Platform.localHostname;
-      buffer.writeln(osVersion);
-      buffer.writeln(deviceName);
-    } else if (Platform.isLinux) {
-      final info = await deviceInfo.linuxInfo;
-      platformName = 'linux';
-      osVersion = 'Linux ${info.versionId ?? info.id}';
-      deviceName = info.name;
-      buffer.writeln(osVersion);
-    }
-
-    buffer.writeln('Effects: ${DevicePerformance.describeSync()}');
-    buffer.writeln('Display: ${DevicePerformance.describeDisplay()}');
-    buffer.writeln('Video decoders: ${VideoDecodeCapabilities.describeSync()}');
-
+    final snapshot = await collectDiagnosticDeviceSnapshot(deviceInfoPlugin: widget.deviceInfoPlugin);
     setStateIfMounted(() {
-      _deviceInfo = buffer.toString().trimRight();
-      _appVersion = appVersion;
-      _platformName = platformName;
-      _osVersion = osVersion;
-      _deviceName = deviceName;
-      _isTv = isTv;
+      _deviceSnapshot = snapshot;
     });
   }
 
@@ -256,34 +171,12 @@ class _LogsScreenState extends State<LogsScreen> with MountedSetStateMixin {
   }
 
   String _formatAllLogs({int? maxBytes}) {
-    final sections = <String>[
-      if (_deviceInfo.isNotEmpty) _deviceInfo,
-      // A launch that failed the startup gate leaves no in-memory log at all —
-      // the buffer died with that process. This is the only place its record
-      // can reach a maintainer (#1732).
-      ?StartupDiagnosticsStore.pending?.describe(),
-    ];
-    final header = sections.isEmpty ? '' : '${sections.join('\n\n')}\n---\n';
-    final logs = StringBuffer();
-    var isFirst = true;
-    for (final log in _logs.reversed) {
-      if (!isFirst) {
-        logs.write('\n');
-      }
-      isFirst = false;
-
-      logs.write('[${_formatTime(log.timestamp)}] [${log.level.name.toUpperCase()}] ${log.message}');
-      if (log.error != null) {
-        logs.write('\nError: ${log.error}');
-      }
-      if (log.stackTrace != null) {
-        logs.write('\nStack trace:\n${log.stackTrace}');
-      }
-    }
-    final logText = logs.toString();
-    return maxBytes == null
-        ? '$header$logText'
-        : constrainLogUploadPayload(header: header, logs: logText, maxBytes: maxBytes);
+    return formatDiagnosticLogsPayload(
+      logs: _logs,
+      deviceHeader: _deviceInfo,
+      startupFailure: StartupDiagnosticsStore.pending,
+      maxBytes: maxBytes,
+    );
   }
 
   /// Android binder transactions are capped around 1 MiB and
@@ -307,14 +200,8 @@ class _LogsScreenState extends State<LogsScreen> with MountedSetStateMixin {
       final id = await uploadDiagnosticText(
         logText,
         client: _httpClient,
-        metadataHeaders: {
-          if (_deviceName.isNotEmpty) 'X-Client-Device': _deviceName,
-          if (_platformName.isNotEmpty) 'X-Client-Platform': _platformName,
-          if (_osVersion.isNotEmpty) 'X-Client-OS': _osVersion,
-          if (_appVersion.isNotEmpty) 'X-Client-Version': _appVersion,
-          'X-Client-Is-TV': _isTv ? 'true' : 'false',
-          'X-Client-Log-Source': 'logs_screen',
-        },
+        metadataHeaders: _deviceSnapshot?.toMetadataHeaders(source: 'logs_screen') ??
+            const {'X-Client-Is-TV': 'false', 'X-Client-Log-Source': 'logs_screen'},
       );
 
       if (!mounted) return;

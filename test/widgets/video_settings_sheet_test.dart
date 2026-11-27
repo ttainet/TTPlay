@@ -552,6 +552,62 @@ void main() {
       expect(find.text(t.mediaMenu.fileInfo), findsNothing);
     });
   });
+
+  group('upload logs menu item', () {
+    testWidgets('shows spinner, prevents duplicate taps, then shows Log ID and closes on success', (tester) async {
+      final uploadCompleter = Completer<String>();
+      var calls = 0;
+      await _pumpSheetViaOverlayRoute(
+        tester,
+        _FakeSettingsPlayer(),
+        onUploadLogs: () {
+          calls++;
+          return uploadCompleter.future;
+        },
+      );
+
+      await tester.scrollUntilVisible(find.text(t.logs.uploadLogs), 300, scrollable: find.byType(Scrollable).first);
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text(t.logs.uploadLogs));
+      await tester.pump();
+      expect(calls, 1);
+      expect(find.byType(CircularProgressIndicator), findsOneWidget);
+
+      await tester.tap(find.text(t.logs.uploadLogs));
+      await tester.pump();
+      expect(calls, 1);
+
+      uploadCompleter.complete('tv1234ab');
+      await tester.pumpAndSettle();
+
+      expect(find.text('${t.messages.logsUploaded} (${t.messages.logId}: tv1234ab)'), findsOneWidget);
+      expect(find.text(t.logs.uploadLogs), findsNothing);
+    });
+
+    testWidgets('shows error snackbar on failure and resets spinner so user can retry', (tester) async {
+      var calls = 0;
+      await _pumpSheetViaOverlayRoute(
+        tester,
+        _FakeSettingsPlayer(),
+        onUploadLogs: () async {
+          calls++;
+          throw StateError('upload failed');
+        },
+      );
+
+      await tester.scrollUntilVisible(find.text(t.logs.uploadLogs), 300, scrollable: find.byType(Scrollable).first);
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text(t.logs.uploadLogs));
+      await tester.pumpAndSettle();
+
+      expect(calls, 1);
+      expect(find.text(t.messages.logsUploadFailed), findsOneWidget);
+      expect(find.byType(CircularProgressIndicator), findsNothing);
+      expect(find.text(t.logs.uploadLogs), findsOneWidget);
+    });
+  });
 }
 
 /// The tick marking the selected option in one of the sheet's picker views.
@@ -656,7 +712,11 @@ Future<void> _pumpSheet(
   await tester.pumpAndSettle();
 }
 
-Future<void> _pumpSheetViaOverlayRoute(WidgetTester tester, Player player) async {
+Future<void> _pumpSheetViaOverlayRoute(
+  WidgetTester tester,
+  Player player, {
+  Future<String> Function()? onUploadLogs,
+}) async {
   await tester.pumpWidget(
     MaterialApp(
       theme: ThemeData(extensions: const [testMonoTokensAnimated]),
@@ -669,6 +729,7 @@ Future<void> _pumpSheetViaOverlayRoute(WidgetTester tester, Player player) async
                   builder: (_) => VideoSettingsSheet(
                     player: player,
                     trackControlsState: const TrackControlsState(canControl: true),
+                    onUploadLogs: onUploadLogs,
                   ),
                 ),
               ),
