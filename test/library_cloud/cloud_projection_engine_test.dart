@@ -2254,6 +2254,146 @@ void main() {
     expect(cw.single.item.title, '太子和捕快');
     expect(cw.single.continueRecencyMs, 1700001000000);
   });
+
+  test('persists _lastSeq across engine restarts so cold start syncs incrementally without full snapshot', () async {
+    resetSharedPreferencesForTest();
+    final prevOverrides = HttpOverrides.current;
+    HttpOverrides.global = null;
+    addTearDown(() => HttpOverrides.global = prevOverrides);
+
+    final db = AppDatabase.forTesting(NativeDatabase.memory());
+    addTearDown(db.close);
+
+    final hk = CloudKeyring.generateMasterKey();
+    final quarkCipher = await CloudKeyring.encryptCredentialJson(
+      masterKey: hk,
+      payload: {'cookie': 'uid=u_seq; pus=xyz', 'root_id': '0'},
+    );
+
+    var snapshotCalls = 0;
+    final changesQueries = <int>[];
+    final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+    addTearDown(() => server.close(force: true));
+    server.listen((req) async {
+      final path = req.uri.path;
+      req.response.headers.contentType = ContentType.json;
+      if (req.method == 'GET' && path == '/api/v1/sources') {
+        req.response.write(
+          jsonEncode({
+            'code': 0,
+            'sources': [
+              {
+                'id': 'src_seq',
+                'kind': 'quark',
+                'name': 'Quark Seq',
+                'status': 'active',
+                'key_epoch': 1,
+                'folders': [
+                  {'id': 'f1', 'source_id': 'src_seq', 'path': '/Movies'},
+                ],
+              },
+            ],
+          }),
+        );
+      } else if (req.method == 'GET' && path == '/api/v1/sources/src_seq/credential') {
+        req.response.write(
+          jsonEncode({
+            'code': 0,
+            'credential': {
+              'source_id': 'src_seq',
+              'ciphertext': quarkCipher,
+              'version': 1,
+              'key_epoch': 1,
+              'status': 'valid',
+            },
+          }),
+        );
+      } else if (req.method == 'GET' && path == '/api/v1/library/snapshot') {
+        snapshotCalls++;
+        final kind = req.uri.queryParameters['kind'];
+        final items = kind == LibraryKinds.movie
+            ? [
+                {
+                  'id': 301,
+                  'kind': LibraryKinds.movie,
+                  'library_type': 'movie',
+                  'title': 'Seq Movie',
+                  'work_key': 'tmdb:movie:301',
+                  'tmdb_id': '301',
+                  'scraped_at': 1000,
+                  'added_at': 1000,
+                  'updated_at': 1000,
+                  'files': [
+                    {
+                      'id': 1,
+                      'source_id': 'src_seq',
+                      'path': '/Movies/SeqMovie.mkv',
+                      'role': 'video',
+                      'size': 1024,
+                      'added_at': 1000,
+                    },
+                  ],
+                },
+              ]
+            : const [];
+        req.response.write(
+          jsonEncode({'code': 0, 'snapshot_seq': 42, 'items': items, 'total': items.length, 'page': 1, 'has_more': false}),
+        );
+      } else if (req.method == 'GET' && path == '/api/v1/library/changes') {
+        final sinceSeq = int.tryParse(req.uri.queryParameters['since_seq'] ?? '') ?? 0;
+        changesQueries.add(sinceSeq);
+        req.response.write(
+          jsonEncode({
+            'code': 0,
+            'reset_required': false,
+            'latest_seq': 45,
+            'min_retained_seq': 1,
+            'next_since_seq': 45,
+            'has_more': false,
+            'changes': const [],
+          }),
+        );
+      } else if (req.method == 'GET' && (path == '/api/v1/progress' || path == '/api/v1/favorites' || path == '/api/v1/kv' || path == '/api/v1/lists')) {
+        req.response.write(jsonEncode({'code': 0, 'items': const []}));
+      } else {
+        req.response.statusCode = 404;
+      }
+      await req.response.close();
+    });
+
+    final api = CloudApiClient(baseUrl: 'http://127.0.0.1:${server.port}', accessToken: 'usr_seq');
+    addTearDown(api.close);
+
+    CloudProjectionEngine makeEngine() => CloudProjectionEngine(
+      db: db,
+      syncClient: CloudProjectionSyncClient(api),
+      mountMirror: CloudMountMirror(
+        sourceRepository: CloudSourceRepository(api: api, masterKeyProvider: () => hk),
+        mountRegistry: MountRegistry(db),
+        accountScopeKey: 'scope_seq',
+      ),
+    );
+
+    final first = makeEngine();
+    final res1 = await first.syncFullSnapshot();
+    expect(res1.latestSeq, 42);
+    expect(snapshotCalls, 4);
+
+    // A brand-new CloudProjectionEngine instance on the same DB must resume from seq=42.
+    final second = makeEngine();
+    final res2 = await second.syncIncremental();
+    expect(res2.fullReset, isFalse);
+    expect(res2.latestSeq, 45);
+    expect(changesQueries, [42]);
+    expect(snapshotCalls, 4);
+
+    // If local library_items is emptied, a fresh engine automatically falls back to full snapshot.
+    await db.delete(db.libraryItems).go();
+    final third = makeEngine();
+    final res3 = await third.syncIncremental();
+    expect(res3.fullReset, isTrue);
+    expect(snapshotCalls, 8);
+  });
 }
 
 class _FakeQuarkIncrementalDriver implements StorageDriver {

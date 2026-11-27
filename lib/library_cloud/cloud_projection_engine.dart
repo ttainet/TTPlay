@@ -52,7 +52,10 @@ class CloudProjectionEngine {
   final void Function()? onLibraryUpdated;
   final void Function(bool syncing)? onSyncStateChanged;
 
+  static const String _seqKeyPrefix = 'cloud-projection-seq:';
+
   int _lastSeq = 0;
+  bool _seqLoaded = false;
   bool _syncing = false;
   bool _resyncQueued = false;
   bool _listeningEvents = false;
@@ -67,6 +70,38 @@ class CloudProjectionEngine {
 
   int get lastSeq => _lastSeq;
   bool get isSyncing => _syncing;
+
+  String get _seqStorageKey {
+    final scope = mountMirror.accountScopeKey?.trim();
+    return '$_seqKeyPrefix${(scope == null || scope.isEmpty) ? 'default' : scope}';
+  }
+
+  Future<void> _ensureSeqLoaded() async {
+    if (_seqLoaded || _lastSeq > 0) {
+      _seqLoaded = true;
+      return;
+    }
+    _seqLoaded = true;
+    final row = await (db.select(db.librarySettings)..where((t) => t.key.equals(_seqStorageKey))).getSingleOrNull();
+    final persisted = row == null ? null : int.tryParse(row.value.trim());
+    if (persisted == null || persisted <= 0) return;
+    final hasLocalItems =
+        await (db.selectOnly(db.libraryItems)
+              ..addColumns([db.libraryItems.id])
+              ..limit(1))
+            .getSingleOrNull() !=
+        null;
+    if (hasLocalItems) {
+      _lastSeq = persisted;
+    }
+  }
+
+  Future<void> _persistSeq(int seq) async {
+    if (seq <= 0) return;
+    await db
+        .into(db.librarySettings)
+        .insertOnConflictUpdate(LibrarySettingsCompanion.insert(key: _seqStorageKey, value: '$seq'));
+  }
 
   Future<CloudSyncResult> _withSyncLock(Future<CloudSyncResult> Function() action, {bool queueIfBusy = false}) async {
     if (_syncing) {
@@ -208,6 +243,7 @@ class CloudProjectionEngine {
 
     _lastDetailHydratedAt.clear();
     _lastSeq = snapshotSeq;
+    await _persistSeq(_lastSeq);
     onLibraryUpdated?.call();
 
     return CloudSyncResult(
@@ -224,7 +260,8 @@ class CloudProjectionEngine {
   /// applying changed items & files in place when possible and falling back to
   /// [_runFullSnapshotLocked] on `reset_required`, deletions/missing files,
   /// source changes, or unresolvable parents.
-  Future<CloudSyncResult> syncIncremental() {
+  Future<CloudSyncResult> syncIncremental() async {
+    await _ensureSeqLoaded();
     if (_lastSeq <= 0) {
       return syncFullSnapshot();
     }
@@ -234,7 +271,10 @@ class CloudProjectionEngine {
         return await _runFullSnapshotLocked();
       }
       if (changesPage.changes.isEmpty) {
-        if (changesPage.latestSeq > _lastSeq) _lastSeq = changesPage.latestSeq;
+        if (changesPage.latestSeq > _lastSeq) {
+          _lastSeq = changesPage.latestSeq;
+          await _persistSeq(_lastSeq);
+        }
         return CloudSyncResult(
           fullReset: false,
           latestSeq: _lastSeq,
@@ -366,6 +406,7 @@ class CloudProjectionEngine {
           onLibraryUpdated?.call();
         }
         _lastSeq = changesPage.nextSinceSeq > _lastSeq ? changesPage.nextSinceSeq : changesPage.latestSeq;
+        await _persistSeq(_lastSeq);
         return CloudSyncResult(
           fullReset: false,
           latestSeq: _lastSeq,
@@ -550,6 +591,7 @@ class CloudProjectionEngine {
       await _applyListDeltas(listOps);
       _lastDetailHydratedAt.clear();
       _lastSeq = changesPage.nextSinceSeq > _lastSeq ? changesPage.nextSinceSeq : changesPage.latestSeq;
+      await _persistSeq(_lastSeq);
       onLibraryUpdated?.call();
 
       return CloudSyncResult(

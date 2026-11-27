@@ -71,6 +71,46 @@ class LibraryWatchStateStore {
     return identity == null ? null : (work: identity, season: season, episode: episode);
   }
 
+  _LocalIdentity? _identityFromLookup(LibraryItemRow item, LibraryItemRow? Function(int id) lookup) {
+    var work = item;
+    var season = -1;
+    var episode = -1;
+    if (item.kind == 'episode' || item.kind == 'season') {
+      final parent = item.parentId == null ? null : lookup(item.parentId!);
+      final showId = item.showId ?? (item.kind == 'season' ? item.parentId : parent?.parentId);
+      final show = showId == null ? null : lookup(showId);
+      if (show == null || show.kind != 'show') return null;
+      work = show;
+      season = item.seasonNumber ?? parent?.seasonNumber ?? -1;
+      if (season < 0) return null;
+      if (item.kind == 'episode') {
+        episode = item.episodeNumber ?? -1;
+        if (episode < 0) return null;
+      }
+    }
+    if (work.scrapedAt == null || work.libraryType == 'pending') return null;
+    final identity = WorkIdentity.resolve(
+      source: WorkIdentity.localSource,
+      kind: work.kind,
+      tmdbId: work.tmdbId,
+      imdbId: work.imdbId,
+      tvdbId: work.tvdbId,
+      bangumiId: work.bangumiId,
+      doubanId: work.doubanId,
+    );
+    return identity == null ? null : (work: identity, season: season, episode: episode);
+  }
+
+  static bool _matchesProjected(LibraryUserStateRow current, WorkWatchStateRow saved) =>
+      current.positionMs == saved.positionMs &&
+      current.durationMs == saved.durationMs &&
+      current.watched == saved.watched &&
+      current.playCount == saved.playCount &&
+      current.lastPlayedAt == saved.lastPlayedAt &&
+      current.favorite == saved.favorite &&
+      current.hiddenFromContinue == saved.hiddenFromContinue &&
+      current.updatedAt == saved.updatedAt;
+
   Future<WorkWatchStateRow?> read(String key) =>
       (db.select(db.workWatchStates)..where((t) => t.stateKey.equals(key))).getSingleOrNull();
 
@@ -78,9 +118,81 @@ class LibraryWatchStateStore {
   /// Returns the number of `library_items` rows inspected.
   Future<int> restoreAll() => db.transaction(() async {
     final items = await db.select(db.libraryItems).get();
+    if (items.isEmpty) return 0;
+
+    final bindings = await db.select(db.libraryWorkBindings).get();
+    final savedStates = await db.select(db.workWatchStates).get();
+    final userStates = await db.select(db.libraryUserStates).get();
+
+    final itemById = <int, LibraryItemRow>{for (final item in items) item.id: item};
+    final bindingByItemId = <int, String>{for (final b in bindings) b.itemId: b.stateKey};
+    final savedByKey = <String, WorkWatchStateRow>{for (final s in savedStates) s.stateKey: s};
+    final userStateByItemId = <int, LibraryUserStateRow>{for (final u in userStates) u.itemId: u};
+
+    final staleBindingItemIds = <int>[];
+    final staleStateItemIds = <int>[];
+    final upsertBindings = <LibraryWorkBindingsCompanion>[];
+    final upsertUserStates = <LibraryUserStatesCompanion>[];
+
     for (final item in items) {
-      await _restore(item);
+      final identity = _identityFromLookup(item, (id) => itemById[id]);
+      final existingBindingKey = bindingByItemId[item.id];
+      final existingUser = userStateByItemId[item.id];
+
+      if (identity == null) {
+        if (existingBindingKey != null) {
+          staleBindingItemIds.add(item.id);
+          if (existingUser != null) staleStateItemIds.add(item.id);
+        }
+        continue;
+      }
+
+      final key = identity.work.stateKey(season: identity.season, episode: identity.episode);
+      final saved = savedByKey[key];
+      final bindingChanged = existingBindingKey != key;
+      if (bindingChanged) {
+        if (existingUser != null && saved == null) {
+          staleStateItemIds.add(item.id);
+        }
+        upsertBindings.add(LibraryWorkBindingsCompanion.insert(itemId: Value(item.id), stateKey: key));
+      }
+      if (saved != null && (bindingChanged || existingUser == null || !_matchesProjected(existingUser, saved))) {
+        upsertUserStates.add(
+          LibraryUserStatesCompanion.insert(
+            itemId: Value(item.id),
+            positionMs: Value(saved.positionMs),
+            durationMs: Value(saved.durationMs),
+            watched: Value(saved.watched),
+            playCount: Value(saved.playCount),
+            lastPlayedAt: Value(saved.lastPlayedAt),
+            favorite: Value(saved.favorite),
+            hiddenFromContinue: Value(saved.hiddenFromContinue),
+            updatedAt: saved.updatedAt,
+          ),
+        );
+      }
     }
+
+    const deleteChunkSize = 500;
+    for (var i = 0; i < staleStateItemIds.length; i += deleteChunkSize) {
+      final chunk = staleStateItemIds.sublist(i, math.min(i + deleteChunkSize, staleStateItemIds.length));
+      await (db.delete(db.libraryUserStates)..where((t) => t.itemId.isIn(chunk))).go();
+    }
+    for (var i = 0; i < staleBindingItemIds.length; i += deleteChunkSize) {
+      final chunk = staleBindingItemIds.sublist(i, math.min(i + deleteChunkSize, staleBindingItemIds.length));
+      await (db.delete(db.libraryWorkBindings)..where((t) => t.itemId.isIn(chunk))).go();
+    }
+    if (upsertBindings.isNotEmpty || upsertUserStates.isNotEmpty) {
+      await db.batch((batch) {
+        if (upsertBindings.isNotEmpty) {
+          batch.insertAllOnConflictUpdate(db.libraryWorkBindings, upsertBindings);
+        }
+        if (upsertUserStates.isNotEmpty) {
+          batch.insertAllOnConflictUpdate(db.libraryUserStates, upsertUserStates);
+        }
+      });
+    }
+
     return items.length;
   });
 

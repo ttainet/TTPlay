@@ -244,4 +244,46 @@ void main() {
     expect((await repo.getItem(first))!.state!.positionMs, 120000);
     expect(await db.select(db.workWatchStates).get(), hasLength(1));
   });
+
+  test('batched restoreAll handles mixed matched, stale, unmatched, and clean rows across reopen', () async {
+    final show = await series();
+    final matchedMovie = await movie(tmdb: '501');
+    final unmatchedMovie = await movie(tmdb: null);
+
+    await repo.setProgress(show.episodes[0], positionMs: 33000, durationMs: 1800000);
+    await repo.markWatched(show.episodes[1], watched: true);
+    await repo.setProgress(matchedMovie, positionMs: 44000, durationMs: 3600000);
+
+    // Seed an orphan local user state + stale binding on an unmatched item.
+    await db
+        .into(db.libraryWorkBindings)
+        .insertOnConflictUpdate(
+          LibraryWorkBindingsCompanion.insert(itemId: Value(unmatchedMovie), stateKey: 'local-library:movie:tmdb:999'),
+        );
+    await db
+        .into(db.libraryUserStates)
+        .insertOnConflictUpdate(
+          LibraryUserStatesCompanion.insert(
+            itemId: Value(unmatchedMovie),
+            positionMs: const Value(88000),
+            updatedAt: 9,
+          ),
+        );
+
+    await reopen();
+
+    expect((await repo.getItem(show.episodes[0]))!.state!.positionMs, 33000);
+    expect((await repo.getItem(show.episodes[1]))!.state!.watched, isTrue);
+    expect((await repo.getItem(matchedMovie))!.state!.positionMs, 44000);
+    expect((await repo.getItem(unmatchedMovie))!.state, isNull);
+    expect(
+      await (db.select(db.libraryWorkBindings)..where((t) => t.itemId.equals(unmatchedMovie))).getSingleOrNull(),
+      isNull,
+    );
+
+    // Second clean reopen preserves everything with zero diff mutations.
+    await reopen();
+    expect((await repo.getItem(show.episodes[0]))!.state!.positionMs, 33000);
+    expect((await repo.getItem(matchedMovie))!.state!.positionMs, 44000);
+  });
 }

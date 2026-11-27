@@ -212,8 +212,21 @@ class MultiServerManager {
   final Map<String, String> _activeJellyfinMachine = {};
   final Map<String, HealthStatus> _jellyfinHealthByCompoundId = {};
 
+  static const List<Duration> _exhaustedRetryBackoff = [
+    Duration(seconds: 5),
+    Duration(seconds: 5),
+    Duration(seconds: 15),
+    Duration(seconds: 30),
+    Duration(seconds: 60),
+    Duration(seconds: 120),
+    Duration(seconds: 300),
+  ];
+
   /// Debounce timers for endpoint-exhaustion-triggered reconnection (per server)
   final Map<String, Timer> _reconnectDebounce = {};
+
+  /// Current backoff step index into [_exhaustedRetryBackoff] per offline server.
+  final Map<String, int> _exhaustedBackoffSteps = {};
 
   /// Servers whose endpoint-exhaustion signal is being confirmed by an
   /// auth-required health probe. Exhaustion callbacks raised by that probe
@@ -975,6 +988,7 @@ class MultiServerManager {
   /// deliberately left alone — they are owned by the futures that set them.
   MediaServerClient? _forgetServer(String serverId) {
     _reconnectDebounce.remove(serverId)?.cancel();
+    _exhaustedBackoffSteps.remove(serverId);
     _stopRelayEscape(serverId);
     final client = _clients.remove(serverId);
     if (identical(client, _localLibraryClient)) {
@@ -1362,6 +1376,9 @@ class MultiServerManager {
     final prevRefusal = _refusedServers[serverId];
 
     _serverStatus[serverId] = isOnline;
+    if (isOnline) {
+      _exhaustedBackoffSteps.remove(serverId);
+    }
     if (refusal != null) {
       _refusedServers[serverId] = refusal;
     } else {
@@ -1915,8 +1932,10 @@ class MultiServerManager {
   void _onServerEndpointsExhausted(ServerId serverId) {
     if (_endpointHealthChecks.contains(serverId)) return;
 
+    final step = (_exhaustedBackoffSteps[serverId] ?? 0).clamp(0, _exhaustedRetryBackoff.length - 1);
+    final delay = _exhaustedRetryBackoff[step];
     _reconnectDebounce[serverId]?.cancel();
-    _reconnectDebounce[serverId] = Timer(const Duration(seconds: 5), () {
+    _reconnectDebounce[serverId] = Timer(delay, () {
       _reconnectDebounce.remove(serverId);
       unawaited(_verifyServerEndpointsExhausted(serverId));
     });
@@ -1929,7 +1948,9 @@ class MultiServerManager {
     final client = _clients[serverId];
     if (client == null || !_endpointHealthChecks.add(serverId)) return;
 
+    var rearmAfterGuard = false;
     try {
+      final wasOnline = _serverStatus[serverId] != false;
       final health = await client.checkHealth();
       if (!identical(_clients[serverId], client)) return;
 
@@ -1938,6 +1959,7 @@ class MultiServerManager {
       }
 
       if (health == HealthStatus.online) {
+        _exhaustedBackoffSteps.remove(serverId);
         _applyHealth(serverId, health);
         appLogger.d('Endpoint exhaustion not confirmed for $serverId; health probe succeeded');
         return;
@@ -1945,24 +1967,40 @@ class MultiServerManager {
 
       _applyHealth(serverId, health);
       // The server answered: failing over to another endpoint gets the same refusal.
-      if (health == HealthStatus.authError || health == HealthStatus.accessDenied) return;
+      if (health == HealthStatus.authError || health == HealthStatus.accessDenied) {
+        _exhaustedBackoffSteps.remove(serverId);
+        return;
+      }
 
       final plexServer = _plexServers[serverId];
       final jellyfinClient = client is JellyfinClient ? client : null;
       if (plexServer == null && jellyfinClient == null) return;
 
-      appLogger.i('Health probe confirmed $serverId offline, triggering reconnection');
+      final nextStep = ((_exhaustedBackoffSteps[serverId] ?? 0) + 1).clamp(0, _exhaustedRetryBackoff.length - 1);
+      _exhaustedBackoffSteps[serverId] = nextStep;
+      if (wasOnline) {
+        appLogger.i('Health probe confirmed $serverId offline, triggering reconnection');
+      } else {
+        appLogger.d(
+          'Health probe confirmed $serverId still offline '
+          '(next retry in ${_exhaustedRetryBackoff[nextStep].inSeconds}s)',
+        );
+      }
 
-      unawaited(
-        _runServerTask(
-          serverId,
-          () => plexServer != null
-              ? _reconnectServer(serverId, plexServer)
-              : _reconnectJellyfinServer(serverId, jellyfinClient!),
-        ),
-      );
+      if (plexServer != null) {
+        unawaited(_runServerTask(serverId, () => _reconnectServer(serverId, plexServer)));
+      } else if (wasOnline) {
+        unawaited(_runServerTask(serverId, () => _reconnectJellyfinServer(serverId, jellyfinClient!)));
+      } else {
+        // Already offline and checkHealth() just failed above; re-arm using
+        // backoff instead of firing a duplicate immediate checkHealth() probe.
+        rearmAfterGuard = true;
+      }
     } finally {
       _endpointHealthChecks.remove(serverId);
+      if (rearmAfterGuard && identical(_clients[serverId], client)) {
+        _onServerEndpointsExhausted(serverId);
+      }
     }
   }
 
@@ -2016,6 +2054,7 @@ class MultiServerManager {
       timer.cancel();
     }
     _reconnectDebounce.clear();
+    _exhaustedBackoffSteps.clear();
     for (final timer in _relayEscapeTimers.values) {
       timer.cancel();
     }

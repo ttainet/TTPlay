@@ -331,6 +331,60 @@ void main() {
         manager.dispose();
       });
     });
+
+    test('persistently offline server backs off exponentially instead of looping every 5s and resets on recovery', () {
+      fakeAsync((async) {
+        final manager = MultiServerManager();
+        var healthy = false;
+        var probes = 0;
+        final client = testJellyfinClient(
+          connection: _jellyfinConnection('user-a'),
+          handler: (req) async {
+            if (req.url.path == '/Users/Me') probes++;
+            return healthy
+                ? http.Response(
+                    '{"Policy":{"IsAdministrator":false}}',
+                    200,
+                    headers: {'content-type': 'application/json'},
+                  )
+                : http.Response('', 500);
+          },
+          onAllEndpointsExhausted: () => manager.debugTriggerEndpointsExhaustedForTesting(ServerId('jf-machine')),
+        );
+        manager.debugRegisterJellyfinClientForTesting(client);
+
+        // 0s -> trigger exhausted -> 5s: initial confirm (probes=1) + reconnect probe (probes=2), backoff->1 (5s)
+        manager.debugTriggerEndpointsExhaustedForTesting(ServerId('jf-machine'));
+        async.elapse(const Duration(seconds: 5));
+        async.flushMicrotasks();
+        expect(manager.isServerOnline(ServerId('jf-machine')), isFalse);
+        expect(probes, 2);
+
+        // +5s (t=10s): still offline, single probe only (probes=3), next backoff=15s
+        async.elapse(const Duration(seconds: 5));
+        async.flushMicrotasks();
+        expect(probes, 3);
+
+        // +14s (t=24s): still in 15s backoff window -> no probe yet
+        async.elapse(const Duration(seconds: 14));
+        async.flushMicrotasks();
+        expect(probes, 3);
+
+        // +1s (t=25s): fires probe (probes=4), next backoff=30s
+        async.elapse(const Duration(seconds: 1));
+        async.flushMicrotasks();
+        expect(probes, 4);
+
+        // +30s (t=55s): server recovers on this probe -> comes back online and resets backoff
+        healthy = true;
+        async.elapse(const Duration(seconds: 30));
+        async.flushMicrotasks();
+        expect(probes, 5);
+        expect(manager.isServerOnline(ServerId('jf-machine')), isTrue);
+
+        manager.dispose();
+      });
+    });
   });
 
   group('refreshTokensForProfile', () {

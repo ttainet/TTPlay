@@ -650,4 +650,42 @@ void main() {
     await repo.mergeUserState(a, other);
     expect((await repo.getItem(other))?.state, isNull);
   });
+
+  test('nonEmptyLibraryTypes returns only visible non-empty shelves', () async {
+    final movieId = await addTitle('Visible Movie', libraryType: 'movie');
+    await addVideo('/movies/visible.mkv', itemId: movieId);
+    final showId = await addTitle('Visible Show', kind: LibraryKinds.show, libraryType: 'show');
+    final seasonId = await addTitle('S1', kind: LibraryKinds.season, libraryType: 'show', parentId: showId, season: 1);
+    final epId = await addTitle(
+      'E1',
+      kind: LibraryKinds.episode,
+      libraryType: 'show',
+      parentId: seasonId,
+      showId: showId,
+      season: 1,
+      episode: 1,
+    );
+    await addVideo('/shows/s01e01.mkv', itemId: epId);
+
+    expect(await repo.nonEmptyLibraryTypes(), {'movie', 'show'});
+
+    await db
+        .into(db.mounts)
+        .insert(MountsCompanion.insert(id: 'm2', kind: 'local', displayName: 'Hidden', configJson: '{}', createdAt: 0));
+    final hiddenMovieId = await addTitle('Hidden Movie', libraryType: 'anime');
+    final hiddenFileId = await repo.upsertFile(
+      mountId: 'm2',
+      path: '/anime/a.mkv',
+      role: LibraryFileRoles.video,
+      scanId: 1,
+      size: 100,
+      modifiedAt: 1,
+    );
+    await repo.assignFile(hiddenFileId, hiddenMovieId);
+
+    expect(await repo.nonEmptyLibraryTypes(), {'movie', 'show', 'anime'});
+
+    repo.hiddenMountIds = () => {'m2'};
+    expect(await repo.nonEmptyLibraryTypes(), {'movie', 'show'});
+  });
 }

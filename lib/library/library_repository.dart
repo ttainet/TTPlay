@@ -712,6 +712,18 @@ class LibraryRepository {
     return filter;
   }
 
+  /// Library shelves that currently hold at least one visible movie or show.
+  Future<Set<String>> nonEmptyLibraryTypes() async {
+    final items = _db.libraryItems;
+    final rows =
+        await (_db.selectOnly(items, distinct: true)
+              ..addColumns([items.libraryType])
+              ..where(items.kind.isIn([LibraryKinds.movie, LibraryKinds.show]) & _visibilityFilter()))
+            .map((row) => row.read(items.libraryType))
+            .get();
+    return {for (final type in rows) ?type};
+  }
+
   /// One page of a library shelf, with the total for the same filters.
   Future<LibraryPage> queryTitles(LibraryQuery query) async {
     final items = _db.libraryItems;

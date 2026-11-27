@@ -394,13 +394,12 @@ class LocalLibraryClient implements MediaServerClient, StreamQualityClient {
 
   @override
   Future<List<MediaLibrary>> fetchLibraries() async {
+    final nonEmpty = await _repo.nonEmptyLibraryTypes();
     final libraries = <MediaLibrary>[];
     // Titles no source recognised (or not looked up yet) get a shelf of
     // their own, last, so they can be watched before they are matched.
     for (final shelf in [...shelves, lib.LibraryTypes.pending]) {
-      final page = await _repo.queryTitles(lib.LibraryQuery(libraryType: shelf, limit: 1));
-      // An empty shelf is not worth a tab.
-      if (page.total == 0) continue;
+      if (!nonEmpty.contains(shelf)) continue;
       libraries.add(
         MediaLibrary(
           id: shelf,
