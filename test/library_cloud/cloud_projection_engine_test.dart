@@ -2066,194 +2066,209 @@ void main() {
     },
   );
 
-  test('remote progress >=90% is preserved verbatim as unwatched and explicit watched=true advances to Next Up', () async {
-    resetSharedPreferencesForTest();
-    final prevOverrides = HttpOverrides.current;
-    HttpOverrides.global = null;
-    addTearDown(() => HttpOverrides.global = prevOverrides);
+  test(
+    'remote progress >=90% is preserved verbatim as unwatched and explicit watched=true advances to Next Up',
+    () async {
+      resetSharedPreferencesForTest();
+      final prevOverrides = HttpOverrides.current;
+      HttpOverrides.global = null;
+      addTearDown(() => HttpOverrides.global = prevOverrides);
 
-    final db = AppDatabase.forTesting(NativeDatabase.memory());
-    addTearDown(db.close);
-    final mountRegistry = MountRegistry(db);
+      final db = AppDatabase.forTesting(NativeDatabase.memory());
+      addTearDown(db.close);
+      final mountRegistry = MountRegistry(db);
 
-    final hk = CloudKeyring.generateMasterKey();
-    final quarkCipher = await CloudKeyring.encryptCredentialJson(
-      masterKey: hk,
-      payload: {'cookie': 'uid=u789; pus=ghi', 'root_id': '0'},
-    );
-    var ep1Watched = false;
-    var ep1PositionMs = 2600000;
-    var progressUpdatedAt = 1700000900000;
-    final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
-    addTearDown(() => server.close(force: true));
-    server.listen((req) async {
-      final path = req.uri.path;
-      if (req.method == 'GET' && path == '/api/v1/sources') {
-        req.response.write(
-          jsonEncode({
-            'code': 0,
-            'sources': [
+      final hk = CloudKeyring.generateMasterKey();
+      final quarkCipher = await CloudKeyring.encryptCredentialJson(
+        masterKey: hk,
+        payload: {'cookie': 'uid=u789; pus=ghi', 'root_id': '0'},
+      );
+      var ep1Watched = false;
+      var ep1PositionMs = 2600000;
+      var progressUpdatedAt = 1700000900000;
+      final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+      addTearDown(() => server.close(force: true));
+      server.listen((req) async {
+        final path = req.uri.path;
+        if (req.method == 'GET' && path == '/api/v1/sources') {
+          req.response.write(
+            jsonEncode({
+              'code': 0,
+              'sources': [
+                {
+                  'id': 'src_norm',
+                  'kind': 'quark',
+                  'name': 'NAS',
+                  'identity_key': 'quark:u789',
+                  'status': 'active',
+                  'folders': [
+                    {'id': 'f1', 'source_id': 'src_norm', 'path': '/TV'},
+                  ],
+                },
+              ],
+            }),
+          );
+        } else if (req.method == 'GET' && path == '/api/v1/sources/src_norm/credential') {
+          req.response.write(
+            jsonEncode({
+              'code': 0,
+              'credential': {
+                'source_id': 'src_norm',
+                'ciphertext': quarkCipher,
+                'version': 1,
+                'key_epoch': 1,
+                'status': 'valid',
+              },
+            }),
+          );
+        } else if (req.method == 'GET' && path == '/api/v1/library/snapshot') {
+          final kind = req.uri.queryParameters['kind'];
+          final items = switch (kind) {
+            'show' => [
               {
-                'id': 'src_norm',
-                'kind': 'quark',
-                'name': 'NAS',
-                'identity_key': 'quark:u789',
-                'status': 'active',
-                'folders': [
-                  {'id': 'f1', 'source_id': 'src_norm', 'path': '/TV'},
+                'id': 500,
+                'work_key': 'tmdb:show:203483',
+                'kind': 'show',
+                'library_type': 'show',
+                'title': '两京十五日',
+                'tmdb_id': '203483',
+                'updated_at': 1000,
+              },
+            ],
+            'season' => [
+              {
+                'id': 501,
+                'work_key': 'tmdb:show:203483:s1',
+                'kind': 'season',
+                'library_type': 'show',
+                'parent_id': 500,
+                'show_id': 500,
+                'title': '第1季',
+                'season_number': 1,
+                'updated_at': 1000,
+              },
+            ],
+            'episode' => [
+              {
+                'id': 502,
+                'work_key': 'tmdb:show:203483:s1:e1',
+                'kind': 'episode',
+                'library_type': 'show',
+                'parent_id': 501,
+                'show_id': 500,
+                'title': '虎硫药',
+                'season_number': 1,
+                'episode_number': 1,
+                'runtime_ms': 2767098,
+                'updated_at': 1000,
+                'files': [
+                  {
+                    'id': 21,
+                    'source_id': 'src_norm',
+                    'path': '/TV/LiangJing/S01E01.mkv',
+                    'role': 'video',
+                    'size': 1024,
+                  },
+                ],
+              },
+              {
+                'id': 503,
+                'work_key': 'tmdb:show:203483:s1:e2',
+                'kind': 'episode',
+                'library_type': 'show',
+                'parent_id': 501,
+                'show_id': 500,
+                'title': '太子和捕快',
+                'season_number': 1,
+                'episode_number': 2,
+                'runtime_ms': 2767098,
+                'updated_at': 1000,
+                'files': [
+                  {
+                    'id': 22,
+                    'source_id': 'src_norm',
+                    'path': '/TV/LiangJing/S01E02.mkv',
+                    'role': 'video',
+                    'size': 1024,
+                  },
                 ],
               },
             ],
-          }),
-        );
-      } else if (req.method == 'GET' && path == '/api/v1/sources/src_norm/credential') {
-        req.response.write(
-          jsonEncode({
-            'code': 0,
-            'credential': {
-              'source_id': 'src_norm',
-              'ciphertext': quarkCipher,
-              'version': 1,
-              'key_epoch': 1,
-              'status': 'valid',
-            },
-          }),
-        );
-      } else if (req.method == 'GET' && path == '/api/v1/library/snapshot') {
-        final kind = req.uri.queryParameters['kind'];
-        final items = switch (kind) {
-          'show' => [
-            {
-              'id': 500,
-              'work_key': 'tmdb:show:203483',
-              'kind': 'show',
-              'library_type': 'show',
-              'title': '两京十五日',
-              'tmdb_id': '203483',
-              'updated_at': 1000,
-            },
-          ],
-          'season' => [
-            {
-              'id': 501,
-              'work_key': 'tmdb:show:203483:s1',
-              'kind': 'season',
-              'library_type': 'show',
-              'parent_id': 500,
-              'show_id': 500,
-              'title': '第1季',
-              'season_number': 1,
-              'updated_at': 1000,
-            },
-          ],
-          'episode' => [
-            {
-              'id': 502,
-              'work_key': 'tmdb:show:203483:s1:e1',
-              'kind': 'episode',
-              'library_type': 'show',
-              'parent_id': 501,
-              'show_id': 500,
-              'title': '虎硫药',
-              'season_number': 1,
-              'episode_number': 1,
-              'runtime_ms': 2767098,
-              'updated_at': 1000,
-              'files': [
-                {'id': 21, 'source_id': 'src_norm', 'path': '/TV/LiangJing/S01E01.mkv', 'role': 'video', 'size': 1024},
+            _ => <Map<String, dynamic>>[],
+          };
+          req.response.write(jsonEncode({'code': 0, 'snapshot_seq': 30, 'items': items, 'has_more': false}));
+        } else if (req.method == 'GET' && path == '/api/v1/progress') {
+          req.response.write(
+            jsonEncode({
+              'code': 0,
+              'items': [
+                {
+                  'progress_key': 'tmdb:show:203483:s1:e1',
+                  'work_key': 'tmdb:show:203483',
+                  'season_number': 1,
+                  'episode_number': 1,
+                  'position_ms': ep1PositionMs,
+                  'duration_ms': 2767098,
+                  'watched': ep1Watched,
+                  'play_count': ep1Watched ? 1 : 0,
+                  'last_played_at': progressUpdatedAt,
+                  'updated_at': progressUpdatedAt,
+                },
               ],
-            },
-            {
-              'id': 503,
-              'work_key': 'tmdb:show:203483:s1:e2',
-              'kind': 'episode',
-              'library_type': 'show',
-              'parent_id': 501,
-              'show_id': 500,
-              'title': '太子和捕快',
-              'season_number': 1,
-              'episode_number': 2,
-              'runtime_ms': 2767098,
-              'updated_at': 1000,
-              'files': [
-                {'id': 22, 'source_id': 'src_norm', 'path': '/TV/LiangJing/S01E02.mkv', 'role': 'video', 'size': 1024},
-              ],
-            },
-          ],
-          _ => <Map<String, dynamic>>[],
-        };
-        req.response.write(jsonEncode({'code': 0, 'snapshot_seq': 30, 'items': items, 'has_more': false}));
-      } else if (req.method == 'GET' && path == '/api/v1/progress') {
-        req.response.write(
-          jsonEncode({
-            'code': 0,
-            'items': [
-              {
-                'progress_key': 'tmdb:show:203483:s1:e1',
-                'work_key': 'tmdb:show:203483',
-                'season_number': 1,
-                'episode_number': 1,
-                'position_ms': ep1PositionMs,
-                'duration_ms': 2767098,
-                'watched': ep1Watched,
-                'play_count': ep1Watched ? 1 : 0,
-                'last_played_at': progressUpdatedAt,
-                'updated_at': progressUpdatedAt,
-              },
-            ],
-          }),
-        );
-      } else if (req.method == 'GET' && path == '/api/v1/favorites') {
-        req.response.write(jsonEncode({'code': 0, 'items': <Map<String, dynamic>>[]}));
-      } else if (req.method == 'GET' && path == '/api/v1/kv') {
-        req.response.write(jsonEncode({'code': 0, 'items': <Map<String, dynamic>>[]}));
-      } else if (req.method == 'GET' && path == '/api/v1/lists') {
-        req.response.write(jsonEncode({'code': 0, 'items': <Map<String, dynamic>>[]}));
-      } else {
-        req.response.statusCode = 404;
-      }
-      await req.response.close();
-    });
+            }),
+          );
+        } else if (req.method == 'GET' && path == '/api/v1/favorites') {
+          req.response.write(jsonEncode({'code': 0, 'items': <Map<String, dynamic>>[]}));
+        } else if (req.method == 'GET' && path == '/api/v1/kv') {
+          req.response.write(jsonEncode({'code': 0, 'items': <Map<String, dynamic>>[]}));
+        } else if (req.method == 'GET' && path == '/api/v1/lists') {
+          req.response.write(jsonEncode({'code': 0, 'items': <Map<String, dynamic>>[]}));
+        } else {
+          req.response.statusCode = 404;
+        }
+        await req.response.close();
+      });
 
-    final api = CloudApiClient(baseUrl: 'http://127.0.0.1:${server.port}', accessToken: 'usr_norm');
-    addTearDown(api.close);
-    final engine = CloudProjectionEngine(
-      db: db,
-      syncClient: CloudProjectionSyncClient(api),
-      mountMirror: CloudMountMirror(
-        sourceRepository: CloudSourceRepository(api: api, masterKeyProvider: () => hk),
-        mountRegistry: mountRegistry,
-      ),
-    );
+      final api = CloudApiClient(baseUrl: 'http://127.0.0.1:${server.port}', accessToken: 'usr_norm');
+      addTearDown(api.close);
+      final engine = CloudProjectionEngine(
+        db: db,
+        syncClient: CloudProjectionSyncClient(api),
+        mountMirror: CloudMountMirror(
+          sourceRepository: CloudSourceRepository(api: api, masterKeyProvider: () => hk),
+          mountRegistry: mountRegistry,
+        ),
+      );
 
-    await engine.syncFullSnapshot();
-    final repo = LibraryRepository(db);
-    final ep1 = await (db.select(
-      db.libraryItems,
-    )..where((t) => t.workKey.equals('tmdb:show:203483:s1:e1'))).getSingle();
-    final ep1State = (await repo.getItem(ep1.id))!.state!;
-    expect(ep1State.watched, isFalse);
-    expect(ep1State.positionMs, 2600000);
-    expect(ep1State.playCount, 0);
+      await engine.syncFullSnapshot();
+      final repo = LibraryRepository(db);
+      final ep1 = await (db.select(
+        db.libraryItems,
+      )..where((t) => t.workKey.equals('tmdb:show:203483:s1:e1'))).getSingle();
+      final ep1State = (await repo.getItem(ep1.id))!.state!;
+      expect(ep1State.watched, isFalse);
+      expect(ep1State.positionMs, 2600000);
+      expect(ep1State.playCount, 0);
 
-    var cw = await repo.continueWatching();
-    expect(cw, hasLength(1));
-    expect(cw.single.item.title, '虎硫药');
+      var cw = await repo.continueWatching();
+      expect(cw, hasLength(1));
+      expect(cw.single.item.title, '虎硫药');
 
-    // Explicit watched=true from server advances Continue Watching to Next Up (S1E2).
-    ep1Watched = true;
-    ep1PositionMs = 0;
-    progressUpdatedAt = 1700001000000;
-    await engine.syncFullSnapshot();
-    final ep1WatchedState = (await repo.getItem(ep1.id))!.state!;
-    expect(ep1WatchedState.watched, isTrue);
-    expect(ep1WatchedState.playCount, 1);
+      // Explicit watched=true from server advances Continue Watching to Next Up (S1E2).
+      ep1Watched = true;
+      ep1PositionMs = 0;
+      progressUpdatedAt = 1700001000000;
+      await engine.syncFullSnapshot();
+      final ep1WatchedState = (await repo.getItem(ep1.id))!.state!;
+      expect(ep1WatchedState.watched, isTrue);
+      expect(ep1WatchedState.playCount, 1);
 
-    cw = await repo.continueWatching();
-    expect(cw, hasLength(1));
-    expect(cw.single.item.title, '太子和捕快');
-    expect(cw.single.continueRecencyMs, 1700001000000);
-  });
+      cw = await repo.continueWatching();
+      expect(cw, hasLength(1));
+      expect(cw.single.item.title, '太子和捕快');
+      expect(cw.single.continueRecencyMs, 1700001000000);
+    },
+  );
 
   test('persists _lastSeq across engine restarts so cold start syncs incrementally without full snapshot', () async {
     resetSharedPreferencesForTest();
@@ -2337,7 +2352,14 @@ void main() {
               ]
             : const [];
         req.response.write(
-          jsonEncode({'code': 0, 'snapshot_seq': 42, 'items': items, 'total': items.length, 'page': 1, 'has_more': false}),
+          jsonEncode({
+            'code': 0,
+            'snapshot_seq': 42,
+            'items': items,
+            'total': items.length,
+            'page': 1,
+            'has_more': false,
+          }),
         );
       } else if (req.method == 'GET' && path == '/api/v1/library/changes') {
         final sinceSeq = int.tryParse(req.uri.queryParameters['since_seq'] ?? '') ?? 0;
@@ -2353,7 +2375,11 @@ void main() {
             'changes': const [],
           }),
         );
-      } else if (req.method == 'GET' && (path == '/api/v1/progress' || path == '/api/v1/favorites' || path == '/api/v1/kv' || path == '/api/v1/lists')) {
+      } else if (req.method == 'GET' &&
+          (path == '/api/v1/progress' ||
+              path == '/api/v1/favorites' ||
+              path == '/api/v1/kv' ||
+              path == '/api/v1/lists')) {
         req.response.write(jsonEncode({'code': 0, 'items': const []}));
       } else {
         req.response.statusCode = 404;
@@ -2394,6 +2420,367 @@ void main() {
     expect(res3.fullReset, isTrue);
     expect(snapshotCalls, 8);
   });
+
+  test(
+    'batched full snapshot preserves row ids and user states, resolves legacy mount+path files, projects subtitles, and prunes removed files',
+    () async {
+      resetSharedPreferencesForTest();
+      final prevOverrides = HttpOverrides.current;
+      HttpOverrides.global = null;
+      addTearDown(() => HttpOverrides.global = prevOverrides);
+
+      final db = AppDatabase.forTesting(NativeDatabase.memory());
+      addTearDown(db.close);
+      final hk = CloudKeyring.generateMasterKey();
+      final davCipher = await CloudKeyring.encryptCredentialJson(
+        masterKey: hk,
+        payload: {'base_url': 'https://nas.example/dav', 'username': 'alice', 'password': 'pw', 'root_path': '/'},
+      );
+
+      final mountId = CloudMountMirror.mountIdForSource('src_batch');
+      await MountRegistry(db).upsert(
+        StorageMount(
+          id: mountId,
+          kind: StorageKind.webdav,
+          displayName: 'Batch WebDAV',
+          config: const {MountKeys.baseUrl: 'https://nas.example/dav'},
+        ),
+      );
+
+      final nowMs = DateTime.now().millisecondsSinceEpoch;
+      final existingMovieId = await db
+          .into(db.libraryItems)
+          .insert(
+            LibraryItemsCompanion.insert(
+              workKey: const Value('tmdb:movie:603'),
+              kind: 'movie',
+              libraryType: 'movie',
+              title: 'The Matrix (Old)',
+              sortTitle: 'matrix (old)',
+              addedAt: nowMs,
+              updatedAt: nowMs,
+            ),
+          );
+      final legacyFileId = await db
+          .into(db.libraryFiles)
+          .insert(
+            LibraryFilesCompanion.insert(
+              fileKey: const Value(null),
+              mountId: mountId,
+              path: '/Movies/Matrix.mkv',
+              role: 'video',
+              itemId: Value(existingMovieId),
+              addedAt: nowMs,
+            ),
+          );
+      final staleFileId = await db
+          .into(db.libraryFiles)
+          .insert(
+            LibraryFilesCompanion.insert(
+              fileKey: const Value('stale_removed_key'),
+              mountId: mountId,
+              path: '/Movies/Removed.mkv',
+              role: 'video',
+              itemId: Value(existingMovieId),
+              addedAt: nowMs,
+            ),
+          );
+      await db
+          .into(db.libraryUserStates)
+          .insert(
+            LibraryUserStatesCompanion.insert(
+              itemId: Value(existingMovieId),
+              positionMs: const Value(42000),
+              favorite: const Value(true),
+              updatedAt: nowMs,
+            ),
+          );
+
+      final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+      addTearDown(() => server.close(force: true));
+      server.listen((req) async {
+        final p = req.uri.path;
+        if (p == '/api/v1/sources') {
+          req.response.write(
+            jsonEncode({
+              'code': 0,
+              'sources': [
+                {'id': 'src_batch', 'kind': 'webdav', 'name': 'Batch WebDAV', 'identity_key': 'k', 'status': 'active'},
+              ],
+            }),
+          );
+        } else if (p == '/api/v1/sources/src_batch/credential') {
+          req.response.write(
+            jsonEncode({
+              'code': 0,
+              'credential': {
+                'source_id': 'src_batch',
+                'ciphertext': davCipher,
+                'version': 1,
+                'key_epoch': 1,
+                'status': 'valid',
+              },
+            }),
+          );
+        } else if (p == '/api/v1/library/snapshot') {
+          final kind = req.uri.queryParameters['kind'];
+          final items = kind == 'movie'
+              ? [
+                  {
+                    'id': 1,
+                    'work_key': 'tmdb:movie:603',
+                    'kind': 'movie',
+                    'library_type': 'movie',
+                    'title': 'The Matrix',
+                    'sort_title': 'matrix',
+                    'updated_at': 1700000000000,
+                    'files': [
+                      {
+                        'source_id': 'src_batch',
+                        'path': '/Movies/Matrix.mkv',
+                        'size': 2000,
+                        'subtitles': [
+                          {'source_id': 'src_batch', 'path': '/Movies/Matrix.srt', 'language': 'eng', 'size': 200},
+                        ],
+                      },
+                    ],
+                  },
+                  {
+                    'id': 2,
+                    'work_key': 'tmdb:movie:604',
+                    'kind': 'movie',
+                    'library_type': 'movie',
+                    'title': 'The Matrix Reloaded',
+                    'sort_title': 'matrix reloaded',
+                    'updated_at': 1700000000000,
+                    'files': [
+                      {
+                        'source_id': 'src_batch',
+                        'path': '/Movies/Reloaded.mkv',
+                        'size': 3000,
+                        'subtitles': [
+                          {'source_id': 'src_batch', 'path': '/Movies/Reloaded.ass', 'language': 'zho', 'size': 300},
+                        ],
+                      },
+                    ],
+                  },
+                ]
+              : const <Map<String, dynamic>>[];
+          req.response.write(jsonEncode({'code': 0, 'snapshot_seq': 77, 'items': items, 'has_more': false}));
+        } else if (p == '/api/v1/library/unmatched') {
+          req.response.write(jsonEncode({'code': 0, 'items': const [], 'total': 0}));
+        } else if (p == '/api/v1/progress' || p == '/api/v1/favorites' || p == '/api/v1/kv') {
+          req.response.write(jsonEncode({'code': 0, 'items': const []}));
+        } else if (p == '/api/v1/lists') {
+          req.response.write(jsonEncode({'code': 0, 'lists': const []}));
+        } else {
+          req.response.statusCode = 404;
+        }
+        await req.response.close();
+      });
+
+      final api = CloudApiClient(baseUrl: 'http://127.0.0.1:${server.port}', accessToken: 'usr_batch');
+      addTearDown(api.close);
+      final engine = CloudProjectionEngine(
+        db: db,
+        syncClient: CloudProjectionSyncClient(api),
+        mountMirror: CloudMountMirror(
+          sourceRepository: CloudSourceRepository(api: api, masterKeyProvider: () => hk),
+          mountRegistry: MountRegistry(db),
+          accountScopeKey: 'scope_batch',
+        ),
+      );
+
+      final res = await engine.syncFullSnapshot();
+      expect(res.itemsProjected, 2);
+      expect(res.filesProjected, 4);
+
+      final matrixRow = await (db.select(
+        db.libraryItems,
+      )..where((t) => t.workKey.equals('tmdb:movie:603'))).getSingle();
+      expect(matrixRow.id, existingMovieId);
+      expect(matrixRow.title, 'The Matrix');
+
+      final matrixState = await (db.select(
+        db.libraryUserStates,
+      )..where((t) => t.itemId.equals(existingMovieId))).getSingle();
+      expect(matrixState.positionMs, 42000);
+      expect(matrixState.favorite, isTrue);
+
+      final legacyUpdated = await (db.select(db.libraryFiles)..where((f) => f.id.equals(legacyFileId))).getSingle();
+      expect(legacyUpdated.fileKey, isNotNull);
+
+      final staleDeleted = await (db.select(db.libraryFiles)..where((f) => f.id.equals(staleFileId))).getSingleOrNull();
+      expect(staleDeleted, isNull);
+
+      final reloadedRow = await (db.select(
+        db.libraryItems,
+      )..where((t) => t.workKey.equals('tmdb:movie:604'))).getSingle();
+      final reloadedVideo = await (db.select(
+        db.libraryFiles,
+      )..where((f) => f.itemId.equals(reloadedRow.id) & f.role.equals('video'))).getSingle();
+      final reloadedSub = await (db.select(
+        db.libraryFiles,
+      )..where((f) => f.ownerFileId.equals(reloadedVideo.id) & f.role.equals('subtitle'))).getSingle();
+      expect(reloadedSub.language, 'zho');
+    },
+  );
+
+  test(
+    'incremental progress delta updates state directly without full user-state pull, preserves favorite, and suppresses self-echo',
+    () async {
+      resetSharedPreferencesForTest();
+      final prevOverrides = HttpOverrides.current;
+      HttpOverrides.global = null;
+      addTearDown(() => HttpOverrides.global = prevOverrides);
+
+      final db = AppDatabase.forTesting(NativeDatabase.memory());
+      addTearDown(db.close);
+      final hk = CloudKeyring.generateMasterKey();
+      final mountId = CloudMountMirror.mountIdForSource('src_prog');
+      await MountRegistry(db).upsert(
+        StorageMount(
+          id: mountId,
+          kind: StorageKind.webdav,
+          displayName: 'Prog WebDAV',
+          config: const {MountKeys.baseUrl: 'https://nas.example/dav'},
+        ),
+      );
+
+      final nowMs = DateTime.now().millisecondsSinceEpoch;
+      final movieId = await db
+          .into(db.libraryItems)
+          .insert(
+            LibraryItemsCompanion.insert(
+              workKey: const Value('tmdb:movie:999'),
+              kind: 'movie',
+              libraryType: 'movie',
+              title: 'Dune',
+              sortTitle: 'dune',
+              tmdbId: const Value('999'),
+              metadataSource: const Value('tmdb'),
+              addedAt: nowMs,
+              updatedAt: nowMs,
+              scrapedAt: Value(nowMs),
+            ),
+          );
+      await db
+          .into(db.libraryUserStates)
+          .insert(
+            LibraryUserStatesCompanion.insert(
+              itemId: Value(movieId),
+              positionMs: const Value(1000),
+              favorite: const Value(true),
+              updatedAt: nowMs,
+            ),
+          );
+      await db
+          .into(db.workWatchStates)
+          .insert(
+            WorkWatchStatesCompanion.insert(
+              stateKey: '["local-library","movie","tmdb","999",-1,-1]',
+              source: 'local-library',
+              kind: 'movie',
+              provider: 'tmdb',
+              externalId: '999',
+              positionMs: const Value(1000),
+              favorite: const Value(true),
+              updatedAt: nowMs,
+            ),
+          );
+      await db
+          .into(db.librarySettings)
+          .insertOnConflictUpdate(LibrarySettingsCompanion.insert(key: 'cloud-projection-seq:scope_prog', value: '10'));
+
+      var latestSeq = 11;
+      var deltaUpdatedAt = nowMs + 1000;
+      const deltaPositionMs = 55000;
+      var userStateGets = 0;
+
+      final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+      addTearDown(() => server.close(force: true));
+      server.listen((req) async {
+        final p = req.uri.path;
+        if (p == '/api/v1/library/changes') {
+          req.response.write(
+            jsonEncode({
+              'code': 0,
+              'reset_required': false,
+              'latest_seq': latestSeq,
+              'min_retained_seq': 1,
+              'next_since_seq': latestSeq,
+              'has_more': false,
+              'changes': [
+                {
+                  'seq': latestSeq,
+                  'entity': 'progress',
+                  'entity_id': 'tmdb:movie:999',
+                  'op': 'upsert',
+                  'data': {
+                    'progress_key': 'tmdb:movie:999',
+                    'work_key': 'tmdb:movie:999',
+                    'season_number': -1,
+                    'episode_number': -1,
+                    'position_ms': deltaPositionMs,
+                    'duration_ms': 300000,
+                    'watched': false,
+                    'play_count': 0,
+                    'hidden_from_continue': false,
+                    'updated_at': deltaUpdatedAt,
+                  },
+                },
+              ],
+            }),
+          );
+        } else if (p == '/api/v1/progress' || p == '/api/v1/favorites' || p == '/api/v1/kv' || p == '/api/v1/lists') {
+          userStateGets++;
+          req.response.write(jsonEncode({'code': 0, 'items': const []}));
+        } else {
+          req.response.statusCode = 404;
+        }
+        await req.response.close();
+      });
+
+      final api = CloudApiClient(baseUrl: 'http://127.0.0.1:${server.port}', accessToken: 'usr_prog');
+      addTearDown(api.close);
+
+      var libUpdatedCalls = 0;
+      var userDataUpdatedCalls = 0;
+      final engine = CloudProjectionEngine(
+        db: db,
+        syncClient: CloudProjectionSyncClient(api),
+        mountMirror: CloudMountMirror(
+          sourceRepository: CloudSourceRepository(api: api, masterKeyProvider: () => hk),
+          mountRegistry: MountRegistry(db),
+          accountScopeKey: 'scope_prog',
+        ),
+        onLibraryUpdated: () => libUpdatedCalls++,
+        onUserDataUpdated: () => userDataUpdatedCalls++,
+      );
+
+      // 1. Remote progress delta applies cleanly without calling /progress, /favorites, /kv, or /lists.
+      final res1 = await engine.syncIncremental();
+      expect(res1.hasChanges, isTrue);
+      expect(userStateGets, 0);
+      expect(libUpdatedCalls, 0);
+      expect(userDataUpdatedCalls, 1);
+      final updatedState = await (db.select(db.libraryUserStates)..where((t) => t.itemId.equals(movieId))).getSingle();
+      expect(updatedState.positionMs, 55000);
+      expect(updatedState.durationMs, 300000);
+      expect(updatedState.favorite, isTrue);
+
+      // 2. Identical self-echo progress (same position/duration/watched/hidden, newer timestamp)
+      // suppresses callbacks while advancing seq.
+      latestSeq = 12;
+      deltaUpdatedAt = nowMs + 5000;
+      final res2 = await engine.syncIncremental();
+      expect(res2.hasChanges, isFalse);
+      expect(res2.latestSeq, 12);
+      expect(userStateGets, 0);
+      expect(libUpdatedCalls, 0);
+      expect(userDataUpdatedCalls, 1);
+    },
+  );
 }
 
 class _FakeQuarkIncrementalDriver implements StorageDriver {

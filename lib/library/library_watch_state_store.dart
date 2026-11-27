@@ -346,7 +346,7 @@ class LibraryWatchStateStore {
     required bool watched,
     required int playCount,
     int? lastPlayedAt,
-    required bool favorite,
+    bool? favorite,
     required bool hiddenFromContinue,
     required int updatedAt,
   }) async {
@@ -355,8 +355,19 @@ class LibraryWatchStateStore {
       final existing = await (db.select(
         db.libraryUserStates,
       )..where((t) => t.itemId.equals(item.id))).getSingleOrNull();
-      if (existing != null && existing.updatedAt > updatedAt) {
-        return false;
+      final effectiveDuration = durationMs ?? existing?.durationMs;
+      final effectiveFavorite = favorite ?? existing?.favorite ?? false;
+      if (existing != null) {
+        if (existing.updatedAt > updatedAt) {
+          return false;
+        }
+        if (existing.positionMs == positionMs &&
+            existing.durationMs == effectiveDuration &&
+            existing.watched == watched &&
+            existing.hiddenFromContinue == hiddenFromContinue &&
+            existing.favorite == effectiveFavorite) {
+          return false;
+        }
       }
       await db
           .into(db.libraryUserStates)
@@ -364,11 +375,11 @@ class LibraryWatchStateStore {
             LibraryUserStatesCompanion(
               itemId: Value(item.id),
               positionMs: Value(positionMs),
-              durationMs: durationMs != null ? Value(durationMs) : const Value.absent(),
+              durationMs: effectiveDuration != null ? Value(effectiveDuration) : const Value.absent(),
               watched: Value(watched),
               playCount: Value(playCount),
               lastPlayedAt: Value(lastPlayedAt),
-              favorite: Value(favorite),
+              favorite: Value(effectiveFavorite),
               hiddenFromContinue: Value(hiddenFromContinue),
               updatedAt: Value(updatedAt),
             ),
@@ -378,11 +389,30 @@ class LibraryWatchStateStore {
 
     final key = identity.work.stateKey(season: identity.season, episode: identity.episode);
     final existing = await read(key);
+    final existingUser = await (db.select(
+      db.libraryUserStates,
+    )..where((t) => t.itemId.equals(item.id))).getSingleOrNull();
+    final effectiveDuration = durationMs ?? existing?.durationMs ?? existingUser?.durationMs;
+    final effectiveFavorite = favorite ?? existing?.favorite ?? existingUser?.favorite ?? false;
     await db
         .into(db.libraryWorkBindings)
         .insertOnConflictUpdate(LibraryWorkBindingsCompanion.insert(itemId: Value(item.id), stateKey: key));
     if (existing != null && existing.updatedAt > updatedAt) {
-      await _project(item.id, existing);
+      if (existingUser == null || !_matchesProjected(existingUser, existing)) {
+        await _project(item.id, existing);
+      }
+      return false;
+    }
+    if (existing != null &&
+        existing.positionMs == positionMs &&
+        existing.durationMs == effectiveDuration &&
+        existing.watched == watched &&
+        existing.hiddenFromContinue == hiddenFromContinue &&
+        existing.favorite == effectiveFavorite) {
+      if (existingUser == null || !_matchesProjected(existingUser, existing)) {
+        await _project(item.id, existing);
+        return true;
+      }
       return false;
     }
 
@@ -398,11 +428,11 @@ class LibraryWatchStateStore {
             seasonNumber: Value(identity.season),
             episodeNumber: Value(identity.episode),
             positionMs: Value(positionMs),
-            durationMs: Value(durationMs ?? existing?.durationMs),
+            durationMs: Value(effectiveDuration),
             watched: Value(watched),
             playCount: Value(playCount),
             lastPlayedAt: Value(lastPlayedAt),
-            favorite: Value(favorite),
+            favorite: Value(effectiveFavorite),
             hiddenFromContinue: Value(hiddenFromContinue),
             updatedAt: updatedAt,
           ),

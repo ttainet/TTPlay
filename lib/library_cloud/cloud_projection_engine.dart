@@ -42,6 +42,7 @@ class CloudProjectionEngine {
     required this.mountMirror,
     SyncConfigStore? syncConfigStore,
     this.onLibraryUpdated,
+    this.onUserDataUpdated,
     this.onSyncStateChanged,
   }) : _syncConfigStore = syncConfigStore ?? SyncConfigStore(db);
 
@@ -50,9 +51,11 @@ class CloudProjectionEngine {
   final CloudMountMirror mountMirror;
   final SyncConfigStore _syncConfigStore;
   final void Function()? onLibraryUpdated;
+  final void Function()? onUserDataUpdated;
   final void Function(bool syncing)? onSyncStateChanged;
 
   static const String _seqKeyPrefix = 'cloud-projection-seq:';
+  static const int _sqlInChunkSize = 300;
 
   int _lastSeq = 0;
   bool _seqLoaded = false;
@@ -171,50 +174,167 @@ class CloudProjectionEngine {
         }
 
         await db.transaction(() async {
+          final nowMs = DateTime.now().millisecondsSinceEpoch;
+          final rawEntries = <({int serverId, String workKey, Map<String, dynamic> raw})>[];
+          final preparedByWorkKey = <String, _PreparedProjectedItem>{};
+
           for (final raw in snap.items) {
             final serverId = (raw['id'] as num?)?.toInt() ?? 0;
             if (serverId <= 0) continue;
+            final prep = _prepareProjectedItem(raw, serverIdToLocalId, serverIdToWorkKey, nowMs);
+            if (prep == null) continue;
+            rawEntries.add((serverId: serverId, workKey: prep.workKey, raw: raw));
+            preparedByWorkKey[prep.workKey] = prep;
+          }
 
-            final projected = await _upsertProjectedItem(raw, serverIdToLocalId, serverIdToWorkKey);
-            if (projected == null) continue;
-            serverIdToLocalId[serverId] = projected.localId;
-            serverIdToWorkKey[serverId] = projected.workKey;
+          if (rawEntries.isEmpty) return;
+
+          final existingItemIdByWorkKey = await _lookupExistingItemIdsByWorkKey(preparedByWorkKey.keys.toList());
+          final updates = <({int id, LibraryItemsCompanion companion})>[];
+          final inserts = <_PreparedProjectedItem>[];
+          for (final prep in preparedByWorkKey.values) {
+            final existingId = existingItemIdByWorkKey[prep.workKey];
+            if (existingId != null) {
+              updates.add((id: existingId, companion: prep.companion));
+            } else {
+              inserts.add(prep);
+            }
+          }
+
+          if (updates.isNotEmpty || inserts.isNotEmpty) {
+            await db.batch((batch) {
+              for (final u in updates) {
+                batch.update(db.libraryItems, u.companion, where: (t) => t.id.equals(u.id));
+              }
+              if (inserts.isNotEmpty) {
+                batch.insertAll(db.libraryItems, [for (final ins in inserts) ins.companion]);
+              }
+            });
+          }
+
+          if (inserts.isNotEmpty) {
+            final insertedIds = await _lookupExistingItemIdsByWorkKey([for (final ins in inserts) ins.workKey]);
+            existingItemIdByWorkKey.addAll(insertedIds);
+          }
+
+          for (final entry in rawEntries) {
+            final localId = existingItemIdByWorkKey[entry.workKey];
+            if (localId == null) continue;
+            serverIdToLocalId[entry.serverId] = localId;
+            serverIdToWorkKey[entry.serverId] = entry.workKey;
             itemsCount++;
+          }
 
-            if (kind == LibraryKinds.movie || kind == LibraryKinds.episode) {
-              final filesRaw = raw.containsKey('files') ? raw['files'] : fallbackFilesByServerId[serverId];
-              if (filesRaw is List) {
-                for (final f in filesRaw) {
-                  if (f is! Map) continue;
-                  final fMap = Map<String, dynamic>.from(f);
-                  final fileRes = await _upsertProjectedFile(
-                    localItemId: projected.localId,
-                    raw: fMap,
+          if (kind == LibraryKinds.movie || kind == LibraryKinds.episode) {
+            final preparedVideos = <_PreparedProjectedFile>[];
+            for (final entry in rawEntries) {
+              final localItemId = existingItemIdByWorkKey[entry.workKey];
+              if (localItemId == null) continue;
+              final filesRaw = entry.raw.containsKey('files')
+                  ? entry.raw['files']
+                  : fallbackFilesByServerId[entry.serverId];
+              if (filesRaw is! List) continue;
+              for (final f in filesRaw) {
+                if (f is! Map) continue;
+                final fMap = Map<String, dynamic>.from(f);
+                final prepFile = _prepareProjectedFile(
+                  localItemId: localItemId,
+                  raw: fMap,
+                  knownMountIds: knownMountIds,
+                  nowMs: nowMs,
+                );
+                if (prepFile != null) {
+                  preparedVideos.add(prepFile);
+                }
+              }
+            }
+
+            if (preparedVideos.isNotEmpty) {
+              final dedupedVideos = _dedupePreparedFiles(preparedVideos);
+              final lookup = await _lookupExistingFilesByKeys(dedupedVideos);
+              final vidUpdates = <({int id, LibraryFilesCompanion companion})>[];
+              final vidInserts = <_PreparedProjectedFile>[];
+              final fileIdByKey = <String, int>{};
+
+              for (final vf in dedupedVideos) {
+                final existingId = lookup.idFor(vf);
+                if (existingId != null) {
+                  vidUpdates.add((id: existingId, companion: vf.companion));
+                  fileIdByKey[vf.fileKey] = existingId;
+                } else {
+                  vidInserts.add(vf);
+                }
+              }
+
+              if (vidUpdates.isNotEmpty || vidInserts.isNotEmpty) {
+                await db.batch((batch) {
+                  for (final u in vidUpdates) {
+                    batch.update(db.libraryFiles, u.companion, where: (t) => t.id.equals(u.id));
+                  }
+                  if (vidInserts.isNotEmpty) {
+                    batch.insertAll(db.libraryFiles, [for (final ins in vidInserts) ins.companion]);
+                  }
+                });
+              }
+
+              final insertedNeedingOwnerId = [
+                for (final ins in vidInserts)
+                  if (ins.rawSubtitles.isNotEmpty) ins.fileKey,
+              ];
+              if (insertedNeedingOwnerId.isNotEmpty) {
+                fileIdByKey.addAll(await _lookupFileIdsByFileKeys(insertedNeedingOwnerId));
+              }
+
+              for (final vf in dedupedVideos) {
+                projectedCloudFileKeys.add(vf.fileKey);
+                filesCount++;
+              }
+
+              final preparedSubs = <_PreparedProjectedFile>[];
+              for (final vf in dedupedVideos) {
+                if (vf.rawSubtitles.isEmpty) continue;
+                final ownerFileId = fileIdByKey[vf.fileKey];
+                if (ownerFileId == null) continue;
+                for (final subMap in vf.rawSubtitles) {
+                  final prepSub = _prepareProjectedFile(
+                    localItemId: null,
+                    ownerFileId: ownerFileId,
+                    forceRole: LibraryFileRoles.subtitle,
+                    raw: subMap,
                     knownMountIds: knownMountIds,
+                    nowMs: nowMs,
                   );
-                  if (fileRes == null) continue;
-                  projectedCloudFileKeys.add(fileRes.fileKey);
-                  filesCount++;
-
-                  final subsRaw = fMap['subtitles'];
-                  if (subsRaw is List) {
-                    for (final s in subsRaw) {
-                      if (s is! Map) continue;
-                      final subMap = Map<String, dynamic>.from(s);
-                      final subRes = await _upsertProjectedFile(
-                        localItemId: null,
-                        ownerFileId: fileRes.fileId,
-                        forceRole: LibraryFileRoles.subtitle,
-                        raw: subMap,
-                        knownMountIds: knownMountIds,
-                      );
-                      if (subRes != null) {
-                        projectedCloudFileKeys.add(subRes.fileKey);
-                        filesCount++;
-                      }
-                    }
+                  if (prepSub != null) {
+                    preparedSubs.add(prepSub);
                   }
                 }
+              }
+
+              if (preparedSubs.isNotEmpty) {
+                final dedupedSubs = _dedupePreparedFiles(preparedSubs);
+                final subLookup = await _lookupExistingFilesByKeys(dedupedSubs);
+                final subUpdates = <({int id, LibraryFilesCompanion companion})>[];
+                final subInserts = <LibraryFilesCompanion>[];
+
+                for (final sf in dedupedSubs) {
+                  final existingId = subLookup.idFor(sf);
+                  if (existingId != null) {
+                    subUpdates.add((id: existingId, companion: sf.companion));
+                  } else {
+                    subInserts.add(sf.companion);
+                  }
+                  projectedCloudFileKeys.add(sf.fileKey);
+                  filesCount++;
+                }
+
+                await db.batch((batch) {
+                  for (final u in subUpdates) {
+                    batch.update(db.libraryFiles, u.companion, where: (t) => t.id.equals(u.id));
+                  }
+                  if (subInserts.isNotEmpty) {
+                    batch.insertAll(db.libraryFiles, subInserts);
+                  }
+                });
               }
             }
           }
@@ -290,6 +410,7 @@ class CloudProjectionEngine {
       var hasUserDataChange = false;
       var hasFileChange = false;
       final changedItemsById = <int, Map<String, dynamic>>{};
+      final progressOps = <Map<String, dynamic>>[];
       final kvOps =
           <
             ({bool isDelete, Map<String, dynamic>? entry, SyncConfigScope? scope, String? namespace, String? itemKey})
@@ -372,7 +493,16 @@ class CloudProjectionEngine {
           }
           continue;
         }
-        if (entity == 'progress' || entity == 'favorite') {
+        if (entity == 'progress') {
+          final data = c['data'];
+          if (op == 'upsert' && data is Map) {
+            progressOps.add(Map<String, dynamic>.from(data));
+          } else {
+            hasUserDataChange = true;
+          }
+          continue;
+        }
+        if (entity == 'favorite') {
           hasUserDataChange = true;
         }
       }
@@ -395,15 +525,21 @@ class CloudProjectionEngine {
           filesProjected = unmatchedRes.filesProjected;
           pruned = unmatchedRes.pruned;
         }
+        var progressApplied = false;
         if (hasUserDataChange) {
           await _syncUserStateFromServer();
+        } else if (progressOps.isNotEmpty) {
+          progressApplied = await _applyProgressDeltas(progressOps);
         }
         final kvApplied = await _applyKvDeltas(kvOps);
         final listApplied = await _applyListDeltas(listOps);
+        final hasStructuralOrItemChanges = itemsProjected > 0 || filesProjected > 0 || pruned > 0;
         final hasChanges =
-            hasUserDataChange || kvApplied || listApplied || itemsProjected > 0 || filesProjected > 0 || pruned > 0;
-        if (hasChanges) {
+            hasStructuralOrItemChanges || hasUserDataChange || progressApplied || kvApplied || listApplied;
+        if (hasStructuralOrItemChanges) {
           onLibraryUpdated?.call();
+        } else if (hasChanges) {
+          (onUserDataUpdated ?? onLibraryUpdated)?.call();
         }
         _lastSeq = changesPage.nextSinceSeq > _lastSeq ? changesPage.nextSinceSeq : changesPage.latestSeq;
         await _persistSeq(_lastSeq);
@@ -586,6 +722,8 @@ class CloudProjectionEngine {
 
       if (hasUserDataChange) {
         await _syncUserStateFromServer();
+      } else if (progressOps.isNotEmpty) {
+        await _applyProgressDeltas(progressOps);
       }
       await _applyKvDeltas(kvOps);
       await _applyListDeltas(listOps);
@@ -887,12 +1025,12 @@ class CloudProjectionEngine {
     return trimmed.isEmpty ? null : trimmed;
   }
 
-  Future<({int localId, String workKey})?> _upsertProjectedItem(
+  _PreparedProjectedItem? _prepareProjectedItem(
     Map<String, dynamic> raw,
     Map<int, int> serverIdToLocalId,
     Map<int, String> serverIdToWorkKey,
-  ) async {
-    final nowMs = DateTime.now().millisecondsSinceEpoch;
+    int nowMs,
+  ) {
     final kind = (raw['kind'] as String? ?? LibraryKinds.movie).toLowerCase();
     final libraryType = (raw['library_type'] as String? ?? kind).toLowerCase();
     final title = (raw['title'] as String? ?? '').trim();
@@ -989,7 +1127,6 @@ class CloudProjectionEngine {
       }
     }
 
-    final existing = await (db.select(db.libraryItems)..where((t) => t.workKey.equals(workKey))).getSingleOrNull();
     final companion = LibraryItemsCompanion(
       workKey: Value(workKey),
       kind: Value(kind),
@@ -1027,45 +1164,70 @@ class CloudProjectionEngine {
       updatedAt: Value((raw['updated_at'] as num?)?.toInt() ?? nowMs),
       scrapedAt: Value((raw['updated_at'] as num?)?.toInt() ?? nowMs),
     );
-
-    if (existing != null) {
-      await (db.update(db.libraryItems)..where((t) => t.id.equals(existing.id))).write(companion);
-      return (localId: existing.id, workKey: workKey);
-    }
-    final insertedId = await db.into(db.libraryItems).insert(companion);
-    return (localId: insertedId, workKey: workKey);
+    final serverId = (raw['id'] as num?)?.toInt() ?? 0;
+    return _PreparedProjectedItem(serverId: serverId, workKey: workKey, companion: companion);
   }
 
-  Future<({int fileId, String fileKey})?> _upsertProjectedFile({
+  Future<Map<String, int>> _lookupExistingItemIdsByWorkKey(List<String> workKeys) async {
+    final result = <String, int>{};
+    for (var i = 0; i < workKeys.length; i += _sqlInChunkSize) {
+      final chunk = workKeys.sublist(i, (i + _sqlInChunkSize).clamp(0, workKeys.length));
+      final rows = await (db.select(db.libraryItems)..where((t) => t.workKey.isIn(chunk))).get();
+      for (final row in rows) {
+        final wk = row.workKey;
+        if (wk != null && wk.isNotEmpty) {
+          result[wk] = row.id;
+        }
+      }
+    }
+    return result;
+  }
+
+  Future<({int localId, String workKey})?> _upsertProjectedItem(
+    Map<String, dynamic> raw,
+    Map<int, int> serverIdToLocalId,
+    Map<int, String> serverIdToWorkKey,
+  ) async {
+    final prep = _prepareProjectedItem(
+      raw,
+      serverIdToLocalId,
+      serverIdToWorkKey,
+      DateTime.now().millisecondsSinceEpoch,
+    );
+    if (prep == null) return null;
+
+    final existing = await (db.select(db.libraryItems)..where((t) => t.workKey.equals(prep.workKey))).getSingleOrNull();
+    if (existing != null) {
+      await (db.update(db.libraryItems)..where((t) => t.id.equals(existing.id))).write(prep.companion);
+      return (localId: existing.id, workKey: prep.workKey);
+    }
+    final insertedId = await db.into(db.libraryItems).insert(prep.companion);
+    return (localId: insertedId, workKey: prep.workKey);
+  }
+
+  _PreparedProjectedFile? _prepareProjectedFile({
     required int? localItemId,
     required Map<String, dynamic> raw,
     int? ownerFileId,
     String? forceRole,
     Set<String>? knownMountIds,
     String matchState = LibraryMatchStates.matched,
-  }) async {
+    required int nowMs,
+  }) {
     final sourceId = (raw['source_id'] as String? ?? '').trim();
     final path = (raw['path'] as String? ?? '').trim();
     if (sourceId.isEmpty || path.isEmpty) return null;
 
     final mountId = CloudMountMirror.mountIdForSource(sourceId);
-    if (knownMountIds != null) {
-      if (!knownMountIds.contains(mountId)) return null;
-    } else {
-      final mountExists = await (db.select(db.mounts)..where((m) => m.id.equals(mountId))).getSingleOrNull();
-      if (mountExists == null) return null;
+    if (knownMountIds != null && !knownMountIds.contains(mountId)) {
+      return null;
     }
 
     final fileKey = DeterministicKeys.generateFileId(sourceId: mountId, mountRelativePath: path);
-    final existing = await (db.select(
-      db.libraryFiles,
-    )..where((f) => f.fileKey.equals(fileKey) | (f.mountId.equals(mountId) & f.path.equals(path)))).getSingleOrNull();
-
     final rawMtime = (raw['mtime_s'] as num?)?.toInt();
     final modifiedAtMs = rawMtime == null
         ? null
         : (rawMtime > 0 && rawMtime < 100000000000 ? rawMtime * 1000 : rawMtime);
-    final nowMs = DateTime.now().millisecondsSinceEpoch;
     final companion = LibraryFilesCompanion(
       fileKey: Value(fileKey),
       mountId: Value(mountId),
@@ -1081,13 +1243,104 @@ class CloudProjectionEngine {
       language: Value(_nonEmptyString(raw['language'])),
       addedAt: Value((raw['added_at'] as num?)?.toInt() ?? nowMs),
     );
+    final subsRaw = raw['subtitles'];
+    final rawSubtitles = <Map<String, dynamic>>[
+      if (subsRaw is List)
+        for (final s in subsRaw)
+          if (s is Map) Map<String, dynamic>.from(s),
+    ];
+    return _PreparedProjectedFile(
+      fileKey: fileKey,
+      mountId: mountId,
+      path: path,
+      companion: companion,
+      rawSubtitles: rawSubtitles,
+    );
+  }
+
+  static List<_PreparedProjectedFile> _dedupePreparedFiles(List<_PreparedProjectedFile> files) {
+    final byIdentity = <String, _PreparedProjectedFile>{};
+    for (final f in files) {
+      byIdentity[f.mountPathKey] = f;
+    }
+    return byIdentity.values.toList(growable: false);
+  }
+
+  Future<Map<String, int>> _lookupFileIdsByFileKeys(List<String> fileKeys) async {
+    final result = <String, int>{};
+    for (var i = 0; i < fileKeys.length; i += _sqlInChunkSize) {
+      final chunk = fileKeys.sublist(i, (i + _sqlInChunkSize).clamp(0, fileKeys.length));
+      final rows = await (db.select(db.libraryFiles)..where((f) => f.fileKey.isIn(chunk))).get();
+      for (final row in rows) {
+        final key = row.fileKey;
+        if (key != null && key.isNotEmpty) {
+          result[key] = row.id;
+        }
+      }
+    }
+    return result;
+  }
+
+  Future<_FileKeyLookupResult> _lookupExistingFilesByKeys(List<_PreparedProjectedFile> files) async {
+    final byFileKey = await _lookupFileIdsByFileKeys([for (final f in files) f.fileKey]);
+    final byMountPath = <String, int>{};
+    final missing = [
+      for (final f in files)
+        if (!byFileKey.containsKey(f.fileKey)) f,
+    ];
+    if (missing.isNotEmpty) {
+      final mountIds = {for (final f in missing) f.mountId}.toList(growable: false);
+      final paths = {for (final f in missing) f.path}.toList(growable: false);
+      final pathChunkSize = (900 - mountIds.length).clamp(50, _sqlInChunkSize);
+      for (var i = 0; i < paths.length; i += pathChunkSize) {
+        final pathChunk = paths.sublist(i, (i + pathChunkSize).clamp(0, paths.length));
+        final rows = await (db.select(
+          db.libraryFiles,
+        )..where((f) => f.mountId.isIn(mountIds) & f.path.isIn(pathChunk))).get();
+        for (final row in rows) {
+          byMountPath['${row.mountId}\u0000${row.path}'] = row.id;
+        }
+      }
+    }
+    return _FileKeyLookupResult(byFileKey: byFileKey, byMountPath: byMountPath);
+  }
+
+  Future<({int fileId, String fileKey})?> _upsertProjectedFile({
+    required int? localItemId,
+    required Map<String, dynamic> raw,
+    int? ownerFileId,
+    String? forceRole,
+    Set<String>? knownMountIds,
+    String matchState = LibraryMatchStates.matched,
+  }) async {
+    final prep = _prepareProjectedFile(
+      localItemId: localItemId,
+      raw: raw,
+      ownerFileId: ownerFileId,
+      forceRole: forceRole,
+      knownMountIds: knownMountIds,
+      matchState: matchState,
+      nowMs: DateTime.now().millisecondsSinceEpoch,
+    );
+    if (prep == null) return null;
+
+    if (knownMountIds == null) {
+      final mountExists = await (db.select(db.mounts)..where((m) => m.id.equals(prep.mountId))).getSingleOrNull();
+      if (mountExists == null) return null;
+    }
+
+    final existing =
+        await (db.select(db.libraryFiles)..where(
+              (f) => f.fileKey.equals(prep.fileKey) | (f.mountId.equals(prep.mountId) & f.path.equals(prep.path)),
+            ))
+            .getSingleOrNull();
 
     if (existing != null) {
-      await (db.update(db.libraryFiles)..where((f) => f.id.equals(existing.id))).write(companion);
-      return (fileId: existing.id, fileKey: fileKey);
+      await (db.update(db.libraryFiles)..where((f) => f.id.equals(existing.id))).write(prep.companion);
+      return (fileId: existing.id, fileKey: prep.fileKey);
     }
-    final insertedId = await db.into(db.libraryFiles).insert(companion);
-    return (fileId: insertedId, fileKey: fileKey);
+    final insertedId = await db.into(db.libraryFiles).insert(prep.companion);
+    return (fileId: insertedId, fileKey: prep.fileKey);
   }
 
   static String _titleFromUnmatchedPath(String path) {
@@ -1280,11 +1533,13 @@ class CloudProjectionEngine {
       final cloudFiles = await (db.select(
         db.libraryFiles,
       )..where((f) => f.mountId.like('${CloudMountMirror.cloudMountPrefix}%'))).get();
-      for (final f in cloudFiles) {
-        final key = f.fileKey;
-        if (key == null || !keepFileKeys.contains(key)) {
-          await (db.delete(db.libraryFiles)..where((t) => t.id.equals(f.id))).go();
-        }
+      final staleIds = <int>[
+        for (final f in cloudFiles)
+          if (f.fileKey == null || !keepFileKeys.contains(f.fileKey)) f.id,
+      ];
+      for (var i = 0; i < staleIds.length; i += _sqlInChunkSize) {
+        final chunk = staleIds.sublist(i, (i + _sqlInChunkSize).clamp(0, staleIds.length));
+        await (db.delete(db.libraryFiles)..where((t) => t.id.isIn(chunk))).go();
       }
     });
   }
@@ -1514,6 +1769,69 @@ class CloudProjectionEngine {
     });
   }
 
+  Future<LibraryItemRow?> _resolveLocalItemForProgress(Map<String, dynamic> p) async {
+    final rawWk = (p['work_key'] as String? ?? '').trim();
+    final rawProgKey = (p['progress_key'] as String? ?? '').trim();
+    final wk = rawWk.isNotEmpty ? DeterministicKeys.canonicalizeWorkKey(rawWk) : '';
+    final seasonNum = (p['season_number'] as num?)?.toInt() ?? 0;
+    final episodeNum = (p['episode_number'] as num?)?.toInt() ?? 0;
+    final isEpisodeProgress = episodeNum > 0 || (rawProgKey.contains(':s') && rawProgKey.contains(':e'));
+
+    if (isEpisodeProgress) {
+      final epKey = rawProgKey.isNotEmpty
+          ? DeterministicKeys.canonicalizeWorkKey(rawProgKey)
+          : (wk.isNotEmpty ? '$wk:s$seasonNum:e$episodeNum' : '');
+      if (epKey.isNotEmpty) {
+        final byKey = await (db.select(db.libraryItems)..where((t) => t.workKey.equals(epKey))).getSingleOrNull();
+        if (byKey != null) return byKey;
+      }
+      if (wk.isNotEmpty) {
+        final show = await (db.select(db.libraryItems)..where((t) => t.workKey.equals(wk))).getSingleOrNull();
+        if (show != null) {
+          return (db.select(db.libraryItems)..where(
+                (t) =>
+                    t.showId.equals(show.id) &
+                    t.kind.equals(LibraryKinds.episode) &
+                    t.seasonNumber.equals(seasonNum) &
+                    t.episodeNumber.equals(episodeNum),
+              ))
+              .getSingleOrNull();
+        }
+      }
+      return null;
+    }
+    if (wk.isNotEmpty) {
+      return (db.select(db.libraryItems)..where((t) => t.workKey.equals(wk))).getSingleOrNull();
+    }
+    return null;
+  }
+
+  Future<bool> _applyProgressDeltas(List<Map<String, dynamic>> ops) async {
+    if (ops.isEmpty) return false;
+    var applied = false;
+    final watchStates = LibraryWatchStateStore(db);
+    final nowMs = DateTime.now().millisecondsSinceEpoch;
+    await db.transaction(() async {
+      for (final p in ops) {
+        final item = await _resolveLocalItemForProgress(p);
+        if (item == null) continue;
+        final changed = await watchStates.applyRemoteProgress(
+          item: item,
+          positionMs: (p['position_ms'] as num?)?.toInt() ?? 0,
+          durationMs: (p['duration_ms'] as num?)?.toInt(),
+          watched: p['watched'] == true,
+          playCount: (p['play_count'] as num?)?.toInt() ?? 0,
+          lastPlayedAt: (p['last_played_at'] as num?)?.toInt(),
+          favorite: null,
+          hiddenFromContinue: p['hidden_from_continue'] == true,
+          updatedAt: (p['updated_at'] as num?)?.toInt() ?? nowMs,
+        );
+        if (changed) applied = true;
+      }
+    });
+    return applied;
+  }
+
   Future<void> _syncUserStateFromServer() async {
     try {
       final (progressList, favList) = await (syncClient.listProgress(limit: 500), syncClient.listFavorites()).wait;
@@ -1542,35 +1860,9 @@ class CloudProjectionEngine {
           final rawWk = (p['work_key'] as String? ?? '').trim();
           final rawProgKey = (p['progress_key'] as String? ?? '').trim();
           final wk = rawWk.isNotEmpty ? DeterministicKeys.canonicalizeWorkKey(rawWk) : '';
-          final seasonNum = (p['season_number'] as num?)?.toInt() ?? 0;
           final episodeNum = (p['episode_number'] as num?)?.toInt() ?? 0;
           final isEpisodeProgress = episodeNum > 0 || (rawProgKey.contains(':s') && rawProgKey.contains(':e'));
-
-          LibraryItemRow? item;
-          if (isEpisodeProgress) {
-            final epKey = rawProgKey.isNotEmpty
-                ? DeterministicKeys.canonicalizeWorkKey(rawProgKey)
-                : (wk.isNotEmpty ? '$wk:s$seasonNum:e$episodeNum' : '');
-            if (epKey.isNotEmpty) {
-              item = await (db.select(db.libraryItems)..where((t) => t.workKey.equals(epKey))).getSingleOrNull();
-            }
-            if (item == null && wk.isNotEmpty) {
-              final show = await (db.select(db.libraryItems)..where((t) => t.workKey.equals(wk))).getSingleOrNull();
-              if (show != null) {
-                item =
-                    await (db.select(db.libraryItems)..where(
-                          (t) =>
-                              t.showId.equals(show.id) &
-                              t.kind.equals(LibraryKinds.episode) &
-                              t.seasonNumber.equals(seasonNum) &
-                              t.episodeNumber.equals(episodeNum),
-                        ))
-                        .getSingleOrNull();
-              }
-            }
-          } else if (wk.isNotEmpty) {
-            item = await (db.select(db.libraryItems)..where((t) => t.workKey.equals(wk))).getSingleOrNull();
-          }
+          final item = await _resolveLocalItemForProgress(p);
           if (item == null) continue;
 
           await watchStates.applyRemoteProgress(
@@ -1603,4 +1895,39 @@ class CloudProjectionEngine {
       appLogger.d('CloudProjectionEngine: skipped user state sync: $e');
     }
   }
+}
+
+class _PreparedProjectedItem {
+  const _PreparedProjectedItem({required this.serverId, required this.workKey, required this.companion});
+
+  final int serverId;
+  final String workKey;
+  final LibraryItemsCompanion companion;
+}
+
+class _PreparedProjectedFile {
+  const _PreparedProjectedFile({
+    required this.fileKey,
+    required this.mountId,
+    required this.path,
+    required this.companion,
+    required this.rawSubtitles,
+  });
+
+  final String fileKey;
+  final String mountId;
+  final String path;
+  final LibraryFilesCompanion companion;
+  final List<Map<String, dynamic>> rawSubtitles;
+
+  String get mountPathKey => '$mountId\u0000$path';
+}
+
+class _FileKeyLookupResult {
+  const _FileKeyLookupResult({required this.byFileKey, required this.byMountPath});
+
+  final Map<String, int> byFileKey;
+  final Map<String, int> byMountPath;
+
+  int? idFor(_PreparedProjectedFile file) => byFileKey[file.fileKey] ?? byMountPath[file.mountPathKey];
 }

@@ -1181,11 +1181,7 @@ Future<AppDatabaseBootstrap> openAppDatabaseWithDownloadRecovery({
   }
 }
 
-Future<_StartupDependencies> _initializeStartup(
-  SettingsService settings, {
-  int prefsMs = 0,
-  int? sentryMs,
-}) async {
+Future<_StartupDependencies> _initializeStartup(SettingsService settings, {int prefsMs = 0, int? sentryMs}) async {
   final startupWatch = Stopwatch()..start();
   var lastStartupMarkMs = 0;
   void markStartupPhase(String phase) {
@@ -1862,7 +1858,13 @@ class _MainAppState extends State<MainApp> with WidgetsBindingObserver {
           );
         }
         if (widget.enableBackgroundSyncServices && bootstrap.loginMode == AppLoginMode.selfHosted) {
-          unawaited(_ttplaySessionBinder.syncFromSession(refreshExternalServers: true));
+          unawaited(
+            _ttplaySessionBinder.syncFromSession(
+              refreshExternalServers: true,
+              awaitCloudSync: false,
+              cloudSyncDelay: const Duration(milliseconds: 1200),
+            ),
+          );
         } else if (widget.enableBackgroundSyncServices && bootstrap.loginMode != AppLoginMode.selfHosted) {
           unawaited(
             () async {

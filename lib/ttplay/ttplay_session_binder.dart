@@ -77,6 +77,7 @@ class TtplaySessionBinder extends ChangeNotifier {
   int _syncGeneration = 0;
   bool _disposed = false;
   Future<void>? _pendingProjectionRefresh;
+  Timer? _startupCloudSyncTimer;
   Timer? _batchSyncTimer;
   Timer? _postScanSyncTimer1;
   Timer? _postScanSyncTimer2;
@@ -195,7 +196,11 @@ class TtplaySessionBinder extends ChangeNotifier {
   }
 
   /// Reconciles server registrations with the current [AppSessionController] state.
-  Future<void> syncFromSession({bool refreshExternalServers = true, bool awaitCloudSync = true}) async {
+  Future<void> syncFromSession({
+    bool refreshExternalServers = true,
+    bool awaitCloudSync = true,
+    Duration cloudSyncDelay = Duration.zero,
+  }) async {
     if (_disposed) return;
     final gen = ++_syncGeneration;
 
@@ -238,6 +243,8 @@ class TtplaySessionBinder extends ChangeNotifier {
           }
         }
         if (refreshExternalServers) {
+          _startupCloudSyncTimer?.cancel();
+          _startupCloudSyncTimer = null;
           if (awaitCloudSync) {
             try {
               await syncCloudProjection(full: false);
@@ -247,6 +254,12 @@ class TtplaySessionBinder extends ChangeNotifier {
                 unawaited(localLibraryClient.mountManager.probeAll());
               }
             }
+          } else if (cloudSyncDelay > Duration.zero) {
+            _startupCloudSyncTimer = Timer(cloudSyncDelay, () {
+              _startupCloudSyncTimer = null;
+              if (_disposed || gen != _syncGeneration) return;
+              unawaited(_triggerSafeIncrementalProjection());
+            });
           } else {
             unawaited(_triggerSafeIncrementalProjection());
           }
@@ -421,6 +434,8 @@ class TtplaySessionBinder extends ChangeNotifier {
   }
 
   void _cancelCloudSyncTimers() {
+    _startupCloudSyncTimer?.cancel();
+    _startupCloudSyncTimer = null;
     _batchSyncTimer?.cancel();
     _batchSyncTimer = null;
     _postScanSyncTimer1?.cancel();
@@ -707,6 +722,11 @@ class TtplaySessionBinder extends ChangeNotifier {
       onLibraryUpdated: () {
         if (!_disposed) {
           unawaited(_refreshProjectedLibrary());
+        }
+      },
+      onUserDataUpdated: () {
+        if (!_disposed) {
+          _notifyLocalLibraryMutated();
         }
       },
       onSyncStateChanged: (_) {
