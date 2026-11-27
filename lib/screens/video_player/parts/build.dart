@@ -384,6 +384,8 @@ extension _VideoPlayerBuildMethods on VideoPlayerScreenState {
                 isBuffering: _isBuffering,
                 hasFirstFrame: _firstFrame.uiReady,
                 isExiting: _isExiting,
+                player: player,
+                showSpeed: !_isOfflinePlayback,
               ),
               // Black overlay during exit (no spinner - just covers transparency)
               VideoPlayerExitOverlay(isExiting: _isExiting),

@@ -1,6 +1,7 @@
-import 'dart:ui' show ImageFilter;
+import 'dart:async';
+import 'dart:ui' show FontFeature, ImageFilter;
 
-import 'package:flutter/foundation.dart' show ValueListenable, listEquals;
+import 'package:flutter/foundation.dart' show ValueListenable, listEquals, visibleForTesting;
 import 'package:flutter/material.dart';
 import 'package:material_symbols_icons/symbols.dart';
 import 'package:provider/provider.dart';
@@ -10,6 +11,7 @@ import '../../../i18n/strings.g.dart';
 import '../../../media/ids.dart';
 import '../../../media/media_item.dart';
 import '../../../media/media_item_types.dart';
+import '../../../mpv/mpv.dart';
 import '../../../providers/playback_state_provider.dart';
 import '../../../services/download_artwork_service.dart';
 import '../../../services/download_storage_service.dart';
@@ -79,13 +81,31 @@ class VideoPlayerBufferingOverlay extends StatelessWidget {
   final ValueListenable<bool> isBuffering;
   final ValueListenable<bool> hasFirstFrame;
   final ValueListenable<bool> isExiting;
+  final Player? player;
+  final bool showSpeed;
+  @visibleForTesting
+  final Future<double?> Function()? speedReader;
+  @visibleForTesting
+  final Duration speedPollInterval;
 
   const VideoPlayerBufferingOverlay({
     super.key,
     required this.isBuffering,
     required this.hasFirstFrame,
     required this.isExiting,
+    this.player,
+    this.showSpeed = true,
+    @visibleForTesting this.speedReader,
+    @visibleForTesting this.speedPollInterval = const Duration(milliseconds: 500),
   });
+
+  static String formatSpeed(double bytesPerSec) {
+    if (!bytesPerSec.isFinite || bytesPerSec <= 0) return '0 KB/s';
+    if (bytesPerSec < 1024 * 1024) {
+      return '${(bytesPerSec / 1024).round()} KB/s';
+    }
+    return '${(bytesPerSec / (1024 * 1024)).toStringAsFixed(1)} MB/s';
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -103,10 +123,10 @@ class VideoPlayerBufferingOverlay extends StatelessWidget {
                 return Positioned.fill(
                   child: IgnorePointer(
                     child: Center(
-                      child: Container(
-                        padding: const EdgeInsets.all(20),
-                        decoration: BoxDecoration(color: Colors.black.withValues(alpha: 0.5), shape: BoxShape.circle),
-                        child: const PlayerLoadingIndicator(strokeWidth: 3),
+                      child: _BufferingSpinnerWithSpeed(
+                        player: showSpeed ? player : null,
+                        speedReader: showSpeed ? speedReader : null,
+                        pollInterval: speedPollInterval,
                       ),
                     ),
                   ),
@@ -116,6 +136,125 @@ class VideoPlayerBufferingOverlay extends StatelessWidget {
           },
         );
       },
+    );
+  }
+}
+
+class _BufferingSpinnerWithSpeed extends StatefulWidget {
+  final Player? player;
+  final Future<double?> Function()? speedReader;
+  final Duration pollInterval;
+
+  const _BufferingSpinnerWithSpeed({
+    required this.player,
+    required this.speedReader,
+    required this.pollInterval,
+  });
+
+  @override
+  State<_BufferingSpinnerWithSpeed> createState() => _BufferingSpinnerWithSpeedState();
+}
+
+class _BufferingSpinnerWithSpeedState extends State<_BufferingSpinnerWithSpeed> {
+  Timer? _timer;
+  double? _speedBytesPerSec;
+  bool _polling = false;
+
+  bool get _canPoll => widget.speedReader != null || widget.player != null;
+
+  @override
+  void initState() {
+    super.initState();
+    _syncPolling();
+  }
+
+  @override
+  void didUpdateWidget(covariant _BufferingSpinnerWithSpeed oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.player != widget.player ||
+        oldWidget.speedReader != widget.speedReader ||
+        oldWidget.pollInterval != widget.pollInterval) {
+      if (!_canPoll && _speedBytesPerSec != null) {
+        _speedBytesPerSec = null;
+      }
+      _syncPolling();
+    }
+  }
+
+  void _syncPolling() {
+    _timer?.cancel();
+    _timer = null;
+    if (!_canPoll) return;
+    unawaited(_pollSpeed());
+    _timer = Timer.periodic(widget.pollInterval, (_) => unawaited(_pollSpeed()));
+  }
+
+  Future<void> _pollSpeed() async {
+    if (_polling || !mounted) return;
+    _polling = true;
+    try {
+      double? parsed;
+      final reader = widget.speedReader;
+      if (reader != null) {
+        parsed = await reader();
+      } else {
+        final activePlayer = widget.player;
+        if (activePlayer != null && !activePlayer.disposed) {
+          final raw = await activePlayer.getProperty('cache-speed');
+          if (raw != null) {
+            parsed = double.tryParse(raw);
+          }
+        }
+      }
+      if (!mounted) return;
+      final nextSpeed = (parsed != null && parsed.isFinite && parsed >= 0) ? parsed : null;
+      if (nextSpeed != _speedBytesPerSec) {
+        setState(() => _speedBytesPerSec = nextSpeed);
+      }
+    } catch (_) {
+      // Transient property read failures during open/dispose should not disrupt buffering UI.
+    } finally {
+      _polling = false;
+    }
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final speed = _speedBytesPerSec;
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          padding: const EdgeInsets.all(20),
+          decoration: BoxDecoration(color: Colors.black.withValues(alpha: 0.5), shape: BoxShape.circle),
+          child: const PlayerLoadingIndicator(strokeWidth: 3),
+        ),
+        if (speed != null) ...[
+          const SizedBox(height: 10),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+            decoration: BoxDecoration(
+              color: Colors.black.withValues(alpha: 0.55),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Text(
+              VideoPlayerBufferingOverlay.formatSpeed(speed),
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 13,
+                fontWeight: FontWeight.w500,
+                fontFeatures: [FontFeature.tabularFigures()],
+              ),
+            ),
+          ),
+        ],
+      ],
     );
   }
 }

@@ -226,6 +226,7 @@ class ExoPlayerCore(private val activity: Activity) :
   private var hadSelectedTextTrack: Boolean = false
   private var httpDataSourceFactory: HttpDataSource.Factory? = null
   private var dataSourceFactory: DefaultDataSource.Factory? = null
+  private var transferSpeedTracker: TransferSpeedTracker? = null
   private var trackSelector: DefaultTrackSelector? = null
   private var tunnelingUserEnabled: Boolean = true
   private var tunnelingDisabledForAudioCodec: Boolean = false
@@ -730,7 +731,10 @@ class ExoPlayerCore(private val activity: Activity) :
           .setReadTimeoutMs(10_000)
       }
       httpDataSourceFactory = httpFactory
+      val speedTracker = TransferSpeedTracker()
+      transferSpeedTracker = speedTracker
       dataSourceFactory = DefaultDataSource.Factory(activity, httpFactory)
+        .setTransferListener(speedTracker)
       val extractorsFactory = DefaultExtractorsFactory()
         // High-bitrate Plex DVR MPEG-TS recordings can have sparse PCR packets; the default
         // 600-packet window may leave duration unknown and seeking disabled.
@@ -3410,6 +3414,7 @@ class ExoPlayerCore(private val activity: Activity) :
     cancelDecoderHangCheck()
     cancelResumeStallWatchdog()
     cancelBufferingStallWatchdog()
+    transferSpeedTracker?.reset()
     resumeStallRecoveryCount = 0
     loggedResumeStallCap = false
 
@@ -4261,6 +4266,7 @@ class ExoPlayerCore(private val activity: Activity) :
       "bufferTargetBytes" to resolvedTargetBufferBytes,
       "bufferMaxMs" to resolvedBufferDurations?.maxBufferMs,
       "totalBufferedDurationMs" to player.totalBufferedDuration,
+      "networkSpeedBytesPerSec" to transferSpeedTracker?.bytesPerSecond(),
       // Playback state
       "playbackSpeed" to player.playbackParameters.speed,
       "isPlaying" to player.isPlaying,
@@ -4398,6 +4404,8 @@ class ExoPlayerCore(private val activity: Activity) :
     trackSelector = null
     httpDataSourceFactory = null
     dataSourceFactory = null
+    transferSpeedTracker?.reset()
+    transferSpeedTracker = null
     playbackMediaSourceFactory = null
     assHandler?.release()
     assHandler = null

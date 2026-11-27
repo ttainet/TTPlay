@@ -198,6 +198,114 @@ void main() {
     semantics.dispose();
   });
 
+  testWidgets('buffering overlay displays formatted live speed below the spinner without rebuilding parent', (
+    tester,
+  ) async {
+    PipService().isPipActive.value = false;
+    final isBuffering = ValueNotifier<bool>(false);
+    final hasFirstFrame = ValueNotifier<bool>(false);
+    final isExiting = ValueNotifier<bool>(false);
+    addTearDown(isBuffering.dispose);
+    addTearDown(hasFirstFrame.dispose);
+    addTearDown(isExiting.dispose);
+
+    final samples = <double?>[450 * 1024, 1.5 * 1024 * 1024, 0.0];
+    var reads = 0;
+    var parentBuilds = 0;
+
+    await tester.pumpWidget(
+      _wrapPrompt(
+        Builder(
+          builder: (context) {
+            parentBuilds++;
+            return VideoPlayerBufferingOverlay(
+              isBuffering: isBuffering,
+              hasFirstFrame: hasFirstFrame,
+              isExiting: isExiting,
+              speedPollInterval: const Duration(milliseconds: 100),
+              speedReader: () async {
+                final idx = reads < samples.length ? reads : samples.length - 1;
+                reads++;
+                return samples[idx];
+              },
+            );
+          },
+        ),
+      ),
+    );
+    await tester.pump();
+    final buildsAtMount = parentBuilds;
+
+    expect(find.byType(PlayerLoadingIndicator), findsOneWidget);
+    expect(find.text('450 KB/s'), findsOneWidget);
+    expect(reads, 1);
+
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(find.text('1.5 MB/s'), findsOneWidget);
+    expect(reads, 2);
+
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(find.text('0 KB/s'), findsOneWidget);
+    expect(reads, 3);
+    expect(parentBuilds, buildsAtMount, reason: 'speed ticks must not rebuild anything above the overlay');
+
+    // Once playback is ready, spinner unmounts and polling stops immediately.
+    hasFirstFrame.value = true;
+    await tester.pump();
+    expect(find.byType(PlayerLoadingIndicator), findsNothing);
+    expect(find.text('0 KB/s'), findsNothing);
+
+    await tester.pump(const Duration(milliseconds: 500));
+    expect(reads, 3);
+  });
+
+  testWidgets('buffering overlay hides speed pill when showSpeed is false or speedReader returns null', (
+    tester,
+  ) async {
+    PipService().isPipActive.value = false;
+    final isBuffering = ValueNotifier<bool>(true);
+    final hasFirstFrame = ValueNotifier<bool>(true);
+    final isExiting = ValueNotifier<bool>(false);
+    addTearDown(isBuffering.dispose);
+    addTearDown(hasFirstFrame.dispose);
+    addTearDown(isExiting.dispose);
+
+    var hiddenReads = 0;
+    await tester.pumpWidget(
+      _wrapPrompt(
+        VideoPlayerBufferingOverlay(
+          isBuffering: isBuffering,
+          hasFirstFrame: hasFirstFrame,
+          isExiting: isExiting,
+          showSpeed: false,
+          speedReader: () async {
+            hiddenReads++;
+            return 1024 * 1024;
+          },
+        ),
+      ),
+    );
+    await tester.pump();
+    expect(find.byType(PlayerLoadingIndicator), findsOneWidget);
+    expect(find.text('1.0 MB/s'), findsNothing);
+    expect(hiddenReads, 0);
+
+    await tester.pumpWidget(
+      _wrapPrompt(
+        VideoPlayerBufferingOverlay(
+          isBuffering: isBuffering,
+          hasFirstFrame: hasFirstFrame,
+          isExiting: isExiting,
+          showSpeed: true,
+          speedReader: () async => null,
+        ),
+      ),
+    );
+    await tester.pump();
+    expect(find.byType(PlayerLoadingIndicator), findsOneWidget);
+    expect(find.byType(Text), findsNothing);
+  });
+
   // The whole point of moving the countdown to a ValueListenable: the digit
   // updates without the parent being rebuilt. Previously a 1 Hz timer called a
   // root setState on the player screen, which re-created PlexVideoControls

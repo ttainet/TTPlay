@@ -451,6 +451,10 @@ class PlayerAndroid extends PlayerBase {
         final stats = await getStats();
         final height = stats['videoHeight'];
         return height?.toString();
+      case 'cache-speed':
+        final stats = await getStats();
+        final speed = stats['cache-speed'] ?? stats['networkSpeedBytesPerSec'];
+        return speed?.toString();
       default:
         return null;
     }
