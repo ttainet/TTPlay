@@ -1260,10 +1260,10 @@ class _DiscoverScreenState extends State<DiscoverScreen>
   // only the theme and translations; the providers and clock inside it
   // rebuild themselves.
   Widget? _tvToolbarOverlayWidget;
-  (ThemeData, Translations)? _tvToolbarOverlayWidgetKey;
+  (ThemeData, Translations, bool)? _tvToolbarOverlayWidgetKey;
 
   Widget _cachedTvToolbarOverlay() {
-    final key = (Theme.of(context), t);
+    final key = (Theme.of(context), t, _isManualRefreshing);
     if (_tvToolbarOverlayWidget != null && key == _tvToolbarOverlayWidgetKey) return _tvToolbarOverlayWidget!;
     _tvToolbarOverlayWidgetKey = key;
     return _tvToolbarOverlayWidget = TvToolbarOverlay(child: _buildOverlaidAppBar());
@@ -1286,7 +1286,7 @@ class _DiscoverScreenState extends State<DiscoverScreen>
         fit: StackFit.expand,
         clipBehavior: Clip.none,
         children: [
-          if (_isLoading || (_areHubsLoading && browseHubs.isEmpty)) const Center(child: CircularProgressIndicator()),
+          if ((_isLoading || _areHubsLoading) && browseHubs.isEmpty) const Center(child: CircularProgressIndicator()),
           if (_errorMessage != null)
             ErrorStateWidget(
               message: _errorMessage!,

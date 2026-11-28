@@ -237,15 +237,14 @@ class LocalLibraryClient implements MediaServerClient, StreamQualityClient {
   /// Maps rows to items, loading each distinct parent and show once so
   /// seasons and episodes carry their ancestors' titles and artwork.
   Future<List<MediaItem>> _toItems(List<lib.LibraryItemView> views, {bool withDetails = false}) async {
-    final ancestors = <int, LibraryItemRow>{};
+    final ancestorIds = <int>{};
     for (final view in views) {
-      for (final id in [view.item.parentId, view.item.showId]) {
-        if (id != null && !ancestors.containsKey(id)) {
-          final row = (await _repo.getItem(id))?.item;
-          if (row != null) ancestors[id] = row;
-        }
-      }
+      final parentId = view.item.parentId;
+      if (parentId != null) ancestorIds.add(parentId);
+      final showId = view.item.showId;
+      if (showId != null) ancestorIds.add(showId);
     }
+    final ancestors = ancestorIds.isEmpty ? const <int, LibraryItemRow>{} : await _repo.getItemRowsByIds(ancestorIds);
     return [for (final view in views) await _toItem(view, ancestors, withDetails: withDetails)];
   }
 

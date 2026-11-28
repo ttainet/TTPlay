@@ -302,28 +302,31 @@ void main() {
       expect(rows.first.state!.positionMs, 30000);
     });
 
-    test('progress does not auto-mark watched; only manual markWatched marks watched and clears resume point', () async {
-      final a = await addTitle('A');
-      await repo.setProgress(a, positionMs: 60000, durationMs: 600000);
-      await repo.setProgress(a, positionMs: 600000, durationMs: 600000);
+    test(
+      'progress does not auto-mark watched; only manual markWatched marks watched and clears resume point',
+      () async {
+        final a = await addTitle('A');
+        await repo.setProgress(a, positionMs: 60000, durationMs: 600000);
+        await repo.setProgress(a, positionMs: 600000, durationMs: 600000);
 
-      final inProgress = (await repo.getItem(a))!;
-      expect(inProgress.isWatched, isFalse);
-      expect(inProgress.state!.positionMs, 600000);
-      expect(inProgress.state!.playCount, 0);
-      expect((await repo.continueWatching()).single.item.title, 'A');
+        final inProgress = (await repo.getItem(a))!;
+        expect(inProgress.isWatched, isFalse);
+        expect(inProgress.state!.positionMs, 600000);
+        expect(inProgress.state!.playCount, 0);
+        expect((await repo.continueWatching()).single.item.title, 'A');
 
-      await repo.markWatched(a, watched: true);
-      final watchedView = (await repo.getItem(a))!;
-      expect(watchedView.isWatched, isTrue);
-      expect(watchedView.state!.positionMs, 0);
-      expect(watchedView.state!.playCount, 1);
-      expect(await repo.continueWatching(), isEmpty);
+        await repo.markWatched(a, watched: true);
+        final watchedView = (await repo.getItem(a))!;
+        expect(watchedView.isWatched, isTrue);
+        expect(watchedView.state!.positionMs, 0);
+        expect(watchedView.state!.playCount, 1);
+        expect(await repo.continueWatching(), isEmpty);
 
-      // Re-marking an already watched item does not inflate playCount.
-      await repo.markWatched(a, watched: true);
-      expect((await repo.getItem(a))!.state!.playCount, 1);
-    });
+        // Re-marking an already watched item does not inflate playCount.
+        await repo.markWatched(a, watched: true);
+        expect((await repo.getItem(a))!.state!.playCount, 1);
+      },
+    );
 
     test('hiding keeps the resume point; playing again brings it back', () async {
       final a = await addTitle('A');
@@ -687,5 +690,93 @@ void main() {
 
     repo.hiddenMountIds = () => {'m2'};
     expect(await repo.nonEmptyLibraryTypes(), {'movie', 'show'});
+  });
+
+  test('getItemRowsByIds and batched continueWatching handle multiple shows, counts, and hidden mounts', () async {
+    final movie = await addTitle('Visible Movie', libraryType: 'movie');
+    await addVideo('/movies/m1.mkv', itemId: movie);
+    final showA = await addShow();
+    for (var i = 0; i < showA.episodes.length; i++) {
+      await addVideo('/show_a/ep$i.mkv', itemId: showA.episodes[i]);
+    }
+    final showB = await addTitle('Show B', kind: LibraryKinds.show, libraryType: 'show');
+    final bS1 = await addTitle('B S1', kind: LibraryKinds.season, libraryType: 'show', parentId: showB, season: 1);
+    final bE1 = await addTitle(
+      'B S1E1',
+      kind: LibraryKinds.episode,
+      libraryType: 'show',
+      parentId: bS1,
+      showId: showB,
+      season: 1,
+      episode: 1,
+    );
+    final bE2 = await addTitle(
+      'B S1E2',
+      kind: LibraryKinds.episode,
+      libraryType: 'show',
+      parentId: bS1,
+      showId: showB,
+      season: 1,
+      episode: 2,
+    );
+    await addVideo('/show_b/s01e01.mkv', itemId: bE1);
+    await addVideo('/show_b/s01e02.mkv', itemId: bE2);
+
+    // Count accuracy across show, season, movie, and episode (leaf short-circuit = 0).
+    expect((await repo.getItem(showA.show))!.episodeCount, 5);
+    expect((await repo.getItem(showA.s1))!.episodeCount, 2);
+    expect((await repo.getItem(movie))!.episodeCount, 0);
+    expect((await repo.getItem(bE1))!.episodeCount, 0);
+
+    // Batch ancestor lookup handles duplicates and missing ids.
+    final batchRows = await repo.getItemRowsByIds([showA.show, showA.s1, showA.show, 999999]);
+    expect(batchRows.keys, {showA.show, showA.s1});
+    expect(batchRows[showA.show]!.title, 'The Expanse');
+
+    // Show A: watched S1E1 -> Next Up is S1E2. Show B: in-progress S1E1 -> S1E1. Movie: in-progress.
+    await timed(() => repo.markWatched(showA.episodes[0], watched: true));
+    await timed(() => repo.setProgress(bE1, positionMs: 12000, durationMs: 60000));
+    await timed(() => repo.setProgress(movie, positionMs: 30000, durationMs: 90000));
+
+    final cw = await repo.continueWatching(limit: 10);
+    expect(cw.map((v) => v.item.title).toList(), ['Visible Movie', 'B S1E1', 'S1E2']);
+
+    // Hidden offline mount hides its show without breaking remaining shows.
+    await db
+        .into(db.mounts)
+        .insert(
+          MountsCompanion.insert(
+            id: 'm_hidden',
+            kind: 'webdav',
+            displayName: 'Offline',
+            configJson: '{}',
+            createdAt: 0,
+          ),
+        );
+    final hiddenShow = await addTitle('Hidden Show', kind: LibraryKinds.show, libraryType: 'show');
+    final hS1 = await addTitle('H S1', kind: LibraryKinds.season, libraryType: 'show', parentId: hiddenShow, season: 1);
+    final hE1 = await addTitle(
+      'H S1E1',
+      kind: LibraryKinds.episode,
+      libraryType: 'show',
+      parentId: hS1,
+      showId: hiddenShow,
+      season: 1,
+      episode: 1,
+    );
+    final hFile = await repo.upsertFile(
+      mountId: 'm_hidden',
+      path: '/hidden/s01e01.mkv',
+      role: LibraryFileRoles.video,
+      scanId: 1,
+      size: 100,
+      modifiedAt: 1,
+    );
+    await repo.assignFile(hFile, hE1);
+    await timed(() => repo.setProgress(hE1, positionMs: 5000, durationMs: 50000));
+
+    repo.hiddenMountIds = () => {'m_hidden'};
+    final filteredCw = await repo.continueWatching(limit: 10);
+    expect(filteredCw.map((v) => v.item.title).toList(), ['Visible Movie', 'B S1E1', 'S1E2']);
   });
 }

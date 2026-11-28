@@ -172,27 +172,41 @@ class LibraryRepository {
 
   // ─── Episode-count expressions ─────────────────────────────────────────
 
-  // Correlated on the outer `library_items` row: a show counts the episodes
-  // pointing at it through show_id, a season through parent_id.
-  static const String _episodesOf =
-      "FROM library_items e WHERE e.kind = 'episode' AND "
-      "((library_items.kind = 'show' AND e.show_id = library_items.id) OR "
-      "(library_items.kind = 'season' AND e.parent_id = library_items.id))";
+  // Split by kind so movie/episode rows short-circuit to 0 and show/season
+  // queries hit their dedicated index (`idx_library_items_show` / `parent`) without OR.
+  static const String _showEpisodeCountSql =
+      "(SELECT COUNT(*) FROM library_items e WHERE e.show_id = library_items.id AND e.kind = 'episode')";
+  static const String _seasonEpisodeCountSql =
+      "(SELECT COUNT(*) FROM library_items e WHERE e.parent_id = library_items.id AND e.kind = 'episode')";
+  static const String _showWatchedEpisodeCountSql =
+      "(SELECT COUNT(*) FROM library_items e "
+      "JOIN library_user_states us ON us.item_id = e.id AND us.watched = 1 "
+      "WHERE e.show_id = library_items.id AND e.kind = 'episode')";
+  static const String _seasonWatchedEpisodeCountSql =
+      "(SELECT COUNT(*) FROM library_items e "
+      "JOIN library_user_states us ON us.item_id = e.id AND us.watched = 1 "
+      "WHERE e.parent_id = library_items.id AND e.kind = 'episode')";
 
-  static const CustomExpression<int> _episodeCount = CustomExpression<int>('(SELECT COUNT(*) $_episodesOf)');
+  static const CustomExpression<int> _episodeCount = CustomExpression<int>(
+    "(CASE library_items.kind "
+    "WHEN 'show' THEN $_showEpisodeCountSql "
+    "WHEN 'season' THEN $_seasonEpisodeCountSql "
+    "ELSE 0 END)",
+  );
 
   static const CustomExpression<int> _watchedEpisodeCount = CustomExpression<int>(
-    '(SELECT COUNT(*) $_episodesOf AND EXISTS '
-    '(SELECT 1 FROM library_user_states us WHERE us.item_id = e.id AND us.watched = 1))',
+    "(CASE library_items.kind "
+    "WHEN 'show' THEN $_showWatchedEpisodeCountSql "
+    "WHEN 'season' THEN $_seasonWatchedEpisodeCountSql "
+    "ELSE 0 END)",
   );
 
   /// Watched state that works for both leaves and containers.
   static const CustomExpression<bool> _isWatched = CustomExpression<bool>(
-    "(CASE WHEN library_items.kind IN ('show', 'season') THEN "
-    '((SELECT COUNT(*) $_episodesOf) > 0 AND (SELECT COUNT(*) $_episodesOf) = '
-    '(SELECT COUNT(*) $_episodesOf AND EXISTS '
-    '(SELECT 1 FROM library_user_states us WHERE us.item_id = e.id AND us.watched = 1))) '
-    'ELSE COALESCE(library_user_states.watched, 0) END)',
+    "(CASE library_items.kind "
+    "WHEN 'show' THEN ($_showEpisodeCountSql > 0 AND $_showEpisodeCountSql = $_showWatchedEpisodeCountSql) "
+    "WHEN 'season' THEN ($_seasonEpisodeCountSql > 0 AND $_seasonEpisodeCountSql = $_seasonWatchedEpisodeCountSql) "
+    "ELSE COALESCE(library_user_states.watched, 0) END)",
   );
 
   JoinedSelectStatement<HasResultSet, dynamic> _viewSelect() {
@@ -208,6 +222,21 @@ class LibraryRepository {
       state: row.readTableOrNull(_db.libraryUserStates),
       episodeCount: row.read(_episodeCount) ?? 0,
       watchedEpisodeCount: row.read(_watchedEpisodeCount) ?? 0,
+    );
+  }
+
+  JoinedSelectStatement<HasResultSet, dynamic> _leafViewSelect() {
+    final items = _db.libraryItems;
+    final states = _db.libraryUserStates;
+    return _db.select(items).join([leftOuterJoin(states, states.itemId.equalsExp(items.id))]);
+  }
+
+  LibraryItemView _toLeafView(TypedResult row) {
+    return LibraryItemView(
+      item: row.readTable(_db.libraryItems),
+      state: row.readTableOrNull(_db.libraryUserStates),
+      episodeCount: 0,
+      watchedEpisodeCount: 0,
     );
   }
 
@@ -558,6 +587,19 @@ class LibraryRepository {
     return row == null ? null : _toView(row);
   }
 
+  Future<Map<int, LibraryItemRow>> getItemRowsByIds(Iterable<int> ids) async {
+    final unique = ids.toSet().toList(growable: false);
+    if (unique.isEmpty) return const {};
+    final map = <int, LibraryItemRow>{};
+    for (final batch in unique.slices(500)) {
+      final rows = await (_db.select(_db.libraryItems)..where((t) => t.id.isIn(batch))).get();
+      for (final row in rows) {
+        map[row.id] = row;
+      }
+    }
+    return map;
+  }
+
   Future<LibraryItemRow?> findByWorkKey(String workKey) {
     final canonical = DeterministicKeys.canonicalizeWorkKey(workKey);
     if (canonical.isEmpty) return Future.value(null);
@@ -784,7 +826,7 @@ class LibraryRepository {
   Future<List<LibraryItemView>> episodesOfShow(int showId) async {
     final items = _db.libraryItems;
     final rows =
-        await (_viewSelect()
+        await (_leafViewSelect()
               ..where(items.showId.equals(showId) & items.kind.equals(LibraryKinds.episode) & _visibilityFilter())
               ..orderBy([
                 OrderingTerm.asc(CustomExpression<int>('(COALESCE(library_items.season_number, 0) = 0)')),
@@ -793,7 +835,36 @@ class LibraryRepository {
                 OrderingTerm.asc(items.id),
               ]))
             .get();
-    return rows.map(_toView).toList();
+    return rows.map(_toLeafView).toList();
+  }
+
+  Future<Map<int, List<LibraryItemView>>> _episodesOfShows(List<int> showIds) async {
+    final unique = showIds.toSet().toList(growable: false);
+    if (unique.isEmpty) return const {};
+    final items = _db.libraryItems;
+    final visibility = _visibilityFilter();
+    final byShow = <int, List<LibraryItemView>>{};
+    for (final batch in unique.slices(500)) {
+      final rows =
+          await (_leafViewSelect()
+                ..where(items.showId.isIn(batch) & items.kind.equals(LibraryKinds.episode) & visibility)
+                ..orderBy([
+                  OrderingTerm.asc(items.showId),
+                  OrderingTerm.asc(CustomExpression<int>('(COALESCE(library_items.season_number, 0) = 0)')),
+                  OrderingTerm.asc(items.seasonNumber),
+                  OrderingTerm.asc(items.episodeNumber),
+                  OrderingTerm.asc(items.id),
+                ]))
+              .get();
+      for (final row in rows) {
+        final view = _toLeafView(row);
+        final sid = view.item.showId;
+        if (sid != null) {
+          (byShow[sid] ??= <LibraryItemView>[]).add(view);
+        }
+      }
+    }
+    return byShow;
   }
 
   /// The episode to play next for a show:
@@ -1047,10 +1118,7 @@ class LibraryRepository {
   /// Movies and episodes to surface in Continue Watching (resumable items plus
   /// Next Up episodes after a finished episode), deduplicated to at most one
   /// entry per show and ordered most recent first.
-  Future<List<LibraryItemView>> continueWatching({
-    int limit = 20,
-    Set<String> excludedLibraryTypes = const {},
-  }) async {
+  Future<List<LibraryItemView>> continueWatching({int limit = 20, Set<String> excludedLibraryTypes = const {}}) async {
     if (limit <= 0) return const [];
     final items = _db.libraryItems;
     final states = _db.libraryUserStates;
@@ -1067,7 +1135,7 @@ class LibraryRepository {
     }
 
     final movieRows =
-        await (_viewSelect()
+        await (_leafViewSelect()
               ..where(movieFilter)
               ..orderBy([OrderingTerm.desc(effectiveRecency), OrderingTerm.desc(items.id)])
               ..limit(limit))
@@ -1076,7 +1144,7 @@ class LibraryRepository {
     final candidates = <LibraryItemView>[
       for (final row in movieRows)
         () {
-          final view = _toView(row);
+          final view = _toLeafView(row);
           return view.withContinueRecency(_activityMs(view.state!));
         }(),
     ];
@@ -1101,18 +1169,34 @@ class LibraryRepository {
         )
         .get();
 
-    for (final row in showRows) {
-      final showId = row.read<int>('show_id');
-      final maxRecencyMs = row.read<int>('max_recency_ms');
+    final showBatchSize = math.max(limit, 24);
+    for (var offset = 0; offset < showRows.length; offset += showBatchSize) {
       if (candidates.length >= limit) {
         candidates.sort((a, b) => (b.continueRecencyMs ?? 0).compareTo(a.continueRecencyMs ?? 0));
         final cutoff = candidates[limit - 1].continueRecencyMs ?? 0;
-        if (maxRecencyMs < cutoff) break;
+        if (showRows[offset].read<int>('max_recency_ms') < cutoff) break;
       }
-      final entry = await _continueWatchingEpisodeForShow(showId, excludedLibraryTypes);
-      if (entry != null) {
-        candidates.add(entry);
+      final end = math.min(offset + showBatchSize, showRows.length);
+      final batchShowIds = <int>[for (var i = offset; i < end; i++) showRows[i].read<int>('show_id')];
+      final episodesByShow = await _episodesOfShows(batchShowIds);
+      var hitCutoff = false;
+      for (var i = offset; i < end; i++) {
+        final showId = showRows[i].read<int>('show_id');
+        final maxRecencyMs = showRows[i].read<int>('max_recency_ms');
+        if (candidates.length >= limit) {
+          candidates.sort((a, b) => (b.continueRecencyMs ?? 0).compareTo(a.continueRecencyMs ?? 0));
+          final cutoff = candidates[limit - 1].continueRecencyMs ?? 0;
+          if (maxRecencyMs < cutoff) {
+            hitCutoff = true;
+            break;
+          }
+        }
+        final entry = _pickContinueWatchingEpisode(episodesByShow[showId] ?? const [], excludedLibraryTypes);
+        if (entry != null) {
+          candidates.add(entry);
+        }
       }
+      if (hitCutoff) break;
     }
 
     candidates.sort((a, b) {
@@ -1123,11 +1207,7 @@ class LibraryRepository {
     return candidates.length > limit ? candidates.sublist(0, limit) : candidates;
   }
 
-  Future<LibraryItemView?> _continueWatchingEpisodeForShow(
-    int showId,
-    Set<String> excludedLibraryTypes,
-  ) async {
-    final episodes = await episodesOfShow(showId);
+  LibraryItemView? _pickContinueWatchingEpisode(List<LibraryItemView> episodes, Set<String> excludedLibraryTypes) {
     if (episodes.isEmpty) return null;
     if (excludedLibraryTypes.isNotEmpty && excludedLibraryTypes.contains(episodes.first.item.libraryType)) {
       return null;
