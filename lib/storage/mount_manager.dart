@@ -412,6 +412,7 @@ class MountManager {
 
   Future<void> _runProbeAll({required Duration timeout, required bool force}) async {
     if (_disposed) return;
+    final totalSw = Stopwatch()..start();
     final List<StorageMount> mounts;
     try {
       mounts = await registry.list();
@@ -433,22 +434,38 @@ class MountManager {
 
     final startGenerations = {for (final mount in mounts) mount.id: _generationOf(mount.id)};
 
+    final perMountTimings = <String>[];
     final results = await Future.wait([
       for (final mount in mounts)
         () async {
+          final sw = Stopwatch()..start();
           if (!force &&
               mount.kind == StorageKind.quark &&
               previousStatuses[mount.id] == MountOnlineStatus.onlinePrimary) {
             final lastAt = _lastQuarkOnlineAt[mount.id];
             if (lastAt != null && clock.now().difference(lastAt) < quarkProbeTtl) {
+              if (debugLoggingEnabled) {
+                perMountTimings.add(
+                  '${mount.kind.name}:${sw.elapsedMilliseconds}ms(${MountOnlineStatus.onlinePrimary.name},cached)',
+                );
+              }
               return (mount, MountOnlineStatus.onlinePrimary, false);
             }
           }
           final status = await probeMount(mount, timeout: timeout);
+          if (debugLoggingEnabled) {
+            perMountTimings.add('${mount.kind.name}:${sw.elapsedMilliseconds}ms(${status.name})');
+          }
           return (mount, status, true);
         }(),
     ]);
     if (_disposed) return;
+    if (debugLoggingEnabled && mounts.isNotEmpty) {
+      appLogger.d(
+        'MountManager timing (probeAll): force=$force total=${totalSw.elapsedMilliseconds}ms '
+        'mounts=${mounts.length} perMount=[${perMountTimings.join(', ')}]',
+      );
+    }
 
     var routeChanged = false;
     final nextStatuses = <String, MountOnlineStatus>{};

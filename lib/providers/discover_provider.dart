@@ -576,20 +576,23 @@ class DiscoverProvider extends ChangeNotifier with DisposableChangeNotifierMixin
       settlePassOutcome();
       if (shouldLogInitialTiming) {
         _loggedInitialLoadTiming = true;
-        appLogger.i(
-          'Startup timing (discover): total=${loadWatch.elapsedMilliseconds}ms '
-          'prep=${prepMs}ms onDeck=${onDeckMs}ms hubs=${hubsMs}ms '
-          'onDeckItems=${_onDeck.length} hubs=${filteredHubs.length} '
-          'servers=${succeededServerIds.length} failed=${failedServerIds.length}',
-        );
       }
+      appLogger.d(
+        'Discover timing (${shouldLogInitialTiming ? 'initial' : 'refresh'}): '
+        'total=${loadWatch.elapsedMilliseconds}ms showLoading=$showLoading '
+        'prep=${prepMs}ms onDeck=${onDeckMs}ms hubs=${hubsMs}ms '
+        'onDeckItems=${_onDeck.length} hubs=${filteredHubs.length} '
+        'servers=${succeededServerIds.length} failed=${failedServerIds.length} '
+        'cancelled=${cancelledServerIds.length}',
+      );
       safeNotifyListeners();
     } catch (e) {
       if (isDisposed) return;
       outcome = isProfileBinding() ? DiscoverRefreshOutcome.cancelled : DiscoverRefreshOutcome.failed;
-      if (shouldLogInitialTiming) {
-        appLogger.i('Startup timing (discover): failed after ${loadWatch.elapsedMilliseconds}ms (${e.runtimeType})');
-      }
+      appLogger.d(
+        'Discover timing (${shouldLogInitialTiming ? 'initial' : 'refresh'}): '
+        'failed after ${loadWatch.elapsedMilliseconds}ms (${e.runtimeType})',
+      );
       appLogger.e('Failed to load discover content', error: e);
       final hadPriorContent = previousOnDeck.isNotEmpty || previousHubs.isNotEmpty;
       if (!hadPriorContent) {

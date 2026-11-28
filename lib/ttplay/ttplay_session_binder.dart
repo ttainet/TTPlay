@@ -373,14 +373,26 @@ class TtplaySessionBinder extends ChangeNotifier {
   Future<CloudSyncResult?> syncCloudProjection({bool full = false}) async {
     final engine = _cloudProjectionEngine;
     if (engine == null || _disposed) return null;
+    final totalSw = Stopwatch()..start();
+    final engineSw = Stopwatch()..start();
     final res = full ? await engine.syncFullSnapshot() : await engine.syncIncremental();
+    final engineMs = engineSw.elapsedMilliseconds;
+    var pendingWaitMs = 0;
+    var mountExternalMs = 0;
+    var refreshMountsMs = 0;
     if (!_disposed) {
       final pending = _pendingProjectionRefresh;
       if (pending != null) {
+        final sw = Stopwatch()..start();
         await pending;
+        pendingWaitMs = sw.elapsedMilliseconds;
       } else {
+        final extSw = Stopwatch()..start();
         await _mountDirectCloudExternalServers();
+        mountExternalMs = extSw.elapsedMilliseconds;
+        final mountsSw = Stopwatch()..start();
         await localLibraryClient.refreshMounts();
+        refreshMountsMs = mountsSw.elapsedMilliseconds;
         if (!_disposed) {
           unawaited(localLibraryClient.mountManager.probeAll());
         }
@@ -394,6 +406,11 @@ class TtplaySessionBinder extends ChangeNotifier {
         notifyListeners();
       }
     }
+    appLogger.d(
+      'TtplayBinder timing (syncCloudProjection): full=$full total=${totalSw.elapsedMilliseconds}ms '
+      'engine=${engineMs}ms pendingWait=${pendingWaitMs}ms mountExternal=${mountExternalMs}ms '
+      'refreshMounts=${refreshMountsMs}ms hasChanges=${res.hasChanges}',
+    );
     return res;
   }
 
@@ -402,14 +419,25 @@ class TtplaySessionBinder extends ChangeNotifier {
     if (existing != null) return existing;
     late final Future<void> f;
     f = () async {
+      final totalSw = Stopwatch()..start();
+      var mountExternalMs = 0;
+      var refreshMountsMs = 0;
       try {
         if (_disposed) return;
+        final extSw = Stopwatch()..start();
         await _mountDirectCloudExternalServers();
+        mountExternalMs = extSw.elapsedMilliseconds;
+        final mountsSw = Stopwatch()..start();
         await localLibraryClient.refreshMounts();
+        refreshMountsMs = mountsSw.elapsedMilliseconds;
         if (_disposed) return;
         unawaited(localLibraryClient.mountManager.probeAll());
         _notifyLocalLibraryMutated();
         notifyListeners();
+        appLogger.d(
+          'TtplayBinder timing (_refreshProjectedLibrary): total=${totalSw.elapsedMilliseconds}ms '
+          'mountExternal=${mountExternalMs}ms refreshMounts=${refreshMountsMs}ms',
+        );
       } finally {
         if (identical(_pendingProjectionRefresh, f)) {
           _pendingProjectionRefresh = null;
@@ -468,7 +496,12 @@ class TtplaySessionBinder extends ChangeNotifier {
       return false;
     }
     _checkingCloudIncremental = true;
+    final totalSw = Stopwatch()..start();
     var ranAny = false;
+    var listSourcesMs = 0;
+    var dbMtimeMs = 0;
+    var scanRunMs = 0;
+    var candidatesCount = 0;
     try {
       final mounts = await localLibraryClient.mountManager.registry.list();
       final enabledQuarkMounts = [
@@ -495,8 +528,11 @@ class TtplaySessionBinder extends ChangeNotifier {
         dueCandidates.add((mount: mount, sourceId: sourceId, interval: interval));
       }
       if (dueCandidates.isEmpty) return false;
+      candidatesCount = dueCandidates.length;
 
+      final listSw = Stopwatch()..start();
       final remoteSources = await repo.listSources();
+      listSourcesMs = listSw.elapsedMilliseconds;
       final sourceById = {for (final s in remoteSources) s.id: s};
 
       for (final candidate in dueCandidates) {
@@ -524,6 +560,7 @@ class TtplaySessionBinder extends ChangeNotifier {
 
         _lastCloudIncrementalBySource[src.id] = DateTime.now();
 
+        final dbSw = Stopwatch()..start();
         var fallbackWatermarkMs = 0;
         final serverWatermark = src.scanState?.incrementalWatermark ?? 0;
         if (serverWatermark <= 0) {
@@ -551,7 +588,9 @@ class TtplaySessionBinder extends ChangeNotifier {
             if ((r.read<String?>('remote_id') ?? '').isNotEmpty)
               r.read<String>('remote_id'): r.read<int?>('modified_at'),
         };
+        dbMtimeMs += dbSw.elapsedMilliseconds;
 
+        final scanSw = Stopwatch()..start();
         try {
           final driver = localLibraryClient.mountManager.driverFor(candidate.mount);
           await runner.runQuarkIncrementalScan(
@@ -565,6 +604,8 @@ class TtplaySessionBinder extends ChangeNotifier {
           ranAny = true;
         } catch (e) {
           appLogger.w('Cloud Quark incremental scan failed for ${src.id}: $e');
+        } finally {
+          scanRunMs += scanSw.elapsedMilliseconds;
         }
       }
       return ranAny;
@@ -572,6 +613,13 @@ class TtplaySessionBinder extends ChangeNotifier {
       appLogger.w('Cloud incremental scan check failed: $e');
       return ranAny;
     } finally {
+      if (candidatesCount > 0) {
+        appLogger.d(
+          'TtplayBinder timing (cloudIncrementalScan): force=$force total=${totalSw.elapsedMilliseconds}ms '
+          'listSources=${listSourcesMs}ms dbMtime=${dbMtimeMs}ms scanRun=${scanRunMs}ms '
+          'candidates=$candidatesCount ranAny=$ranAny',
+        );
+      }
       _checkingCloudIncremental = false;
     }
   }

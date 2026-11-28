@@ -707,8 +707,18 @@ class LocalLibraryClient implements MediaServerClient, StreamQualityClient {
 
   @override
   Future<List<MediaItem>> fetchContinueWatching({int? count = 20, Set<String> excludedLibraryIds = const {}}) async {
+    final totalSw = Stopwatch()..start();
+    final querySw = Stopwatch()..start();
     final rows = await _repo.continueWatching(limit: count ?? 50, excludedLibraryTypes: excludedLibraryIds);
-    return _toItems(rows);
+    final queryMs = querySw.elapsedMilliseconds;
+    final toItemsSw = Stopwatch()..start();
+    final items = await _toItems(rows);
+    final toItemsMs = toItemsSw.elapsedMilliseconds;
+    appLogger.d(
+      'LocalLibrary timing (onDeck): total=${totalSw.elapsedMilliseconds}ms '
+      'query=${queryMs}ms toItems=${toItemsMs}ms rows=${rows.length}',
+    );
+    return items;
   }
 
   /// Hub titles shown by the UI; `{shelf}` is replaced by the shelf's title.
@@ -738,9 +748,13 @@ class LocalLibraryClient implements MediaServerClient, StreamQualityClient {
     bool includePlaybackHubs = true,
     HubFetchDiagnostics? diagnostics,
   }) async {
+    final totalSw = Stopwatch()..start();
     final hubs = <MediaHub>[];
+    var continueMs = 0;
     if (includePlaybackHubs) {
+      final sw = Stopwatch()..start();
       final resume = await fetchContinueWatching(count: limit);
+      continueMs = sw.elapsedMilliseconds;
       if (resume.isNotEmpty) {
         hubs.add(
           MediaHub(
@@ -755,6 +769,7 @@ class LocalLibraryClient implements MediaServerClient, StreamQualityClient {
         );
       }
     }
+    final recentSw = Stopwatch()..start();
     final allRecentRows = await _repo.recentlyAdded(limit: limit);
     if (allRecentRows.isNotEmpty) {
       hubs.add(
@@ -770,9 +785,22 @@ class LocalLibraryClient implements MediaServerClient, StreamQualityClient {
         ),
       );
     }
+    final allRecentMs = recentSw.elapsedMilliseconds;
+    final shelfTimings = <String>[];
     for (final shelf in shelves) {
+      final shelfSw = Stopwatch()..start();
       final hub = await _recentHub(shelf, limit);
+      if (debugLoggingEnabled) {
+        shelfTimings.add('$shelf:${shelfSw.elapsedMilliseconds}ms(${hub?.items.length ?? 0})');
+      }
       if (hub != null) hubs.add(hub);
+    }
+    if (debugLoggingEnabled) {
+      appLogger.d(
+        'LocalLibrary timing (globalHubs): total=${totalSw.elapsedMilliseconds}ms '
+        'continue=${continueMs}ms allRecent=${allRecentMs}ms(${allRecentRows.length}) '
+        'shelves=[${shelfTimings.join(', ')}] hubs=${hubs.length}',
+      );
     }
     return hubs;
   }

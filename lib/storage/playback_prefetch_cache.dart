@@ -478,7 +478,7 @@ class PlaybackPrefetchCache {
     final cacheMiB = (cachedBytes / (1024 * 1024)).toStringAsFixed(1);
     final maxMiB = (maxCacheBytes / (1024 * 1024)).toStringAsFixed(1);
     final avgTtfb = file.windowTtfbCount > 0 ? (file.windowTtfbMsSum / file.windowTtfbCount).round() : 0;
-    appLogger.i(
+    appLogger.d(
       'Prefetch stats${sessionEnded ? '(end)' : ''}: up=${upMBs.toStringAsFixed(2)}MB/s '
       'down=${downMBs.toStringAsFixed(2)}MB/s perConn=${perConnMBs.toStringAsFixed(2)}MB/s '
       'conn=$active/$effectiveMax(peak=${file.windowPeakActiveConns},cfg=${file.configuredMaxConnections}) '
@@ -871,12 +871,7 @@ class PlaybackPrefetchCache {
     var link = await cancelSignal.untilCancelled(file.refresher.current(clock.now()));
     while (true) {
       cancelSignal.checkCancelled();
-      final opened = await _followRedirects(
-        link: link,
-        from: from,
-        to: to,
-        cancelSignal: cancelSignal,
-      );
+      final opened = await _followRedirects(link: link, from: from, to: to, cancelSignal: cancelSignal);
       final response = opened.response;
       final status = response.statusCode;
       file.recordRequestLatency(ttfbMs: opened.ttfbMs, redirects: opened.redirects, host: opened.finalHost);
@@ -1035,12 +1030,7 @@ class PlaybackPrefetchCache {
     }
   }
 
-  Stream<List<int>> _sliceAndTrack(
-    HttpClientResponse response,
-    int start,
-    int end,
-    _CancelableOp cancelSignal,
-  ) async* {
+  Stream<List<int>> _sliceAndTrack(HttpClientResponse response, int start, int end, _CancelableOp cancelSignal) async* {
     final iterator = StreamIterator(response.timeout(stallTimeout));
     var offset = 0;
     try {
@@ -1079,10 +1069,7 @@ class PlaybackPrefetchCache {
     final actualTo = int.tryParse(match?.group(2) ?? '');
     final size = int.tryParse(match?.group(3) ?? '');
     if (actualFrom != from || actualTo != to || size == null || size != expectedSize || size <= to) {
-      throw StorageException(
-        StorageErrorKind.network,
-        'Invalid Content-Range for $from-$to/$expectedSize: $value',
-      );
+      throw StorageException(StorageErrorKind.network, 'Invalid Content-Range for $from-$to/$expectedSize: $value');
     }
   }
 
@@ -1261,12 +1248,8 @@ class _FileState {
 }
 
 class _PlaybackSession {
-  _PlaybackSession({
-    required this.file,
-    required this.firstChunk,
-    required this.lastChunk,
-    required this.windowChunks,
-  }) : currentChunk = firstChunk;
+  _PlaybackSession({required this.file, required this.firstChunk, required this.lastChunk, required this.windowChunks})
+    : currentChunk = firstChunk;
 
   final _FileState file;
   final int firstChunk;
@@ -1280,11 +1263,7 @@ class _PlaybackSession {
 }
 
 class _WindowedLinkRefresher {
-  _WindowedLinkRefresher({
-    required this.resolve,
-    required this.refreshWindow,
-    required this.maxRefreshesInWindow,
-  });
+  _WindowedLinkRefresher({required this.resolve, required this.refreshWindow, required this.maxRefreshesInWindow});
 
   StorageLinkResolver resolve;
   final Duration refreshWindow;

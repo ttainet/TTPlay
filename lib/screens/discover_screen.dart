@@ -638,6 +638,10 @@ class _DiscoverScreenState extends State<DiscoverScreen>
     if (_isManualRefreshing) return;
     setState(() => _isManualRefreshing = true);
     OptimizedMediaImage.retryFailedImages();
+    final totalWatch = Stopwatch()..start();
+    var cloudSyncMs = -1;
+    var incScanMs = -1;
+    var discoverMs = -1;
 
     TtplaySessionBinder? binder;
     try {
@@ -654,20 +658,40 @@ class _DiscoverScreenState extends State<DiscoverScreen>
 
     try {
       if (isCloudV1) {
+        final cloudSw = Stopwatch()..start();
         try {
           cloudRes = await binder.syncCloudProjection(full: false);
         } catch (e) {
           cloudSyncFailed = true;
           appLogger.w('Discover cloud projection sync failed: $e');
+        } finally {
+          cloudSyncMs = cloudSw.elapsedMilliseconds;
         }
         if (!mounted) return;
+        final incSw = Stopwatch()..start();
         try {
           final incRes = await binder.triggerManualCloudIncrementalScan();
           incrementalTriggered = incRes.triggered;
-        } catch (_) {}
+        } catch (_) {
+        } finally {
+          incScanMs = incSw.elapsedMilliseconds;
+        }
       }
-      outcome = await _discover.refreshNow();
+      final discoverSw = Stopwatch()..start();
+      try {
+        outcome = await _discover.refreshNow();
+      } finally {
+        discoverMs = discoverSw.elapsedMilliseconds;
+      }
     } finally {
+      appLogger.d(
+        'Discover toolbar refresh: total=${totalWatch.elapsedMilliseconds}ms cloudV1=$isCloudV1 '
+        'cloudSync=${cloudSyncMs}ms(fullReset=${cloudRes?.fullReset ?? false},'
+        'changes=${cloudRes?.hasChanges ?? false},items=${cloudRes?.itemsProjected ?? 0},'
+        'files=${cloudRes?.filesProjected ?? 0},failed=$cloudSyncFailed) '
+        'incScan=${incScanMs}ms(triggered=$incrementalTriggered) '
+        'discover=${discoverMs}ms(outcome=${outcome?.name ?? 'none'})',
+      );
       if (mounted) {
         setState(() => _isManualRefreshing = false);
       }

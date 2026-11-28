@@ -12,12 +12,7 @@ import 'storage_driver.dart';
 
 /// Opened upstream HLS segment ready to stream to the local proxy response.
 class HlsSegmentResponse {
-  const HlsSegmentResponse({
-    required this.statusCode,
-    required this.body,
-    this.contentType,
-    this.contentLength,
-  });
+  const HlsSegmentResponse({required this.statusCode, required this.body, this.contentType, this.contentLength});
 
   final int statusCode;
   final String? contentType;
@@ -127,9 +122,7 @@ class HlsSegmentPrefetcher {
         statusCode: existing.statusCode,
         contentType: existing.contentType,
         contentLength: existing.contentLength ?? existing.bufferedBytes,
-        body: Stream<List<int>>.fromIterable([
-          for (final chunk in existing.chunks) ?chunk,
-        ]),
+        body: Stream<List<int>>.fromIterable([for (final chunk in existing.chunks) ?chunk]),
       );
     }
 
@@ -332,7 +325,7 @@ class HlsSegmentPrefetcher {
     final effectiveMax = playlist.effectiveMaxConnections(now, rateLimitCooldown);
     final cacheMiB = (_reservedBytes / (1024 * 1024)).toStringAsFixed(1);
     final maxMiB = (maxCacheBytes / (1024 * 1024)).toStringAsFixed(1);
-    appLogger.i(
+    appLogger.d(
       'HLS prefetch stats: up=${upMBs.toStringAsFixed(2)}MB/s '
       'perConn=${perConnMBs.toStringAsFixed(2)}MB/s '
       'conn=$active/$effectiveMax(peak=${playlist.windowPeakActiveConns},cfg=${playlist.configuredMaxConnections}) '
@@ -350,12 +343,7 @@ class HlsSegmentPrefetcher {
     unawaited(_runFetch(slot, playlist, segmentUrls, effectiveMax));
   }
 
-  Future<void> _runFetch(
-    _SegmentSlot slot,
-    _PlaylistState playlist,
-    List<Uri> segmentUrls,
-    int effectiveMax,
-  ) async {
+  Future<void> _runFetch(_SegmentSlot slot, _PlaylistState playlist, List<Uri> segmentUrls, int effectiveMax) async {
     try {
       var headers = await slot.untilCancelled(playlist.refresher.current());
       var response = await _followRedirects(slot, slot.url, headers);
@@ -486,7 +474,9 @@ class HlsSegmentPrefetcher {
       disposed = true;
       if (!cancelCompleter.isCompleted) cancelCompleter.complete();
       slot.activeConsumers--;
-      if (slot.activeConsumers <= 0 && !slot.completed && (slot.uncacheable || !playlist.isInWindow(slot.key.position))) {
+      if (slot.activeConsumers <= 0 &&
+          !slot.completed &&
+          (slot.uncacheable || !playlist.isInWindow(slot.key.position))) {
         _removeSlotIfExact(slot);
         slot.cancel();
       }
@@ -634,7 +624,8 @@ class _SegmentKey {
   final int position;
 
   @override
-  bool operator ==(Object other) => other is _SegmentKey && other.playlistKey == playlistKey && other.position == position;
+  bool operator ==(Object other) =>
+      other is _SegmentKey && other.playlistKey == playlistKey && other.position == position;
 
   @override
   int get hashCode => Object.hash(playlistKey, position);

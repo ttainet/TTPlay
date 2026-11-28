@@ -311,7 +311,7 @@ class QuarkStorageDriver
       _rawLinks.remove(fid);
     }
     final summary = [for (final v in variants) '${v.id}:${v.isHls ? 'hls' : 'mp4'}'].join(',');
-    appLogger.i(
+    appLogger.d(
       'Quark variants: mode=${_mode.name} accel=$_playbackAcceleration '
       'dlConn=${_downloadConnections ?? 'default'} member=${_lastMemberType ?? 'unknown'} '
       'count=${variants.length} [$summary]',
@@ -623,7 +623,7 @@ class QuarkStorageDriver
       final (uri, headers) = await _transport.downloadLink(fid, _api);
       final link = StorageLink(uri, headers: headers, expiresAt: clock.now().add(_linkLifetime));
       _links[fid] = link;
-      appLogger.i(
+      appLogger.d(
         'Quark link: mode=${_mode.name} source=download accel=$_playbackAcceleration '
         'dlConn=${_downloadConnections ?? 'default'} member=${_lastMemberType ?? 'unknown'} host=${uri.host}',
       );
@@ -637,7 +637,7 @@ class QuarkStorageDriver
       await _loadVariants(fid, forceRefresh: true);
       final raw = _rawLinks[fid];
       if (raw != null) {
-        appLogger.i(
+        appLogger.d(
           'Quark link: mode=${_mode.name} source=raw_play accel=$_playbackAcceleration '
           'dlConn=${_downloadConnections ?? 'default'} member=${_lastMemberType ?? 'unknown'} host=${raw.url.host}',
         );

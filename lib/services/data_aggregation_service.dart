@@ -254,6 +254,7 @@ class DataAggregationService {
   /// `cancelledServerIds` — a disrupted pass, unlike a settled failure, must
   /// never be committed as authoritative.
   Future<LibraryAggregationResult> getMediaLibrariesFromAllServers({Set<String>? serverIds}) async {
+    final totalSw = Stopwatch()..start();
     final clients = _clientsFor(serverIds);
     if (clients.isEmpty) {
       appLogger.w('No online servers available for fetching libraries (neutral)');
@@ -264,15 +265,29 @@ class DataAggregationService {
         failedServerIds: const <String>{},
       );
     }
+    final perServerTimings = <String>[];
     final fetched = await _fanOut<MediaLibrary>(
       clients,
       failureMessage: (serverId) => 'Failed neutral library fetch from $serverId',
-      fetch: (serverId, client) => _withinServerDeadline(
-        MediaServerTimeouts.libraryListServerDeadline,
-        operation: 'Library fetch on $serverId',
-        run: (_) => client.fetchLibraries(),
-      ),
+      fetch: (serverId, client) async {
+        final sw = Stopwatch()..start();
+        final libs = await _withinServerDeadline(
+          MediaServerTimeouts.libraryListServerDeadline,
+          operation: 'Library fetch on $serverId',
+          run: (_) => client.fetchLibraries(),
+        );
+        if (debugLoggingEnabled) {
+          perServerTimings.add('$serverId:${sw.elapsedMilliseconds}ms(${libs.length})');
+        }
+        return libs;
+      },
     );
+    if (debugLoggingEnabled) {
+      appLogger.d(
+        'Libraries timing: total=${totalSw.elapsedMilliseconds}ms libs=${fetched.items.length} '
+        'perServer=[${perServerTimings.join(', ')}]',
+      );
+    }
     return (
       libraries: fetched.items,
       succeededServerIds: fetched.succeededServerIds,
@@ -290,6 +305,7 @@ class DataAggregationService {
     Set<String>? hiddenLibraryKeys,
     Set<String>? serverIds,
   }) async {
+    final totalSw = Stopwatch()..start();
     final clients = _clientsFor(serverIds);
     if (clients.isEmpty) {
       return (
@@ -303,10 +319,12 @@ class DataAggregationService {
     }
 
     final observedRows = <ObservedRow>[];
+    final perServerTimings = <String>[];
     final fetched = await _fanOut<MediaItem>(
       clients,
       failureMessage: (serverId) => 'Failed on-deck fetch from $serverId',
       fetch: (serverId, client) async {
+        final sw = Stopwatch()..start();
         final rows = await client.fetchContinueWatching(
           count: limit,
           excludedLibraryIds: _hiddenLibraryIdsOn(serverId, hiddenLibraryKeys),
@@ -315,6 +333,9 @@ class DataAggregationService {
         // there is no way back to the client that produced a row.
         final scope = client.cacheServerId;
         observedRows.addAll([for (final row in rows) (item: row, clientScope: scope)]);
+        if (debugLoggingEnabled) {
+          perServerTimings.add('$serverId:${sw.elapsedMilliseconds}ms(${rows.length})');
+        }
         return rows;
       },
     );
@@ -326,9 +347,18 @@ class DataAggregationService {
     // so per-server and cross-server ordering can't drift apart.
     filteredOnDeck.sort((a, b) => b.recencySortKey.compareTo(a.recencySortKey));
 
-    final rows = _limitContinueWatching(await _deduplicateContinueWatching(filteredOnDeck), limit);
+    final dedupSw = Stopwatch()..start();
+    final deduped = await _deduplicateContinueWatching(filteredOnDeck);
+    final dedupMs = dedupSw.elapsedMilliseconds;
+    final rows = _limitContinueWatching(deduped, limit);
 
     appLogger.i('Fetched ${rows.items.length} on deck items from all servers');
+    if (debugLoggingEnabled) {
+      appLogger.d(
+        'OnDeck timing: total=${totalSw.elapsedMilliseconds}ms dedup=${dedupMs}ms items=${rows.items.length} '
+        'perServer=[${perServerTimings.join(', ')}]',
+      );
+    }
 
     return (
       items: rows.items,
@@ -583,6 +613,7 @@ class DataAggregationService {
     bool includePlaybackHubs = true,
     Set<String>? serverIds,
   }) async {
+    final totalSw = Stopwatch()..start();
     final clients = _clientsFor(serverIds);
     if (clients.isEmpty) {
       appLogger.w('No online servers available for fetching hubs');
@@ -600,18 +631,22 @@ class DataAggregationService {
     // (Plex) need it to detect visible music libraries, whose hubs the
     // global-hub endpoint excludes. One `fetchLibraries` per server, served
     // from the per-backend API cache when warm.
+    final libSw = Stopwatch()..start();
     final libraryFetch = useGlobalHubs ? await getMediaLibrariesFromAllServers(serverIds: serverIds) : null;
+    final libPrefetchMs = libSw.elapsedMilliseconds;
     final libraries = libraryFetch == null ? null : _groupLibrariesByServer(libraryFetch.libraries);
     final legSucceededServerIds = <String>{};
     final legFailedServerIds = <String>{if (libraryFetch != null) ...libraryFetch.failedServerIds};
     final legCancelledServerIds = <String>{if (libraryFetch != null) ...libraryFetch.cancelledServerIds};
     final globalDiagnosticsByServer = <String, HubFetchDiagnostics>{};
     final observedRows = <ObservedRow>[];
+    final perServerTimings = <String>[];
 
     final fetched = await _fanOut<MediaHub>(
       clients,
       failureMessage: (serverId) => 'Failed to fetch hubs from server $serverId',
       fetch: (serverId, client) async {
+        final sw = Stopwatch()..start();
         final serverLibraries = libraries?[serverId];
         final shouldUseGlobalHubs = useGlobalHubs && client.capabilities.richHubs;
         final prefetchDegraded = legFailedServerIds.contains(serverId) || legCancelledServerIds.contains(serverId);
@@ -694,6 +729,9 @@ class DataAggregationService {
           for (final hub in processed)
             for (final item in hub.items) (item: item, clientScope: scope),
         ]);
+        if (debugLoggingEnabled) {
+          perServerTimings.add('$serverId:${sw.elapsedMilliseconds}ms(${processed.length}h)');
+        }
         return processed;
       },
     );
@@ -705,6 +743,12 @@ class DataAggregationService {
 
     final all = fetched.items;
     final hubs = limit != null && limit < all.length ? all.sublist(0, limit) : all;
+    if (debugLoggingEnabled) {
+      appLogger.d(
+        'Hubs timing: total=${totalSw.elapsedMilliseconds}ms libPrefetch=${libPrefetchMs}ms '
+        'hubs=${hubs.length} perServer=[${perServerTimings.join(', ')}]',
+      );
+    }
     return (
       hubs: hubs,
       // Pre-limit, so a row trimmed off the tail still counts as observed.

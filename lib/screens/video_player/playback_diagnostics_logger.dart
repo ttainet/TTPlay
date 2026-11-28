@@ -219,7 +219,7 @@ class PlaybackDiagnosticsLogger {
           ? await _collectNativeStatsLine(reason: reason, lagMax: lagMax, spikes: spikes)
           : await _collectMpvPropertyLine(reason: reason, lagMax: lagMax, spikes: spikes);
       if (!_disposed && line != null) {
-        appLogger.i(line);
+        appLogger.d(line);
       }
     } catch (e) {
       appLogger.d('Playback diag ($reason) failed: $e');

@@ -345,7 +345,7 @@ class NativeStreamEngine {
       if (lastError != null && lastError.isNotEmpty) {
         appLogger.w(msg);
       } else {
-        appLogger.i(msg);
+        appLogger.d(msg);
       }
     }
   }

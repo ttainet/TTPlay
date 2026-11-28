@@ -114,7 +114,7 @@ extension _VideoPlayerPlaybackServiceMethods on VideoPlayerScreenState {
     _firstFrame.markReady();
     _diagnosticsLogger?.onFirstFrameRendered();
     final firstFrameMs = _playbackAttempt?.elapsed.elapsedMilliseconds;
-    appLogger.i(
+    appLogger.d(
       'First frame ready: elapsed=${firstFrameMs != null ? '${firstFrameMs}ms' : '-'} '
       'native=${_tryReadMountManager()?.proxy.isNativeStreamUrl(_currentMediaInfo?.videoUrl) ?? false}',
     );

@@ -137,7 +137,7 @@ class StreamProxy {
           final nativeEngine = _requireNativeEngine();
           _nativeStreamSizes[token] = resolved.totalSize;
           final pendingTag = resolved.profile.allowRuntimeMaxUpgrade ? '(pending-tier)' : '';
-          appLogger.i(
+          appLogger.d(
             'Stream proxy /s: driver=${driver.kind.name} route=native-rust '
             'size=${_formatMiB(resolved.totalSize)} maxConn=${resolved.profile.maxConnections}$pendingTag',
           );
@@ -155,7 +155,7 @@ class StreamProxy {
                 final nextMax = await defer();
                 if (_stopped || nextMax == null || nextMax <= resolved.profile.maxConnections) return;
                 nativeEngine.updateDemand(token: token, maxConnections: nextMax);
-                appLogger.i('Stream proxy /s: driver=${driver.kind.name} deferred tier resolved maxConn=$nextMax');
+                appLogger.d('Stream proxy /s: driver=${driver.kind.name} deferred tier resolved maxConn=$nextMax');
               } catch (_) {
                 // Tier lookup failed or timed out; keep single-connection safely.
               }
@@ -358,7 +358,7 @@ class StreamProxy {
         final hasFirst = chunks != null && await chunks.moveNext();
         if (!bulk && wantsBody && size >= 1024 * 1024 && !source.loggedPlayback) {
           source.loggedPlayback = true;
-          appLogger.i(
+          appLogger.d(
             'Stream proxy /s: driver=${driver.kind.name} '
             'size=${_formatMiB(size)} range=$start-$end',
           );
@@ -523,7 +523,7 @@ class StreamProxy {
         final hasFirst = chunks != null && await chunks.moveNext();
         if (request.method == 'GET' && length > 0 && hasFirst && !source.loggedRoute) {
           source.loggedRoute = true;
-          appLogger.i(
+          appLogger.d(
             'Stream proxy /v: variant=${source.variantId} route=range-prefetch '
             'size=${_formatMiB(size)} range=$start-$end',
           );
@@ -576,7 +576,7 @@ class StreamProxy {
         await source.variant(forceRefresh: false);
         if (!source.loggedRoute) {
           source.loggedRoute = true;
-          appLogger.i(
+          appLogger.d(
             'Stream proxy /v: variant=${source.variantId} route=hls-prefetch '
             'segments=${segMeta.segments.length} host=${resource.host}',
           );
@@ -682,7 +682,7 @@ class StreamProxy {
     if (upstream.contentLength >= 0) response.headers.contentLength = upstream.contentLength;
     if (request.method == 'GET' && !source.loggedRoute) {
       source.loggedRoute = true;
-      appLogger.i(
+      appLogger.d(
         'Stream proxy /v: variant=${source.variantId} route=direct prefetch=$usePrefetch '
         'status=$status length=${upstream.contentLength} host=${finalUrl.host}',
       );
@@ -840,7 +840,7 @@ class StreamProxy {
     final rateMBs = (stats.windowBytes / (1024 * 1024)) / elapsedSec;
     final upPct = ((stats.windowUpstreamWaitUs / elapsedUs) * 100).clamp(0.0, 100.0);
     final downPct = ((stats.windowDownstreamWaitUs / elapsedUs) * 100).clamp(0.0, 100.0);
-    appLogger.i(
+    appLogger.d(
       '$label: rate=${rateMBs.toStringAsFixed(2)}MB/s '
       'upWait=${upPct.toStringAsFixed(0)}% downWait=${downPct.toStringAsFixed(0)}% '
       'pauses=${stats.windowDownstreamPauses} reqs=${stats.windowRequests}',

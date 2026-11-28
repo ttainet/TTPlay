@@ -109,6 +109,7 @@ class CloudProjectionEngine {
   Future<CloudSyncResult> _withSyncLock(Future<CloudSyncResult> Function() action, {bool queueIfBusy = false}) async {
     if (_syncing) {
       if (queueIfBusy) _resyncQueued = true;
+      appLogger.d('CloudSync timing (skipped): busy=true queueIfBusy=$queueIfBusy seq=$_lastSeq');
       return CloudSyncResult(
         fullReset: false,
         latestSeq: _lastSeq,
@@ -141,11 +142,15 @@ class CloudProjectionEngine {
   /// 2. Pulls paginated movies/shows/seasons/episodes & item file locators.
   /// 3. Projects into `LibraryItems` & `LibraryFiles`, preserving local-folder
   ///    files and pruning stale cloud files + empty shells.
-  Future<CloudSyncResult> syncFullSnapshot() => _withSyncLock(_runFullSnapshotLocked);
+  Future<CloudSyncResult> syncFullSnapshot() => _withSyncLock(() => _runFullSnapshotLocked(reason: 'explicit'));
 
-  Future<CloudSyncResult> _runFullSnapshotLocked() async {
+  Future<CloudSyncResult> _runFullSnapshotLocked({String reason = 'explicit'}) async {
+    final totalSw = Stopwatch()..start();
+    final prevSeq = _lastSeq;
+    final mirrorSw = Stopwatch()..start();
     await mountMirror.mirrorAllSources();
     final knownMountIds = (await db.select(db.mounts).get()).map((m) => m.id).toSet();
+    final mirrorMs = mirrorSw.elapsedMilliseconds;
 
     var snapshotSeq = _lastSeq;
     final serverIdToLocalId = <int, int>{};
@@ -153,12 +158,17 @@ class CloudProjectionEngine {
     final projectedCloudFileKeys = <String>{};
     var itemsCount = 0;
     var filesCount = 0;
+    var pagesCount = 0;
+    var fetchMs = 0;
+    var dbWriteMs = 0;
 
     // Project in dependency order so parentId/showId resolve cleanly.
     for (final kind in const [LibraryKinds.movie, LibraryKinds.show, LibraryKinds.season, LibraryKinds.episode]) {
       var page = 1;
       while (true) {
+        final fetchSw = Stopwatch()..start();
         final snap = await syncClient.fetchSnapshot(kind: kind, page: page, pageSize: 200, includeFiles: true);
+        pagesCount++;
         if (snap.snapshotSeq > snapshotSeq) snapshotSeq = snap.snapshotSeq;
 
         // Backward-compatibility fallback for older servers that omit `files`
@@ -172,7 +182,9 @@ class CloudProjectionEngine {
             fallbackFilesByServerId[serverId] = detail['files'];
           }
         }
+        fetchMs += fetchSw.elapsedMilliseconds;
 
+        final dbSw = Stopwatch()..start();
         await db.transaction(() async {
           final nowMs = DateTime.now().millisecondsSinceEpoch;
           final rawEntries = <({int serverId, String workKey, Map<String, dynamic> raw})>[];
@@ -339,6 +351,7 @@ class CloudProjectionEngine {
             }
           }
         });
+        dbWriteMs += dbSw.elapsedMilliseconds;
 
         if (!snap.hasMore) break;
         page++;
@@ -347,24 +360,40 @@ class CloudProjectionEngine {
 
     // Project unmatched/pending cloud files before pruning stale cloud files so
     // their file keys are preserved and orphaned unmatched items are cleaned up.
+    final unmatchedSw = Stopwatch()..start();
     final unmatchedRes = await _projectUnmatchedFilesFromServer(
       knownMountIds: knownMountIds,
       projectedCloudFileKeys: projectedCloudFileKeys,
       pruneStaleUnmatched: false,
     );
+    final unmatchedMs = unmatchedSw.elapsedMilliseconds;
     itemsCount += unmatchedRes.itemsProjected;
     filesCount += unmatchedRes.filesProjected;
 
     // Remove stale cloud files no longer present in the cloud snapshot.
+    final pruneFilesSw = Stopwatch()..start();
     await _pruneStaleCloudFiles(projectedCloudFileKeys);
+    final pruneFilesMs = pruneFilesSw.elapsedMilliseconds;
+    final pruneEmptySw = Stopwatch()..start();
     final pruned = await pruneEmptyProjectedItems();
+    final pruneEmptyMs = pruneEmptySw.elapsedMilliseconds;
 
+    final userStateSw = Stopwatch()..start();
     await _syncUserStateFromServer();
+    final userStateMs = userStateSw.elapsedMilliseconds;
 
     _lastDetailHydratedAt.clear();
     _lastSeq = snapshotSeq;
     await _persistSeq(_lastSeq);
     onLibraryUpdated?.call();
+
+    appLogger.d(
+      'CloudSync timing (full): reason=$reason total=${totalSw.elapsedMilliseconds}ms '
+      'mirror=${mirrorMs}ms pages=$pagesCount fetch=${fetchMs}ms dbWrite=${dbWriteMs}ms '
+      'unmatched=${unmatchedMs}ms pruneFiles=${pruneFilesMs}ms pruneEmpty=${pruneEmptyMs}ms '
+      'userState=${userStateMs}ms items=$itemsCount files=$filesCount pruned=$pruned '
+      'seq=$prevSeq->$_lastSeq',
+    );
 
     return CloudSyncResult(
       fullReset: true,
@@ -383,18 +412,26 @@ class CloudProjectionEngine {
   Future<CloudSyncResult> syncIncremental() async {
     await _ensureSeqLoaded();
     if (_lastSeq <= 0) {
-      return syncFullSnapshot();
+      return _withSyncLock(() => _runFullSnapshotLocked(reason: 'seq_zero'));
     }
     return _withSyncLock(() async {
+      final totalSw = Stopwatch()..start();
+      final prevSeq = _lastSeq;
+      final fetchSw = Stopwatch()..start();
       final changesPage = await syncClient.fetchChanges(sinceSeq: _lastSeq, limit: 200, includeFiles: true);
+      final fetchChangesMs = fetchSw.elapsedMilliseconds;
       if (changesPage.resetRequired) {
-        return await _runFullSnapshotLocked();
+        return await _runFullSnapshotLocked(reason: 'reset_required');
       }
       if (changesPage.changes.isEmpty) {
         if (changesPage.latestSeq > _lastSeq) {
           _lastSeq = changesPage.latestSeq;
           await _persistSeq(_lastSeq);
         }
+        appLogger.d(
+          'CloudSync timing (incremental/noop): total=${totalSw.elapsedMilliseconds}ms '
+          'fetchChanges=${fetchChangesMs}ms seq=$prevSeq->$_lastSeq',
+        );
         return CloudSyncResult(
           fullReset: false,
           latestSeq: _lastSeq,
@@ -407,6 +444,7 @@ class CloudProjectionEngine {
 
       const structuralEntities = {'source', 'folder', 'source_folder', 'pending_deletion'};
       var needsFullSnapshot = changesPage.hasMore;
+      var fallbackReason = changesPage.hasMore ? 'has_more' : null;
       var hasUserDataChange = false;
       var hasFileChange = false;
       final changedItemsById = <int, Map<String, dynamic>>{};
@@ -422,22 +460,26 @@ class CloudProjectionEngine {
         final op = (c['op'] as String? ?? '').toLowerCase();
         if (structuralEntities.contains(entity)) {
           needsFullSnapshot = true;
+          fallbackReason ??= 'structural:$entity';
           break;
         }
         if (entity == 'item') {
           if (op != 'upsert') {
             needsFullSnapshot = true;
+            fallbackReason ??= 'item_op:$op';
             break;
           }
           final data = c['data'];
           if (data is! Map) {
             needsFullSnapshot = true;
+            fallbackReason ??= 'item_bad_data';
             break;
           }
           final map = Map<String, dynamic>.from(data);
           final sid = (map['id'] as num?)?.toInt() ?? 0;
           if (sid <= 0) {
             needsFullSnapshot = true;
+            fallbackReason ??= 'item_bad_data';
             break;
           }
           changedItemsById[sid] = map;
@@ -446,6 +488,7 @@ class CloudProjectionEngine {
         if (entity == 'file' || entity == 'media_file') {
           if (op == 'delete' || op == 'missing' || op == 'remove') {
             needsFullSnapshot = true;
+            fallbackReason ??= 'file_delete:$op';
             break;
           }
           hasFileChange = true;
@@ -508,31 +551,42 @@ class CloudProjectionEngine {
       }
 
       if (needsFullSnapshot) {
-        return await _runFullSnapshotLocked();
+        return await _runFullSnapshotLocked(reason: fallbackReason ?? 'incremental_fallback');
       }
 
       if (changedItemsById.isEmpty) {
         var itemsProjected = 0;
         var filesProjected = 0;
         var pruned = 0;
+        var unmatchedMs = 0;
         if (hasFileChange) {
+          final unmatchedSw = Stopwatch()..start();
           final knownMountIds = (await db.select(db.mounts).get()).map((m) => m.id).toSet();
           final unmatchedRes = await _projectUnmatchedFilesFromServer(
             knownMountIds: knownMountIds,
             pruneStaleUnmatched: true,
           );
+          unmatchedMs = unmatchedSw.elapsedMilliseconds;
           itemsProjected = unmatchedRes.itemsProjected;
           filesProjected = unmatchedRes.filesProjected;
           pruned = unmatchedRes.pruned;
         }
         var progressApplied = false;
+        var userStateMs = 0;
+        var progressMs = 0;
         if (hasUserDataChange) {
+          final sw = Stopwatch()..start();
           await _syncUserStateFromServer();
+          userStateMs = sw.elapsedMilliseconds;
         } else if (progressOps.isNotEmpty) {
+          final sw = Stopwatch()..start();
           progressApplied = await _applyProgressDeltas(progressOps);
+          progressMs = sw.elapsedMilliseconds;
         }
+        final kvSw = Stopwatch()..start();
         final kvApplied = await _applyKvDeltas(kvOps);
         final listApplied = await _applyListDeltas(listOps);
+        final kvListMs = kvSw.elapsedMilliseconds;
         final hasStructuralOrItemChanges = itemsProjected > 0 || filesProjected > 0 || pruned > 0;
         final hasChanges =
             hasStructuralOrItemChanges || hasUserDataChange || progressApplied || kvApplied || listApplied;
@@ -543,6 +597,13 @@ class CloudProjectionEngine {
         }
         _lastSeq = changesPage.nextSinceSeq > _lastSeq ? changesPage.nextSinceSeq : changesPage.latestSeq;
         await _persistSeq(_lastSeq);
+        appLogger.d(
+          'CloudSync timing (incremental/meta): total=${totalSw.elapsedMilliseconds}ms '
+          'fetchChanges=${fetchChangesMs}ms unmatched=${unmatchedMs}ms '
+          'userState=${userStateMs}ms progress=${progressMs}ms(${progressOps.length}) '
+          'kvList=${kvListMs}ms changes=${changesPage.changes.length} '
+          'hasChanges=$hasChanges seq=$prevSeq->$_lastSeq',
+        );
         return CloudSyncResult(
           fullReset: false,
           latestSeq: _lastSeq,
@@ -562,6 +623,7 @@ class CloudProjectionEngine {
       final sortedItems = changedItemsById.values.toList()..sort((a, b) => kindOrder(a).compareTo(kindOrder(b)));
 
       // Check mount ids before mutating anything; refresh mounts if a new cloud source appeared.
+      var mirrorMs = 0;
       var knownMountIds = (await db.select(db.mounts).get()).map((m) => m.id).toSet();
       final missingMount = sortedItems.any((item) {
         final files = item['files'];
@@ -576,10 +638,13 @@ class CloudProjectionEngine {
         return false;
       });
       if (missingMount) {
+        final mirrorSw = Stopwatch()..start();
         await mountMirror.mirrorAllSources();
         knownMountIds = (await db.select(db.mounts).get()).map((m) => m.id).toSet();
+        mirrorMs = mirrorSw.elapsedMilliseconds;
       }
 
+      final parentResolveSw = Stopwatch()..start();
       final serverIdToLocalId = <int, int>{};
       final serverIdToWorkKey = <int, String>{};
       for (final raw in sortedItems) {
@@ -651,12 +716,14 @@ class CloudProjectionEngine {
             serverParentId != null &&
             (changedItemsById.containsKey(serverParentId) || serverIdToLocalId.containsKey(serverParentId));
         if (!hasShow || !hasParent) {
-          return await _runFullSnapshotLocked();
+          return await _runFullSnapshotLocked(reason: 'missing_parent');
         }
       }
+      final parentResolveMs = parentResolveSw.elapsedMilliseconds;
 
       var itemsCount = 0;
       var filesCount = 0;
+      final dbSw = Stopwatch()..start();
       await db.transaction(() async {
         for (final raw in sortedItems) {
           final serverId = (raw['id'] as num?)?.toInt() ?? 0;
@@ -708,29 +775,50 @@ class CloudProjectionEngine {
           }
         }
       });
+      final dbWriteMs = dbSw.elapsedMilliseconds;
 
       var prunedCount = 0;
+      var unmatchedMs = 0;
       if (hasFileChange || await _hasProjectedUnmatchedItems()) {
+        final unmatchedSw = Stopwatch()..start();
         final unmatchedRes = await _projectUnmatchedFilesFromServer(
           knownMountIds: knownMountIds,
           pruneStaleUnmatched: true,
         );
+        unmatchedMs = unmatchedSw.elapsedMilliseconds;
         itemsCount += unmatchedRes.itemsProjected;
         filesCount += unmatchedRes.filesProjected;
         prunedCount = unmatchedRes.pruned;
       }
 
+      var userStateMs = 0;
+      var progressMs = 0;
       if (hasUserDataChange) {
+        final sw = Stopwatch()..start();
         await _syncUserStateFromServer();
+        userStateMs = sw.elapsedMilliseconds;
       } else if (progressOps.isNotEmpty) {
+        final sw = Stopwatch()..start();
         await _applyProgressDeltas(progressOps);
+        progressMs = sw.elapsedMilliseconds;
       }
+      final kvSw = Stopwatch()..start();
       await _applyKvDeltas(kvOps);
       await _applyListDeltas(listOps);
+      final kvListMs = kvSw.elapsedMilliseconds;
       _lastDetailHydratedAt.clear();
       _lastSeq = changesPage.nextSinceSeq > _lastSeq ? changesPage.nextSinceSeq : changesPage.latestSeq;
       await _persistSeq(_lastSeq);
       onLibraryUpdated?.call();
+
+      appLogger.d(
+        'CloudSync timing (incremental/items): total=${totalSw.elapsedMilliseconds}ms '
+        'fetchChanges=${fetchChangesMs}ms mirror=${mirrorMs}ms parentResolve=${parentResolveMs}ms '
+        'dbWrite=${dbWriteMs}ms unmatched=${unmatchedMs}ms userState=${userStateMs}ms '
+        'progress=${progressMs}ms(${progressOps.length}) kvList=${kvListMs}ms '
+        'changes=${changesPage.changes.length} items=$itemsCount files=$filesCount '
+        'pruned=$prunedCount seq=$prevSeq->$_lastSeq',
+      );
 
       return CloudSyncResult(
         fullReset: false,
@@ -1365,7 +1453,10 @@ class CloudProjectionEngine {
     Set<String>? projectedCloudFileKeys,
     bool pruneStaleUnmatched = false,
   }) async {
+    final totalSw = Stopwatch()..start();
+    final fetchSw = Stopwatch()..start();
     final collected = <Map<String, dynamic>>[];
+    var pagesFetched = 0;
     try {
       const pageSize = 200;
       const maxPages = 50;
@@ -1373,6 +1464,7 @@ class CloudProjectionEngine {
       var fetched = 0;
       while (page <= maxPages) {
         final res = await syncClient.listUnmatched(page: page, pageSize: pageSize, state: 'all');
+        pagesFetched++;
         collected.addAll(res.items);
         fetched += res.items.length;
         if (res.items.isEmpty || fetched >= res.total || res.items.length < pageSize) {
@@ -1384,12 +1476,14 @@ class CloudProjectionEngine {
       appLogger.d('CloudProjectionEngine: unmatched projection skipped: $e');
       return (itemsProjected: 0, filesProjected: 0, pruned: 0);
     }
+    final fetchMs = fetchSw.elapsedMilliseconds;
 
     var itemsCount = 0;
     var filesCount = 0;
     var prunedCount = 0;
     final activeUnmatchedFileKeys = <String>{};
 
+    final dbSw = Stopwatch()..start();
     await db.transaction(() async {
       final matchedCloudKeys =
           projectedCloudFileKeys ??
@@ -1497,7 +1591,13 @@ class CloudProjectionEngine {
         prunedCount += deletedOrphanItems;
       }
     });
+    final dbWriteMs = dbSw.elapsedMilliseconds;
 
+    appLogger.d(
+      'CloudSync timing (unmatched): total=${totalSw.elapsedMilliseconds}ms '
+      'fetch=${fetchMs}ms(pages=$pagesFetched,rows=${collected.length}) '
+      'dbWrite=${dbWriteMs}ms items=$itemsCount files=$filesCount pruned=$prunedCount',
+    );
     return (itemsProjected: itemsCount, filesProjected: filesCount, pruned: prunedCount);
   }
 
@@ -1833,20 +1933,27 @@ class CloudProjectionEngine {
   }
 
   Future<void> _syncUserStateFromServer() async {
+    final totalSw = Stopwatch()..start();
     try {
+      final pfSw = Stopwatch()..start();
       final (progressList, favList) = await (syncClient.listProgress(limit: 500), syncClient.listFavorites()).wait;
+      final fetchPfMs = pfSw.elapsedMilliseconds;
       List<Map<String, dynamic>> kvList = const [];
+      final kvFetchSw = Stopwatch()..start();
       try {
         kvList = await syncClient.listKv(includeDeleted: true);
       } catch (e) {
         appLogger.d('CloudProjectionEngine: kv list unavailable, skipping: $e');
       }
+      final fetchKvMs = kvFetchSw.elapsedMilliseconds;
       List<Map<String, dynamic>>? remoteLists;
+      final listsFetchSw = Stopwatch()..start();
       try {
         remoteLists = await syncClient.listLists(includeEntries: true);
       } catch (e) {
         appLogger.d('CloudProjectionEngine: lists unavailable, skipping: $e');
       }
+      final fetchListsMs = listsFetchSw.elapsedMilliseconds;
       final favKeys = <String>{
         for (final f in favList)
           if ((f['work_key'] as String?)?.isNotEmpty == true)
@@ -1854,6 +1961,7 @@ class CloudProjectionEngine {
       };
 
       final watchStates = LibraryWatchStateStore(db);
+      final dbSw = Stopwatch()..start();
       await db.transaction(() async {
         final nowMs = DateTime.now().millisecondsSinceEpoch;
         for (final p in progressList) {
@@ -1884,13 +1992,26 @@ class CloudProjectionEngine {
           await watchStates.applyRemoteFavorite(item: item, favorite: true, updatedAt: nowMs);
         }
       });
+      final dbWriteMs = dbSw.elapsedMilliseconds;
 
+      final kvApplySw = Stopwatch()..start();
       for (final entry in kvList) {
         await _syncConfigStore.applyRemoteEntry(entry);
       }
+      final kvApplyMs = kvApplySw.elapsedMilliseconds;
+      var listsApplyMs = 0;
       if (remoteLists != null) {
+        final listsApplySw = Stopwatch()..start();
         await _syncListsFromServer(remoteLists);
+        listsApplyMs = listsApplySw.elapsedMilliseconds;
       }
+      appLogger.d(
+        'CloudSync timing (userState): total=${totalSw.elapsedMilliseconds}ms '
+        'fetchPF=${fetchPfMs}ms(${progressList.length}/${favList.length}) '
+        'fetchKv=${fetchKvMs}ms(${kvList.length}) '
+        'fetchLists=${fetchListsMs}ms(${remoteLists?.length ?? -1}) '
+        'dbWrite=${dbWriteMs}ms kvApply=${kvApplyMs}ms listsApply=${listsApplyMs}ms',
+      );
     } catch (e) {
       appLogger.d('CloudProjectionEngine: skipped user state sync: $e');
     }

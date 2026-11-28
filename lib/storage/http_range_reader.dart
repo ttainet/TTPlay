@@ -142,7 +142,7 @@ class HttpRangeReader {
       final finalHost = response.redirects.isNotEmpty
           ? response.redirects.fold<Uri>(link.url, (current, r) => current.resolveUri(r.location)).host
           : link.url.host;
-      appLogger.i(
+      appLogger.d(
         'Single-stream open: status=${response.statusCode} ttfb=${sw.elapsedMilliseconds}ms '
         'redirects=${response.redirects.length} host=$finalHost range=$start-${end ?? ''}',
       );

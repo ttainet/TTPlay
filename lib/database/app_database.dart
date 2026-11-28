@@ -153,7 +153,7 @@ class AppDatabase extends _$AppDatabase {
         ),
       );
       final reconcileMs = reconcileWatch.elapsedMilliseconds;
-      appLogger.i(
+      appLogger.d(
         'Startup timing (db.open): total=${openWatch.elapsedMilliseconds}ms '
         'select1=${select1Ms}ms reconcile=${reconcileMs}ms existed=$databaseExisted',
       );
@@ -413,7 +413,7 @@ class AppDatabase extends _$AppDatabase {
         await customStatement('PRAGMA foreign_keys = ON');
         final restoreWatch = Stopwatch()..start();
         final restoredItems = await LibraryWatchStateStore(this).restoreAll();
-        appLogger.i(
+        appLogger.d(
           'Startup timing (db.beforeOpen): total=${watch.elapsedMilliseconds}ms '
           'restoreAll=${restoreWatch.elapsedMilliseconds}ms items=$restoredItems '
           'created=${details.wasCreated} upgraded=${details.hadUpgrade} '
